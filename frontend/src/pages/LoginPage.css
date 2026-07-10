@@ -1,0 +1,408 @@
+/* [수정 7월 10일 13:49] 레이아웃 붕괴 현상 수정 및 폰트/아이콘 명시적 선언 추가 */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0");
+
+:root {
+  /* Colors from DESIGN.md */
+  --surface-container-low: #f0f3ff;
+  --surface-container-lowest: #ffffff;
+  --primary: #006591;
+  --primary-container: #0ea5e9;
+  --on-primary: #ffffff;
+  --on-surface: #111c2d;
+  --on-surface-variant: #3e4850;
+  --outline: #6e7881;
+  --outline-variant: #bec8d2;
+  --secondary: #505f76;
+  --on-tertiary-fixed-variant: #43474b;
+  --surface-variant: #d8e3fb;
+}
+
+body {
+  margin: 0;
+  font-family: "Inter", sans-serif;
+  background-color: var(--surface-container-low);
+  color: var(--on-surface);
+}
+
+/* [수정 7월 10일 13:49] Material Icons 폰트 강제 매핑 추가 */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}
+
+/* [수정 7월 10일 13:49] 화면 중앙 정렬 레이아웃 복구 */
+.login-wrapper {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-sizing: border-box;
+  background-color: var(--surface-container-low);
+  overflow: hidden;
+}
+
+.bg-pattern {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  opacity: 0.2;
+  background-image: radial-gradient(#6e7881 0.5px, transparent 0.5px);
+  background-size: 24px 24px;
+  z-index: 0;
+}
+
+.login-container {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+  z-index: 10;
+}
+
+/* Brand Identity */
+.brand-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.icon-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.icon-container .icon-large {
+  width: 48px;
+  height: 48px;
+  background-color: var(--primary);
+  color: var(--on-primary);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+}
+
+.brand-header h1 {
+  font-size: 32px;
+  font-weight: 600;
+  line-height: 40px;
+  letter-spacing: -0.01em;
+  margin: 0;
+  color: var(--on-surface);
+}
+
+.brand-header p {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--primary);
+  margin: 4px 0 0 0;
+}
+
+/* Login Card */
+.login-card {
+  background-color: var(--surface-container-lowest);
+  border: 1px solid var(--outline-variant);
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0px 12px 32px rgba(30, 41, 59, 0.05);
+}
+
+.card-header {
+  margin-bottom: 32px;
+}
+
+.card-header h2 {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 28px;
+  margin: 0;
+}
+
+.card-header p {
+  font-size: 14px;
+  color: var(--on-surface-variant);
+  margin: 8px 0 0 0;
+}
+
+/* Form Styles */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--outline);
+}
+
+/* [수정 7월 10일 13:49] 입력 필드 아이콘 겹침 방지 및 수직 정렬 */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--outline);
+  font-size: 20px;
+  pointer-events: none;
+}
+
+.input-wrapper input {
+  width: 100%;
+  padding: 12px 16px 12px 40px;
+  background-color: #ffffff;
+  border: 1px solid var(--outline-variant);
+  border-radius: 4px;
+  font-family: "Inter", sans-serif;
+  font-size: 16px;
+  color: var(--on-surface);
+  box-sizing: border-box;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.input-wrapper input::placeholder {
+  color: rgba(110, 120, 129, 0.5);
+}
+
+.input-wrapper input:focus {
+  border-color: var(--primary-container);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+}
+
+/* Button */
+.submit-btn {
+  width: 100%;
+  background-color: var(--primary-container);
+  color: var(--on-primary);
+  font-family: "Inter", sans-serif;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition:
+    background-color 0.2s,
+    transform 0.1s;
+}
+
+.submit-btn:hover:not(:disabled) {
+  background-color: var(--primary);
+}
+
+.submit-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.submit-btn .btn-icon {
+  font-size: 20px;
+  transition: transform 0.2s;
+}
+
+.submit-btn:hover .btn-icon {
+  transform: translateX(4px);
+}
+
+.submit-btn.loading {
+  opacity: 0.8;
+  cursor: not-allowed;
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Card Footer */
+.card-footer {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--surface-variant);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.help-btn {
+  background: none;
+  border: none;
+  color: var(--secondary);
+  font-family: "Inter", sans-serif;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.2s;
+}
+
+.help-btn:hover {
+  color: var(--primary);
+}
+
+.help-btn .material-symbols-outlined {
+  font-size: 16px;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* // [수정 7월 10일 14:04] 기본 배경색을 오류/비활성 상태인 빨간색으로 수정 */
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ba1a1a;
+  flex-shrink: 0;
+}
+
+/* // [수정 7월 10일 14:02] 비활성화 상태일 때만 배경색을 빨간색으로 덮어쓰도록 수정 (active 클래스 제거) */
+/* // [수정 7월 10일 14:04] 활성화 상태일 때 초록색이 적용되도록 active 클래스 정의로 수정 */
+.status-dot.active {
+  background-color: #22c55e;
+}
+
+/* // [수정 7월 10일 13:52] TCP 비활성화 상태 색상 정의 */
+.status-dot.inactive {
+  background-color: #ba1a1a;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.status-indicator span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--on-tertiary-fixed-variant);
+}
+
+/* Page Footer */
+.page-footer {
+  margin-top: 40px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.page-footer p {
+  margin: 0;
+  font-size: 14px;
+  color: var(--outline);
+}
+
+.system-info {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  color: rgba(110, 120, 129, 0.6);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+}
+
+.separator {
+  width: 4px;
+  height: 4px;
+  background-color: rgba(110, 120, 129, 0.3);
+  border-radius: 50%;
+}
+
+/* Decoration Element */
+.decoration-element {
+  position: fixed;
+  bottom: 48px;
+  right: 48px;
+  opacity: 0.1;
+  pointer-events: none;
+}
+
+@media (max-width: 1023px) {
+  .decoration-element {
+    display: none;
+  }
+}
+
+.deco-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.deco-icon {
+  font-size: 120px !important;
+}
+
+.deco-content p {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 14px;
+  text-align: right;
+  margin: 8px 0 0 0;
+}
