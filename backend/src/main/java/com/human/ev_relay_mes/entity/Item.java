@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.entity;
+package com.human.ev_relay_mes.Entity;
 
 import jakarta.persistence.*;
 import lombok.*;
