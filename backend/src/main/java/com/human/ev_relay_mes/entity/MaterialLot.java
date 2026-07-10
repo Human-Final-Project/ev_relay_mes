@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "material_lots")
 @Getter
@@ -37,17 +39,13 @@ public class MaterialLot {
     @Builder.Default
     private Status status = Status.AVAILABLE;
 
+    @CreationTimestamp
     @Column(name = "received_at", nullable = false, updatable = false)
     private LocalDateTime receivedAt;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "received_by")
     private Member receivedBy;
-
-    @PrePersist
-    public void prePersist() {
-        this.receivedAt = LocalDateTime.now();
-    }
 
     public enum Status { AVAILABLE, HOLD, USED, DISCARDED }
 }
