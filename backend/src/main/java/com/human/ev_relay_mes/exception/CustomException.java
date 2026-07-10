@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.exception;
+package com.human.ev_relay_mes.Exception;
 
 import lombok.Getter;
 import org.springframework.http.HttpStatus;
