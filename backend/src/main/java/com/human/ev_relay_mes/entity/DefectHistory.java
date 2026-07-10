@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "defect_histories")
 @Getter
@@ -41,6 +43,7 @@ public class DefectHistory {
     @Builder.Default
     private Integer defectQty = 0;
 
+    @CreationTimestamp
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private LocalDateTime occurredAt;
 
@@ -52,9 +55,4 @@ public class DefectHistory {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "confirmed_by")
     private Member confirmedBy;
-
-    @PrePersist
-    public void prePersist() {
-        this.occurredAt = LocalDateTime.now();
-    }
 }

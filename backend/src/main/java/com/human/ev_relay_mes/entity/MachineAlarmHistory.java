@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "machine_alarm_histories")
 @Getter
@@ -32,6 +34,7 @@ public class MachineAlarmHistory {
     @Builder.Default
     private String alarmLevel = "ERROR";
 
+    @CreationTimestamp
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private LocalDateTime occurredAt;
 
@@ -45,9 +48,4 @@ public class MachineAlarmHistory {
 
     @Column(name = "message", length = 255)
     private String message;
-
-    @PrePersist
-    public void prePersist() {
-        this.occurredAt = LocalDateTime.now();
-    }
 }

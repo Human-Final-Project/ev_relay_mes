@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "work_orders")
 @Getter
@@ -44,13 +46,9 @@ public class WorkOrder {
     @JoinColumn(name = "created_by")
     private Member createdBy;
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @PrePersist
-    public void prePersist() {
-        this.createdAt = LocalDateTime.now();
-    }
 
     public enum Status { CREATED, RELEASED, RUNNING, COMPLETED, CANCELED }
 }

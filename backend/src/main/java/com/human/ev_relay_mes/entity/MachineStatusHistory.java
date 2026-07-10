@@ -5,6 +5,8 @@ import lombok.*;
 
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "machine_status_histories")
 @Getter
@@ -38,14 +40,10 @@ public class MachineStatusHistory {
     @JoinColumn(name = "process_code", referencedColumnName = "process_code")
     private Process process;
 
+    @CreationTimestamp
     @Column(name = "recorded_at", nullable = false, updatable = false)
     private LocalDateTime recordedAt;
 
     @Column(name = "message", length = 255)
     private String message;
-
-    @PrePersist
-    public void prePersist() {
-        this.recordedAt = LocalDateTime.now();
-    }
 }

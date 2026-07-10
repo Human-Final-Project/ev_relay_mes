@@ -6,6 +6,8 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Entity
 @Table(name = "inspections")
 @Getter
@@ -53,13 +55,9 @@ public class Inspection {
     @Column(name = "result", nullable = false, length = 10)
     private Result result;
 
+    @CreationTimestamp
     @Column(name = "inspected_at", nullable = false, updatable = false)
     private LocalDateTime inspectedAt;
-
-    @PrePersist
-    public void prePersist() {
-        this.inspectedAt = LocalDateTime.now();
-    }
 
     public enum Result { OK, NG }
 }
