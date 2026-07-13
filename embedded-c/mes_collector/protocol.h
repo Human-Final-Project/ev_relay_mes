@@ -9,7 +9,9 @@ typedef enum {
     PROTOCOL_EVENT_INSPECTION,
     PROTOCOL_EVENT_DEFECT,
     PROTOCOL_EVENT_ALARM,
-    PROTOCOL_EVENT_MACHINE_STATUS
+    PROTOCOL_EVENT_MACHINE_STATUS,
+    PROTOCOL_EVENT_COMMAND,
+    PROTOCOL_EVENT_COMMAND_ACK
 } ProtocolEventType;
 
 /* Returns a stable name for logging. Parsing is implemented in stage 3. */

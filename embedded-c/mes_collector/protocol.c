@@ -17,6 +17,10 @@ const char *protocol_event_type_name(ProtocolEventType type)
         return "ALARM";
     case PROTOCOL_EVENT_MACHINE_STATUS:
         return "MACHINE_STATUS";
+    case PROTOCOL_EVENT_COMMAND:
+        return "COMMAND";
+    case PROTOCOL_EVENT_COMMAND_ACK:
+        return "COMMAND_ACK";
     case PROTOCOL_EVENT_UNKNOWN:
     default:
         return "UNKNOWN";
