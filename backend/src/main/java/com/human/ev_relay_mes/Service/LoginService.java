@@ -18,6 +18,7 @@ public class LoginService {
     private final MemberRepository memberRepository;
     private final PasswordHashService passwordHashService;
 
+    // 로그인 화면에서 계정과 비밀번호를 검증하고 사용자 권한 정보를 반환할 때 사용한다.
     public LoginResponseDto login(LoginRequestDto dto) {
         Member member = memberRepository.findByLoginId(dto.getLoginId())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOGIN_FAILED));

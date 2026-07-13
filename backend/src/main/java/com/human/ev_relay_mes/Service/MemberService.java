@@ -21,6 +21,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final PasswordHashService passwordHashService;
 
+    // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
     public MemberResponseDto createMember(MemberCreateRequestDto dto, Long createdById) {
         if (memberRepository.existsByLoginId(dto.getLoginId())) {
@@ -43,14 +44,17 @@ public class MemberService {
         return toResponse(memberRepository.save(member));
     }
 
+    // 회원 관리 화면에 전체 사용자와 권한·상태 정보를 표시할 때 사용한다.
     public List<MemberResponseDto> getMembers() {
         return memberRepository.findAll().stream().map(this::toResponse).toList();
     }
 
+    // 회원 상세 또는 수정 화면에서 특정 사용자의 정보를 조회할 때 사용한다.
     public MemberResponseDto getMember(Long memberId) {
         return toResponse(findMember(memberId));
     }
 
+    // 관리자가 회원의 권한·상태·부서·직급을 변경할 때 사용한다.
     @Transactional
     public MemberResponseDto updateMember(Long memberId, MemberUpdateRequestDto dto) {
         Member member = findMember(memberId);
@@ -69,11 +73,13 @@ public class MemberService {
         return toResponse(member);
     }
 
+    // 회원 관련 업무에서 대상 회원의 존재 여부를 확인하고 Entity를 가져올 때 사용한다.
     private Member findMember(Long memberId) {
         return memberRepository.findById(memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
     }
 
+    // 화면에서 받은 권한 문자열을 Member.Role Enum으로 안전하게 변환할 때 사용한다.
     private Member.Role parseRole(String role) {
         try {
             return Member.Role.valueOf(role.toUpperCase());
@@ -82,6 +88,7 @@ public class MemberService {
         }
     }
 
+    // 화면에서 받은 계정 상태 문자열을 Member.Status Enum으로 안전하게 변환할 때 사용한다.
     private Member.Status parseStatus(String status) {
         try {
             return Member.Status.valueOf(status.toUpperCase());
@@ -90,6 +97,7 @@ public class MemberService {
         }
     }
 
+    // 비밀번호를 제외한 회원 정보를 회원 관리 API의 응답 DTO로 변환할 때 사용한다.
     private MemberResponseDto toResponse(Member member) {
         Member creator = member.getCreatedBy();
         return MemberResponseDto.builder()

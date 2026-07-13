@@ -29,6 +29,7 @@ public class InspectionService {
     private final ProcessRepository processRepository;
     private final EntityManager entityManager;
 
+    // L2 수집기가 전달한 검사 측정값과 판정 결과를 검사 이력으로 저장할 때 사용한다.
     @Transactional
     public InspectionResponseDto saveResult(InspectionResultReceiveRequestDto dto) {
         if (dto.getLowerLimit() != null && dto.getUpperLimit() != null
@@ -62,6 +63,7 @@ public class InspectionService {
         return toResponse(inspectionRepository.save(inspection));
     }
 
+    // 검사 결과 화면에서 LOT·설비·공정·판정·기간 조건으로 검사 이력을 조회할 때 사용한다.
     public List<InspectionResponseDto> search(InspectionSearchRequestDto condition) {
         return inspectionRepository.findAll().stream()
                 .filter(item -> isBlank(condition.getLotNo()) || item.getLot().getLotNo().equals(condition.getLotNo()))
@@ -73,6 +75,7 @@ public class InspectionService {
                 .toList();
     }
 
+    // 검사 결과가 연결될 생산 LOT를 LOT 번호로 확인할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
         return entityManager.createQuery("select l from Lot l where l.lotNo = :lotNo", Lot.class)
                 .setParameter("lotNo", lotNo)
@@ -81,14 +84,17 @@ public class InspectionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
     }
 
+    // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
+    // 검사 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.
     private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {
         return (start == null || !value.isBefore(start)) && (end == null || !value.isAfter(end));
     }
 
+    // 검사 Entity를 검사 결과 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.
     private InspectionResponseDto toResponse(Inspection inspection) {
         return InspectionResponseDto.builder()
                 .inspectionId(inspection.getInspectionId())
