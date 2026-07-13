@@ -1,7 +1,8 @@
-package com.human.ev_relay_mes.repository;
+package com.human.ev_relay_mes.Repository;
 
-import com.human.ev_relay_mes.entity.MachineAlarmHistory;
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 
 import java.time.LocalDateTime;
 import java.util.List;

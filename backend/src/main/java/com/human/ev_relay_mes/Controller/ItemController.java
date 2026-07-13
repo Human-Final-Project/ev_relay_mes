@@ -2,7 +2,6 @@ package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.ItemRequestDto;
 import com.human.ev_relay_mes.Dto.Response.ItemResponseDto;
-import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Service.ItemService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

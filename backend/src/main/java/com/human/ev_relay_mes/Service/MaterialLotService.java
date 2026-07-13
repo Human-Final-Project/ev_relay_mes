@@ -7,6 +7,8 @@ import com.human.ev_relay_mes.Entity.MaterialLot;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Repository.ItemRepository;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
+import com.human.ev_relay_mes.Repository.MemberRepository;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -18,6 +20,7 @@ public class MaterialLotService {
 
     private final MaterialLotRepository materialLotRepository;
     private final ItemRepository itemRepository;
+    private final MemberRepository memberRepository;
 
     // 등록
     public MaterialLot createMaterialLot(MaterialLotRequestDto dto){
