@@ -1,7 +1,7 @@
 #ifndef MES_COLLECTOR_CONFIG_H
 #define MES_COLLECTOR_CONFIG_H
 
-/* L1 -> L2 TCP settings (docs/tcp-protocol.md v0.2). */
+/* L1 -> L2 TCP settings (docs/tcp-protocol.md v0.4). */
 #define COLLECTOR_BIND_ADDRESS "0.0.0.0"
 #define COLLECTOR_TCP_PORT 9000
 #define COLLECTOR_MAX_L1_CONNECTIONS 6
