@@ -14,7 +14,7 @@ int build_heartbeat_msg(char *out_buf, size_t buf_size, const char *mach_id) {
 }
 
 int build_production_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, int ok_qty, int ng_qty, const char *status) {
-    // °ËÁõ ±ÔÄ¢: INPUT_QTY = OK_QTY + NG_QTY
+    // ê²€ì¦ ê·œì¹™: INPUT_QTY = OK_QTY + NG_QTY
     int input_qty = ok_qty + ng_qty;
     
     // V1,PRODUCTION,MACHINE_ID,PROCESS_CODE,LOT_NO,INPUT_QTY,OK_QTY,NG_QTY,STATUS\n
@@ -23,11 +23,23 @@ int build_production_msg(char *out_buf, size_t buf_size, const char *mach_id, co
 }
 
 int build_status_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *status, const char *lot_no, const char *proc_code, const char *msg) {
-    // °ªÀÌ ¾øÀ¸¸é ºó ¹®ÀÚ¿­ ´ë½Å ÇÏÀÌÇÂ '-' »ç¿ë ±ÔÄ¢ Àû¿ë
+    // ê°’ì´ ì—†ìœ¼ë©´ ë¹ˆ ë¬¸ìì—´ ëŒ€ì‹  í•˜ì´í”ˆ '-' ì‚¬ìš© ê·œì¹™ ì ìš©
     const char *final_lot = (lot_no == NULL || lot_no[0] == '\0') ? "-" : lot_no;
     const char *final_msg = (msg == NULL || msg[0] == '\0') ? "-" : msg;
 
     // V1,MACHINE_STATUS,MACHINE_ID,STATUS,LOT_NO,PROCESS_CODE,MESSAGE\n
     return snprintf(out_buf, buf_size, "%s,MACHINE_STATUS,%s,%s,%s,%s,%s\n",
                     VERSION, mach_id, status, final_lot, proc_code, final_msg);
+}
+
+// â˜… [ì´ë²¤íŠ¸ 2] ë¶ˆëŸ‰ ë©”ì‹œì§€ êµ¬í˜„
+int build_defect_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, const char *defect_code, int defect_qty) {
+    return snprintf(out_buf, buf_size, "%s,DEFECT,%s,%s,%s,%s,%d\n",
+                    VERSION, mach_id, proc_code, lot_no, defect_code, defect_qty);
+}
+
+// â˜… [ì´ë²¤íŠ¸ 3] ì•ŒëŒ ë©”ì‹œì§€ êµ¬í˜„
+int build_alarm_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *alarm_code, const char *alarm_level) {
+    return snprintf(out_buf, buf_size, "%s,ALARM,%s,%s,%s\n",
+                    VERSION, mach_id, alarm_code, alarm_level);
 }
