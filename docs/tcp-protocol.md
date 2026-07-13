@@ -1,4 +1,4 @@
-# EV Relay MES TCP 프로토콜 명세 (초안 v0.2)
+# EV Relay MES TCP 프로토콜 명세 (초안 v0.4)
 
 > 상태: 팀 검토용 초안  
 > 검토 담당: L1 박민, L2 변후민, Backend 홍준희/김도형  
@@ -18,6 +18,9 @@
 - L2는 TCP 서버로 동작하며 여러 L1 연결을 수신한다.
 - L2와 Spring Boot 사이에는 TCP가 아니라 REST API와 JSON을 사용한다.
 - TCP 포트와 Backend URL은 확정 전까지 임시값을 사용한다.
+- L2는 Backend REST API를 1초마다 Polling하여 대기 작업명령을 조회한다.
+- L2는 조회한 작업명령을 기존 L1 TCP 연결로 전달하고 L1은 `COMMAND_ACK`로 수락 여부를 응답한다.
+- MVP는 정상 네트워크를 가정하며 L2→Backend HTTP 요청은 자동 재시도하지 않는다.
 
 ## 2. 연결 규칙
 
@@ -36,6 +39,7 @@
 | 연결 식별 제한시간 | 연결 후 5초 이내 `HELLO` 전송 |
 | Heartbeat 주기 | L1이 5초마다 전송 |
 | 통신 Timeout | 마지막 정상 메시지 수신 후 15초 |
+| 명령 Polling 주기 | L2가 Backend를 1초마다 조회 |
 
 TCP의 `send()` 한 번과 `recv()` 한 번은 일대일로 대응하지 않는다. L2는 수신 데이터를 버퍼에 누적하고 `\n`을 발견했을 때 한 메시지로 분리해야 한다.
 
@@ -80,7 +84,25 @@ VERSION,EVENT_TYPE,MACHINE_ID,...\n
 
 L2는 `MACHINE_ID`와 `PROCESS_CODE`가 위 표처럼 서로 대응하는지 검사한다.
 
-### 4.2 상태 코드
+### 4.2 공정 실행 순서
+
+OP20과 OP30은 병렬 선행 공정이며 두 반제품은 OP40_OP50에서 합류한다.
+
+```text
+OP20 코일 어셈블리 ───────┐
+                          ├→ OP40_OP50 → OP60 → OP70 → OP80
+OP30 접점 어셈블리 ───────┘
+```
+
+OP40_OP50에서 본체 어셈블리 1개를 생산하려면 OP20의 `SA-COIL-001` 1개와 OP30의 `SA-CONTACT-001` 1개가 필요하다. 다른 자재가 충분한 MVP 기준에서:
+
+```text
+OP40_OP50 inputQty = min(OP20 okQty, OP30 okQty)
+```
+
+L2는 두 결과를 모아 생산 수량을 계산하지 않고 각 메시지를 독립적으로 Backend에 전달한다. 병렬 공정 완료 여부와 다음 공정 투입 수량은 LOT 및 BOM을 관리하는 Backend가 판단한다.
+
+### 4.3 상태 코드
 
 설비 상태는 DB `machines.status` 기준으로 통일한다.
 
@@ -159,6 +181,9 @@ V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-20260708-001,100,97,3,COMPLETED\n
 - `INPUT_QTY = OK_QTY + NG_QTY`여야 한다.
 - `STATUS`는 `COMPLETED` 또는 `FAILED`여야 한다.
 - `LOT_NO`는 Backend에 이미 생성된 생산 LOT여야 한다.
+- 정상 제품을 개별 메시지로 전송하지 않고 공정 전체 결과를 요약하여 한 번 전송한다.
+- MVP에서는 공정 재실행과 재작업을 제외하므로 LOT·공정별 `PRODUCTION` 요약은 한 건을 기준으로 한다.
+- OP20과 OP30은 같은 LOT에 대해 독립적으로 완료 메시지를 보낼 수 있으며 메시지 도착 순서는 보장하지 않는다.
 
 Backend 저장 대상: `production_logs`
 
@@ -262,6 +287,50 @@ V1,MACHINE_STATUS,EQ-WIND-01,IDLE,-,OP20,production_finished\n
 
 Backend 저장 대상: `machines.status`, `machine_status_histories`
 
+### 5.8 L2 작업명령 `COMMAND`
+
+L2가 Backend REST Polling으로 가져온 명령을 해당 설비의 기존 TCP 연결로 전송한다.
+
+```text
+V1,COMMAND,COMMAND_ID,COMMAND_TYPE,MACHINE_ID,PROCESS_CODE,LOT_NO,INPUT_QTY\n
+```
+
+예시:
+
+```text
+V1,COMMAND,101,START,EQ-WIND-01,OP20,EVR-LOT-001,100\n
+V1,COMMAND,102,STOP,EQ-WIND-01,OP20,EVR-LOT-001,0\n
+V1,COMMAND,103,RESUME,EQ-WIND-01,OP20,EVR-LOT-001,100\n
+```
+
+검증 규칙:
+
+- `COMMAND_ID`는 Backend가 생성한 1 이상의 정수이며 명령과 응답을 연결하는 식별자다.
+- `COMMAND_TYPE`은 `START`, `STOP`, `RESUME` 중 하나다.
+- `MACHINE_ID`와 `PROCESS_CODE`는 서로 대응해야 한다.
+- `START`, `RESUME`의 `INPUT_QTY`는 1 이상이어야 한다.
+- `STOP`의 `INPUT_QTY`는 `0`을 사용한다.
+- L2는 `MACHINE_ID`로 등록된 L1 연결을 찾아 명령을 전송한다.
+
+### 5.9 L1 명령 응답 `COMMAND_ACK`
+
+L1은 명령 수신 및 기본 검증 후 ACK를 L2로 전송한다.
+
+```text
+V1,COMMAND_ACK,MACHINE_ID,COMMAND_ID,ACK_STATUS,MESSAGE\n
+```
+
+예시:
+
+```text
+V1,COMMAND_ACK,EQ-WIND-01,101,ACCEPTED,-\n
+V1,COMMAND_ACK,EQ-WIND-01,101,REJECTED,invalid_state\n
+```
+
+- `ACK_STATUS`는 `ACCEPTED`, `REJECTED` 중 하나다.
+- L2는 ACK를 Backend 명령 상태 API로 전달한다.
+- `COMMAND_ID`는 중복 저장 방지용 이벤트 ID가 아니라 작업명령과 ACK를 연결하는 식별자다.
+
 ## 6. L2 다중 연결 및 수신 처리 규칙
 
 ### 6.1 연결당 작업 스레드
@@ -351,6 +420,20 @@ L1 연결 종료 감지
 
 REST API 경로는 Backend 담당자와 협의 후 확정한다. 임시 권장 경로는 이벤트별로 분리한다.
 
+이벤트 전달 및 저장 정책:
+
+| 이벤트 | Backend 전달 | 저장 기준 |
+|---|---|---|
+| `HELLO` | 아니요 | L2 연결 식별에만 사용 |
+| `HEARTBEAT` | 아니요 | L2 Timeout 판정에만 사용 |
+| `PRODUCTION` | 예 | 공정 완료 요약을 `production_logs`에 저장 |
+| `INSPECTION` | 예 | 검사 항목 결과 저장 |
+| `DEFECT` | 발생 시 | 제품 불량 상세 저장 |
+| `ALARM` | 발생 시 | 설비 알람 상세 저장 |
+| `MACHINE_STATUS` | 상태 변경 시 | 설비 현재 상태와 상태 이력 저장 |
+
+최종 완제품 수량은 OP80 `PRODUCTION`의 `okQty`를 사용한다. L2는 최종 수량을 계산하지 않으며 Backend가 LOT에 반영한다.
+
 | 이벤트 | 임시 API 경로 |
 |---|---|
 | `PRODUCTION` | `POST /api/collector/production-logs` |
@@ -388,9 +471,9 @@ Backend의 DTO와 API 구현이 아직 저장소에 반영되지 않았으므로
 
 - `Content-Type`은 `application/json; charset=UTF-8`을 사용한다.
 - HTTP 2xx는 성공으로 처리한다.
-- HTTP 4xx는 데이터 오류로 기록하고 자동 재전송하지 않는다.
+- HTTP 4xx는 데이터 오류로 기록한다.
 - HTTP 5xx 또는 연결 실패는 서버 장애로 기록한다.
-- 초기 MVP에서는 디스크 큐를 구현하지 않고 최대 3회, 1초 간격으로 재전송한다.
+- MVP는 정상 네트워크를 가정하므로 HTTP 요청은 한 번만 전송하고 자동 재시도·디스크 큐·`eventId` 중복 제거를 구현하지 않는다.
 
 ## 8. 오류 처리
 
@@ -406,8 +489,8 @@ Backend의 DTO와 API 구현이 아직 저장소에 반영되지 않았으므로
 | 동일한 설비의 중복 연결 | 새 연결 거부 및 오류 로그 |
 | L1 연결 종료 | `COMM_DISCONNECTED`와 설비 `ERROR` 전송 후 소켓 정리 |
 | 15초 동안 정상 메시지 미수신 | `COMM_TIMEOUT`과 설비 `ERROR` 전송 후 소켓 정리 |
-| Backend HTTP 4xx | 재전송 없이 오류 로그 |
-| Backend HTTP 5xx/연결 실패 | 최대 3회 재전송 후 실패 로그 |
+| Backend HTTP 4xx | 오류 로그, 재전송 없음 |
+| Backend HTTP 5xx/연결 실패 | 실패 로그, 재전송 없음 |
 
 ## 9. 초안에서 확정이 필요한 항목
 
@@ -419,13 +502,19 @@ Backend의 DTO와 API 구현이 아직 저장소에 반영되지 않았으므로
 - [x] 연결당 `pthread` 작업 스레드 1개 방식 확정
 - [x] `HELLO` 연결 식별 및 `HEARTBEAT` 방식 적용
 - [x] Heartbeat 5초, Timeout 15초 기준 적용
-- [ ] 생산 상태 `COMPLETED`, `FAILED` 확정
-- [ ] 검사 결과를 SQL 기준 `OK`, `NG`로 확정
+- [x] 생산 상태 `COMPLETED`, `FAILED` 적용
+- [x] 검사 결과를 SQL 기준 `OK`, `NG`로 적용
+- [x] OP20·OP30 병렬 실행 및 OP40_OP50 합류 구조 적용
+- [x] 공정 완료 시 `PRODUCTION` 요약 전송, 정상 제품 개별 전송 제외
+- [x] 최종 완제품 수량은 OP80 `okQty` 기준
+- [x] MVP 재작업 및 공정 재실행 제외
 - [x] `WELD_STRENGTH_NG` 불량 코드 적용
 - [x] `COMM_DISCONNECTED`, `COMM_TIMEOUT`은 L2가 생성
 - [ ] 그 외 `defect_codes`, `alarm_codes`의 실제 사용 목록 확정
 - [ ] Backend REST API 경로와 JSON 필드명 확정
-- [ ] L2가 HTTP 재전송에 실패한 데이터의 최종 처리 방식 확정
+- [x] L2 REST Polling 1초 주기로 Backend 작업명령 조회
+- [x] L2→L1 `START`, `STOP`, `RESUME` 및 L1→L2 `COMMAND_ACK` 적용
+- [x] 정상 네트워크 가정, HTTP 자동 재시도와 `eventId` 제외
 - [ ] Linux 기준으로 L1/L2를 실행할지 Windows 호환도 포함할지 확정
 
 ## 10. MVP 통합 테스트 예시

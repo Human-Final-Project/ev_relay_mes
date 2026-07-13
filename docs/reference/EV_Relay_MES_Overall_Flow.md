@@ -1,717 +1,256 @@
-# EV Relay MES 전체 흐름 정리
+# EV Relay MES 전체 흐름 정리 v2
 
-## 1. 문서 목적
+> 구현 기준일: 2026-07-13
+> TCP 상세 형식은 [`../tcp-protocol.md`](../tcp-protocol.md), 공정별 BOM은 [`sql_code_ver.2.md`](sql_code_ver.2.md)를 기준으로 한다.
 
-이 문서는 EV Relay MES 프로젝트의 전체 동작 흐름을 정리하기 위한 문서이다.
-
-기존 프로젝트 구조가 단순히 `C 장비 시뮬레이터 → Backend → DB → Frontend` 흐름이었다면, 본 문서에서는 실제 MES 구조에 가깝게 다음 흐름을 기준으로 정리한다.
-
-```text
-Frontend
-→ Backend
-→ L2 Controller / Collector
-→ L1 Equipment Simulator
-→ L2 결과 취합
-→ Backend 저장
-→ Frontend Dashboard 출력
-```
-
-핵심 목표는 다음과 같다.
-
-- 사용자가 Frontend에서 자재 입고와 작업지시를 수행한다.
-- Backend는 작업지시를 DB에 저장하고 L2 장비로 전달한다.
-- L2는 각 L1 설비에 공정별 작업을 지시한다.
-- L1 설비는 생산 결과, OK/NG 수량, 설비 알람 로그를 L2에 전달한다.
-- L2는 정보를 취합하여 Backend로 전달한다.
-- Backend는 DTO, Service, Entity, JPA를 통해 DB에 저장한다.
-- Frontend는 API를 통해 LOT 진행 상태, 생산 실적, 불량, 알람 정보를 조회하고 대시보드에 출력한다.
-
----
-
-## 2. 전체 시스템 구성
+## 1. 시스템 구성
 
 ```text
-[ React Frontend ]
-        |
-        | 자재 입고 / 작업지시 / 조회 요청
-        v
-[ Spring Boot Backend ]
-        |
-        | TCP/IP 작업지시 전송
-        v
-[ C L2 Controller / Collector ]
-        |
-        | TCP/IP 공정별 작업 지시
-        v
-[ C L1 Equipment Simulators ]
-        |
-        | 생산 결과 / 설비 로그 / 알람 전달
-        v
-[ C L2 Controller / Collector ]
-        |
-        | 결과 취합 후 Backend 전달
-        v
-[ Spring Boot Backend ]
-        |
-        | DTO → Service → Entity → JPA
-        v
-[ MySQL Database ]
-        |
-        | REST API 조회
-        v
-[ React Dashboard ]
+[L1 C 설비 시뮬레이터 6대]
+              |
+              | TCP/CSV
+              v
+[L2 C 수집기 / 연결당 pthread]
+              |
+              | HTTP REST/JSON
+              v
+[Spring Boot MES Backend]
+              |
+              | JPA
+              v
+[MySQL] <---- REST 조회 ---- [React Frontend]
 ```
 
----
+역할:
 
-## 3. 주요 역할 구분
-
-| 구분 | 역할 |
+| 구성 | 역할 |
 |---|---|
-| Frontend | 사용자 로그인, 자재 입고, 작업지시, LOT 조회, 대시보드 출력 |
-| Backend | MES 업무 로직 처리, 작업지시 저장, L2 통신, DB 저장, API 제공 |
-| L2 | Backend와 L1 사이의 중간 제어기/수집기 역할 |
-| L1 | 실제 설비 역할을 하는 C 기반 장비 시뮬레이터 |
-| Database | 사용자, 자재, 작업지시, LOT, 생산결과, 불량, 알람, 설비상태 저장 |
+| L1 | 공정 수행 시뮬레이션, 생산 요약·불량·설비 알람 전송, `HELLO`·`HEARTBEAT` 전송 |
+| L2 | 다중 TCP 연결, 메시지 분리·파싱·검증, Backend 명령 Polling, L1 명령 전달, 통신 장애 감지, Backend REST 전송 |
+| Backend | 작업지시·LOT·BOM 관리, Collector API 수신, 공정별 요약·오류·상태 저장, 최종 수량 계산 |
+| Frontend | 작업지시, BOM, LOT 진행, 공정별 수량, 불량·알람 표시 |
 
----
-
-## 4. 기본 업무 흐름
-
-## 4.1 사용자 등록 및 로그인
+L2는 Backend REST API를 1초마다 Polling하여 대기 작업명령을 가져오고, 기존 L1 TCP 연결로 `START`, `STOP`, `RESUME` 명령을 전달한다. L1은 `COMMAND_ACK`로 수락 또는 거부를 응답한다.
 
 ```text
-0. 관리자가 사용자 등록
-   ↓
-1. 사용자가 로그인
-   ↓
-2. 이후 모든 과정은 로그인된 사용자 기준으로 진행
+Backend 명령 저장
+→ L2 REST Polling
+→ L2가 대상 L1 TCP 연결로 COMMAND 전송
+→ L1 COMMAND_ACK
+→ L2가 Backend에 명령 상태 보고
 ```
 
-### 설명
+MVP는 정상 네트워크를 가정하므로 L2→Backend HTTP 자동 재시도와 `eventId` 중복 제거는 구현하지 않는다. `commandId`는 네트워크 중복 제거가 아니라 작업명령과 ACK를 연결하기 위해 사용한다.
 
-- 최초 관리자 계정은 초기 SQL 또는 하드코딩 방식으로 등록한다.
-- 일반 사용자는 관리자가 등록하고 권한을 부여한다.
-- 로그인 이후 사용자는 권한에 따라 자재 입고, 작업지시, 조회, 알람 조치 등을 수행한다.
+## 2. 생산 공정 흐름
 
----
-
-## 4.2 자재 입고 흐름
+OP20과 OP30은 동시에 실행되는 병렬 선행 공정이며, 두 반제품이 OP40_OP50에서 합류한다.
 
 ```text
-1. 사용자가 Frontend에서 자재 입고 등록
-   ↓
-2. Frontend가 Backend API 호출
-   ↓
-3. Backend가 자재 LOT 생성
-   ↓
-4. MySQL에 자재 입고 정보 저장
-   ↓
-5. Frontend에서 자재 입고 내역 조회
+OP20 코일 권선 ── SA-COIL-001 ───────┐
+                                      ├→ OP40_OP50 자동 조립
+OP30 접점 용접 ── SA-CONTACT-001 ─────┘
+                                               |
+                                               v
+                                      OP60 실링/가스충전
+                                               |
+                                               v
+                                         OP70 최종 검사
+                                               |
+                                               v
+                                         OP80 마킹/포장
+                                               |
+                                               v
+                                         FG-EVR-001 완제품
 ```
 
-### 예시
+### 2.1 공정별 BOM
 
-```text
-RM-CU-001 자재 100개 입고
-→ MAT-LOT-20260709-001 생성
-→ status = AVAILABLE
-```
-
-### 관련 테이블 예시
-
-```text
-material_lots
-items
-members
-```
-
----
-
-## 4.3 작업지시 생성 흐름
-
-```text
-1. 사용자가 Frontend에서 작업지시 생성
-   예: EV Relay 완성품 10개 제작
-   ↓
-2. Frontend가 Backend API 호출
-   ↓
-3. Backend가 production_orders 저장
-   ↓
-4. Backend가 production_lots 생성
-   ↓
-5. Backend가 L2로 작업지시 메시지 전송
-```
-
-### 작업지시 예시
-
-```text
-작업지시 번호: WO-20260709-001
-생산 LOT 번호: LOT-20260709-001
-생산 품목: FG-EVR-001
-목표 수량: 10개
-```
-
-### 관련 테이블 예시
-
-```text
-production_orders
-production_lots
-items
-members
-```
-
----
-
-## 4.4 Backend → L2 작업지시 흐름
-
-```text
-1. Backend가 작업지시 정보를 확인
-   ↓
-2. Backend TCP Client 또는 TCP Sender가 L2로 명령 전송
-   ↓
-3. L2가 작업지시 메시지 수신
-   ↓
-4. L2가 LOT 번호, 품목, 목표 수량, 공정 정보를 확인
-   ↓
-5. L2가 각 L1 설비에 공정별 작업을 분배
-```
-
-### Backend → L2 메시지 예시
-
-```text
-TYPE=WORK_ORDER;ORDER=WO-20260709-001;LOT=LOT-20260709-001;ITEM=FG-EVR-001;QTY=10
-```
-
----
-
-## 4.5 L2 → L1 작업지시 흐름
-
-```text
-1. L2가 전체 작업지시 수량 확인
-   ↓
-2. L2가 공정 순서에 맞게 L1 설비에 작업 명령 전달
-   ↓
-3. 각 L1 설비가 작업 수행
-   ↓
-4. 각 L1 설비가 OK/NG 결과 또는 알람 로그를 L2로 전달
-```
-
-### L1 설비 예시
-
-| 설비 | 공정 코드 | 역할 |
+| 공정 | 생산 품목 | 필요 품목(제품 1개 기준) |
 |---|---|---|
-| L1-1 | OP20 | 코일 권선 |
-| L1-2 | OP30 | 접점 가공/용접 |
-| L1-3 | OP40_OP50 | 자동 조립 |
-| L1-4 | OP60 | 실링/가스충전 |
-| L1-5 | OP70 | 최종 검사 |
-| L1-6 | OP80 | 마킹/포장 |
+| OP20 | `SA-COIL-001` | `RM-CU-001` 1, `RM-BOB-001` 1 |
+| OP30 | `SA-CONTACT-001` | `RM-CONTACT-F` 2, `RM-CONTACT-M` 1 |
+| OP40_OP50 | `SA-BODY-001` | `SA-COIL-001` 1, `SA-CONTACT-001` 1, 코어 1, 요크 1, 스프링 1, 고전압 단자 2, 코일 단자 2, 세라믹 챔버 1, 자석 2 |
+| OP60 | `SA-SEALED-001` | `SA-BODY-001` 1, 하우징 1, 에폭시 1 |
+| OP70 | `SA-TESTED-001` | `SA-SEALED-001` 1 |
+| OP80 | `FG-EVR-001` | `SA-TESTED-001` 1, 포장 자재 1 |
 
----
+### 2.2 병렬 공정 수량 규칙
 
-## 4.6 L1 → L2 생산 결과 전달 흐름
-
-```text
-1. L1 설비가 작업 수행
-   ↓
-2. 작업 결과 생성
-   - inputQty
-   - okQty
-   - ngQty
-   - status
-   ↓
-3. L1이 L2로 생산 결과 로그 전달
-   ↓
-4. L2가 각 설비 결과를 취합
-```
-
-### 생산 결과 메시지 예시
+OP20·OP30 이외의 필요한 자재가 충분하고 BOM 수량이 각각 1개일 때:
 
 ```text
-TYPE=RESULT;LOT=LOT-20260709-001;EQ=EQ-WIND-01;PROC=OP20;INPUT=10;OK=9;NG=1;STATUS=COMPLETED
+OP40_OP50 inputQty = min(OP20 okQty, OP30 okQty)
 ```
 
----
-
-## 4.7 L2 → Backend 결과 취합 전달 흐름
+일반식:
 
 ```text
-1. L2가 L1 설비별 결과 수신
-   ↓
-2. L2가 공정별 OK/NG 수량 취합
-   ↓
-3. L2가 Backend로 생산 결과 메시지 전송
-   ↓
-4. Backend가 메시지를 DTO로 변환
-   ↓
-5. Service에서 LOT 상태, 생산 결과, 불량 이력 처리
-   ↓
-6. JPA를 통해 DB 저장
+조립 가능 수량
+= min(각 선행 반제품의 okQty / 완제품 1개당 필요 수량)
 ```
 
-### 관련 Backend 처리 예시
+OP20과 OP30 중 한 공정만 완료된 상태에서는 OP40_OP50을 완료 처리하지 않는다. 두 결과의 DB 저장 순서는 보장하지 않으며 `processCode`로 구분한다.
+
+OP40_OP50 이후에는 다음 규칙을 적용한다.
 
 ```text
-TcpMessageService
-→ ProductionService
-→ LotService
-→ EquipmentService
-→ Repository
-→ MySQL
+다음 공정 inputQty = 이전 공정 okQty
 ```
 
-### 관련 테이블 예시
+## 3. 생산 이벤트 흐름
+
+Backend는 OP20과 OP30의 `START` 명령을 각각 생성하고 L2는 두 L1에 독립적으로 전달한다. 두 공정 결과가 모두 저장되면 Backend가 BOM 기준 OP40_OP50 투입 수량을 계산해 다음 `START` 명령을 생성한다.
+
+각 L1은 연결 직후 `HELLO`, 연결 중 5초마다 `HEARTBEAT`를 보낸다. 공정 수행 시 다음 이벤트를 보낸다.
 
 ```text
-production_results
-production_lots
-inspection_results
-defect_histories
-equipment_status_histories
+MACHINE_STATUS RUNNING
+→ 공정 수행
+→ DEFECT (제품 불량이 있을 때만)
+→ ALARM (설비 이상이 있을 때만)
+→ PRODUCTION (공정 완료 요약, 항상)
+→ MACHINE_STATUS IDLE
 ```
 
----
-
-## 4.8 Backend → Frontend 대시보드 출력 흐름
+L2 처리:
 
 ```text
-1. Frontend가 대시보드 API 호출
-   ↓
-2. Backend가 DB에서 생산 현황 조회
-   ↓
-3. Backend가 DTO로 응답
-   ↓
-4. Frontend가 LOT 진행률, OK/NG 수량, 설비 상태, 알람 정보를 표시
+TCP 수신
+→ LF(\n) 단위 메시지 분리
+→ 프로토콜 파싱·검증
+→ HELLO/HEARTBEAT는 L2 내부에서만 처리
+→ 업무 이벤트를 JSON으로 변환
+→ Backend Collector REST API 호출
 ```
 
-### 대시보드 표시 정보 예시
+## 4. Backend 저장 정책
+
+모든 터미널 로그와 모든 TCP 메시지를 DB에 저장하지 않는다.
+
+| 이벤트 | Backend 전달 | DB 저장 정책 |
+|---|---|---|
+| `HELLO` | 아니요 | L2 연결 식별에만 사용 |
+| `HEARTBEAT` | 아니요 | L2 Timeout 판정에만 사용 |
+| `PRODUCTION` | 예 | 공정 완료 시 LOT·공정별 생산 요약 저장 |
+| `DEFECT` | 발생 시 | 제품 불량 상세 저장 |
+| `ALARM` | 발생 시 | 설비 알람 상세 저장 |
+| `MACHINE_STATUS` | 상태 변경 시 | 현재 설비 상태 및 상태 이력 저장 |
+| 개발자용 로그 | 아니요 | L1/L2 터미널에만 출력 |
+
+### 4.1 공정별 생산 요약
+
+MVP에서는 재작업과 공정 재실행을 제외하므로 LOT 한 개에 대해 공정별 생산 요약 한 건을 저장한다.
 
 ```text
-- 전체 작업지시 수량
-- 현재 LOT 진행 상태
-- 공정별 OK/NG 수량
-- 최종 완성 OK 수량
-- 누적 NG 수량
-- 설비별 상태
-- 최근 알람 내역
-- 최근 생산 이벤트
+LOT 1개 × 6개 공정 = production_logs 6행
 ```
 
----
+예시:
 
-# 5. OK / NG 수량 처리 규칙
+| 공정 | 투입 | OK | NG | 상태 |
+|---|---:|---:|---:|---|
+| OP20 | 100 | 97 | 3 | COMPLETED |
+| OP30 | 100 | 95 | 5 | COMPLETED |
+| OP40_OP50 | 95 | 94 | 1 | COMPLETED |
+| OP60 | 94 | 94 | 0 | COMPLETED |
+| OP70 | 94 | 92 | 2 | COMPLETED |
+| OP80 | 92 | 92 | 0 | COMPLETED |
 
-## 5.1 기본 규칙
+공통 검증식:
 
 ```text
-공정별 생산 결과:
-- inputQty = 해당 공정에 투입된 수량
-- okQty = 해당 공정에서 정상 처리된 수량
-- ngQty = 해당 공정에서 불량 처리된 수량
-
-다음 공정 투입 수량:
-- 이전 공정의 OK 수량만 다음 공정으로 전달
+inputQty = okQty + ngQty
 ```
 
----
+### 4.2 불량과 알람
 
-## 5.2 최종 수량 계산 규칙
+- `production_logs.ng_qty`: 해당 공정의 총 불량 수량
+- `defect_histories`: 불량 코드별 상세 원인과 수량
+- `machine_alarm_histories`: 설비 이상 및 통신 이상 이력
+
+MVP에서는 불량품을 재작업하지 않고 폐기한 것으로 처리한다. 같은 공정에서 전송된 불량 상세 수량 합계와 `production_logs.ng_qty`의 일치 여부는 Backend가 검증한다.
+
+L1이 생성하는 알람 예:
 
 ```text
-최종 완성 OK 수량 = 마지막 공정의 OK 수량
-최종 NG 수량 = 최초 작업지시 수량 - 마지막 공정 OK 수량
+MOTOR_OVERLOAD, WIRE_BREAK, SENSOR_ERROR, WELD_POWER_ERROR, ASSEMBLY_JAM
 ```
 
-또는 다음과 같이 볼 수 있다.
+L2가 연결 상태를 감지하여 생성하는 알람:
 
 ```text
-최종 NG 수량 = 각 공정에서 발생한 NG 수량의 합계
+COMM_DISCONNECTED, COMM_TIMEOUT
 ```
 
-단, 재작업이나 폐기 후 재투입 같은 고급 흐름은 이번 미니 MES 범위에서는 제외한다.
+## 5. LOT 최종 수량과 상태
 
----
-
-## 5.3 예시: 작업지시 10개
+최종 완제품 수량은 마지막 OP80 공정의 정상 수량을 사용한다.
 
 ```text
-작업지시: EV Relay 완성품 10개 제작
+lot.okQty = OP80 okQty
+lot.ngQty = 최초 LOT inputQty - OP80 okQty
+lot.status = COMPLETED  (OP80가 정상 완료된 경우)
 ```
 
-| 공정 | 투입 수량 | OK 수량 | NG 수량 | 다음 공정 투입 |
-|---|---:|---:|---:|---:|
-| OP20 | 10 | 9 | 1 | 9 |
-| OP30 | 9 | 8 | 1 | 8 |
-| OP40_OP50 | 8 | 8 | 0 | 8 |
-| OP60 | 8 | 7 | 1 | 7 |
-| OP70 | 7 | 7 | 0 | 7 |
-| OP80 | 7 | 7 | 0 | - |
+단순히 불량 이력 행의 수를 세거나 모든 불량 수량을 무조건 합산해서 완제품 수량을 계산하지 않는다. 공정별 수량의 기준은 `production_logs`, 최종 기준은 OP80 결과다.
 
-### 최종 결과
+## 6. 통신 장애 처리
 
 ```text
-최종 OK 수량 = 7개
-최종 NG 수량 = 10개 - 7개 = 3개
+L1 소켓 정상 종료/오류
+→ L2가 COMM_DISCONNECTED 생성
+→ Backend 알람 API 전송
+→ 설비 상태 ERROR 전송
 ```
-
-공정별 NG 합계도 다음과 같이 일치한다.
 
 ```text
-OP20 NG 1개
-+ OP30 NG 1개
-+ OP60 NG 1개
-= 총 NG 3개
+15초 동안 정상 메시지 미수신
+→ L2가 COMM_TIMEOUT 생성
+→ Backend 알람 API 전송
+→ 설비 상태 ERROR 전송
+→ 해당 소켓 종료 및 재접속 대기
 ```
 
----
+Timeout 처리로 L2가 소켓을 닫은 경우 `COMM_DISCONNECTED`를 추가 생성하지 않는다.
 
-# 6. 병렬 선행 공정 처리 규칙
+## 7. Frontend 표시 기준
 
-일부 공정은 여러 선행 공정의 결과물이 모두 필요할 수 있다.
+- LOT별 OP20·OP30 병렬 진행 상태
+- 공정별 `inputQty`, `okQty`, `ngQty`, 상태
+- OP80 `okQty` 기반 최종 완제품 수량
+- 불량 코드와 알람 코드에 대응하는 DB의 한글 명칭
+- 설비 현재 상태 및 최근 상태 변경 시각
 
-예를 들어 다음과 같은 흐름이 있을 수 있다.
+L1/L2의 영문 개발자 로그를 Frontend에서 번역하지 않는다. L1/L2는 안정적인 영문 코드로 통신하고, Backend가 코드 마스터의 한글 이름을 응답하여 Frontend가 표시한다.
+
+## 8. 통합 테스트 기준
+
+1. Backend에서 작업지시와 LOT을 미리 생성한다.
+2. OP20과 OP30 L1을 동시에 L2에 연결한다.
+3. L2가 두 연결의 메시지를 독립적으로 처리한다.
+4. `production_logs`에 OP20·OP30 요약이 각각 저장된다.
+5. 두 공정이 모두 완료된 뒤 OP40_OP50 투입 수량이 계산된다.
+6. OP40_OP50 → OP60 → OP70 → OP80 순서로 완료한다.
+7. OP80 `okQty`와 LOT 최종 정상 수량이 일치하는지 확인한다.
+8. 불량이 있는 공정만 `defect_histories`가 생성되는지 확인한다.
+9. `HELLO`, `HEARTBEAT`가 DB에 저장되지 않는지 확인한다.
+10. 연결 종료와 Heartbeat 중단 시 통신 알람이 중복 없이 한 번 생성되는지 확인한다.
+11. L2가 Backend의 대기 명령을 Polling하여 올바른 L1에 전달하는지 확인한다.
+12. L1 `COMMAND_ACK`가 Backend 명령 상태에 반영되는지 확인한다.
+
+## 9. 구현 범위 요약
 
 ```text
-EQ1 + EQ2 → EQ3 → EQ4 → EQ5 → EQ6
+정상 제품 개별 이력 저장       X
+공정별 생산 요약 저장          O
+불량·알람 발생 시 상세 저장    O
+HELLO·HEARTBEAT DB 저장         X
+OP20·OP30 병렬 실행             O
+OP40_OP50에서 두 반제품 합류    O
+최종 완제품 = OP80 okQty        O
+재작업                           X (MVP 제외)
+Backend 명령 REST Polling         O (1초)
+L2→L1 START/STOP/RESUME          O
+HTTP 자동 재시도/eventId         X (정상 네트워크 가정)
 ```
-
-이 경우 EQ3에 투입 가능한 수량은 EQ1과 EQ2의 OK 수량 중 더 작은 값이다.
-
-```text
-EQ3 투입 가능 수량 = min(EQ1 OK 수량, EQ2 OK 수량)
-```
-
-### 예시
-
-```text
-EQ1 결과: OK 8개, NG 2개
-EQ2 결과: OK 9개, NG 1개
-
-EQ3 투입 가능 수량 = min(8, 9) = 8개
-```
-
-즉, 병렬 선행 공정에서는 한쪽 결과물이 더 많아도 다른 쪽 결과물이 부족하면 다음 공정 투입 수량은 부족한 쪽 기준으로 결정된다.
-
----
-
-# 7. 설비 이상 / 알람 처리 흐름
-
-## 7.1 설비 이상 발생 흐름
-
-```text
-1. L1 설비에서 이상 발생
-   예: 모터 과부하, 센서 오류, 통신 끊김
-   ↓
-2. L1이 L2로 알람 로그 전달
-   ↓
-3. L2가 해당 설비 상태를 ERROR 또는 STOPPED로 변경
-   ↓
-4. L2가 Backend로 알람 메시지 전달
-   ↓
-5. Backend가 알람 이력 저장
-   ↓
-6. Backend가 설비 상태 변경 이력 저장
-   ↓
-7. Frontend 대시보드에 알람 표시
-```
-
-### 알람 메시지 예시
-
-```text
-TYPE=ALARM;EQ=EQ-WIND-01;ALARM=MOTOR_OVERLOAD;STATUS=STOPPED;MESSAGE=Motor overload detected
-```
-
----
-
-## 7.2 알람 발생 시 처리 규칙
-
-```text
-- 알람 발생 시 해당 설비는 즉시 STOP 또는 ERROR 상태가 된다.
-- 해당 설비가 담당하는 공정은 진행 중단된다.
-- 알람 정보는 equipment_alarm_histories에 저장한다.
-- 설비 상태 변화는 equipment_status_histories에 저장한다.
-- Frontend 대시보드에는 설비 이상 상태를 표시한다.
-```
-
----
-
-## 7.3 조치 완료 및 작업 재개 흐름
-
-```text
-1. 사용자가 Frontend에서 알람 확인
-   ↓
-2. 사용자가 실제 조치 완료 후 Frontend에서 조치 완료 처리
-   ↓
-3. Backend가 알람 cleared_at, cleared_by 저장
-   ↓
-4. Backend가 설비 상태를 IDLE 또는 RUNNING으로 변경
-   ↓
-5. Backend 또는 L2가 작업 재개 명령 전달
-   ↓
-6. L2가 해당 L1 설비 작업 재개
-```
-
-### 알람 해제 메시지 예시
-
-```text
-TYPE=ALARM_CLEAR;EQ=EQ-WIND-01;ALARM=MOTOR_OVERLOAD;STATUS=IDLE
-```
-
----
-
-# 8. TCP/IP 메시지 방향 정리
-
-이번 구조에서는 TCP/IP 메시지가 단방향이 아니라 여러 방향으로 오간다.
-
-## 8.1 Backend → L2
-
-Backend가 L2로 작업지시 또는 제어 명령을 전달한다.
-
-```text
-- 작업지시 메시지
-- 작업 시작 명령
-- 작업 중지 명령
-- 작업 재개 명령
-```
-
-### 예시
-
-```text
-TYPE=WORK_ORDER;ORDER=WO-20260709-001;LOT=LOT-20260709-001;ITEM=FG-EVR-001;QTY=10
-TYPE=START;LOT=LOT-20260709-001
-TYPE=PAUSE;EQ=EQ-WIND-01
-TYPE=RESUME;EQ=EQ-WIND-01
-```
-
----
-
-## 8.2 L2 → L1
-
-L2가 각 L1 설비에 공정별 작업 명령을 전달한다.
-
-```text
-- 공정 시작 명령
-- 투입 수량 전달
-- LOT 번호 전달
-- 정지/재개 명령
-```
-
-### 예시
-
-```text
-TYPE=PROCESS_START;LOT=LOT-20260709-001;EQ=EQ-WIND-01;PROC=OP20;INPUT=10
-```
-
----
-
-## 8.3 L1 → L2
-
-L1 설비가 L2로 생산 결과나 알람 로그를 전달한다.
-
-```text
-- 생산 결과 메시지
-- 설비 상태 메시지
-- 알람 메시지
-```
-
-### 예시
-
-```text
-TYPE=RESULT;LOT=LOT-20260709-001;EQ=EQ-WIND-01;PROC=OP20;INPUT=10;OK=9;NG=1;STATUS=COMPLETED
-TYPE=ALARM;EQ=EQ-WIND-01;ALARM=MOTOR_OVERLOAD;STATUS=STOPPED
-```
-
----
-
-## 8.4 L2 → Backend
-
-L2가 취합한 정보를 Backend로 전달한다.
-
-```text
-- 공정별 생산 결과
-- 설비 상태 변경 정보
-- 알람 발생 정보
-- 알람 해제 정보
-```
-
-### 예시
-
-```text
-TYPE=RESULT;LOT=LOT-20260709-001;EQ=EQ-WIND-01;PROC=OP20;INPUT=10;OK=9;NG=1;STATUS=COMPLETED
-TYPE=EQUIPMENT_STATUS;EQ=EQ-WIND-01;STATUS=RUNNING
-TYPE=ALARM;EQ=EQ-WIND-01;ALARM=MOTOR_OVERLOAD;STATUS=STOPPED
-TYPE=ALARM_CLEAR;EQ=EQ-WIND-01;ALARM=MOTOR_OVERLOAD;STATUS=IDLE
-```
-
----
-
-# 9. Backend 저장 흐름
-
-## 9.1 생산 결과 저장
-
-```text
-L2 생산 결과 메시지 수신
-→ TcpMessageService에서 메시지 파싱
-→ ProductionResultRequestDto 생성
-→ ProductionService 호출
-→ production_results 저장
-→ production_lots OK/NG/상태 갱신
-→ 필요 시 defect_histories 저장
-```
-
----
-
-## 9.2 설비 상태 저장
-
-```text
-L2 설비 상태 메시지 수신
-→ TcpMessageService에서 메시지 파싱
-→ EquipmentService 호출
-→ equipments.status 변경
-→ equipment_status_histories 저장
-```
-
----
-
-## 9.3 알람 저장
-
-```text
-L2 알람 메시지 수신
-→ TcpMessageService에서 메시지 파싱
-→ EquipmentService 호출
-→ equipment_alarm_histories 저장
-→ equipments.status = ERROR 또는 STOPPED 변경
-→ equipment_status_histories 저장
-```
-
----
-
-## 9.4 알람 해제 저장
-
-```text
-사용자가 Frontend에서 조치 완료 처리
-→ Backend API 호출
-→ equipment_alarm_histories.cleared_at 저장
-→ equipment_alarm_histories.cleared_by 저장
-→ equipments.status = IDLE 또는 RUNNING 변경
-→ equipment_status_histories 저장
-→ 필요 시 L2로 RESUME 명령 전송
-```
-
----
-
-# 10. Frontend 화면 반영 흐름
-
-## 10.1 LOT 상세 화면
-
-표시 항목 예시:
-
-```text
-- LOT 번호
-- 작업지시 번호
-- 생산 품목
-- 목표 수량
-- 현재 공정
-- LOT 상태
-- 공정별 투입 수량
-- 공정별 OK 수량
-- 공정별 NG 수량
-- 최종 OK 수량
-- 최종 NG 수량
-```
-
----
-
-## 10.2 생산 현황 대시보드
-
-표시 항목 예시:
-
-```text
-- 오늘 작업지시 수
-- 진행 중 LOT 수
-- 완료 LOT 수
-- 전체 목표 수량
-- 최종 OK 수량
-- 누적 NG 수량
-- 불량률
-- 최근 생산 결과
-```
-
----
-
-## 10.3 설비 상태 화면
-
-표시 항목 예시:
-
-```text
-- 설비 코드
-- 설비명
-- 담당 공정
-- 현재 상태
-- 현재 작업 LOT
-- 최근 상태 변경 시간
-```
-
----
-
-## 10.4 알람 화면
-
-표시 항목 예시:
-
-```text
-- 설비 코드
-- 알람 코드
-- 알람명
-- 알람 등급
-- 발생 시간
-- 해제 시간
-- 조치자
-- 메시지
-```
-
----
-
-# 11. 발표용 설명 문장
-
-발표에서는 다음 문장으로 전체 흐름을 설명하면 된다.
-
-```text
-사용자가 Frontend에서 작업지시를 생성하면 Backend가 이를 DB에 저장하고 L2 수집기에 전달합니다.
-L2는 각 L1 설비 시뮬레이터에 공정별 작업을 지시하고, L1 설비들은 생산 결과와 알람 로그를 L2로 전달합니다.
-L2는 결과를 취합해 Backend로 전송하고, Backend는 공정별 OK/NG 수량, LOT 상태, 불량 이력, 설비 알람 이력을 DB에 저장합니다.
-이후 Frontend는 API를 통해 저장된 데이터를 조회하여 LOT 진행 상태와 생산 현황을 대시보드에 출력합니다.
-```
-
----
-
-# 12. 최종 요약
-
-이번 EV Relay MES 프로젝트의 전체 흐름은 다음과 같이 정리한다.
-
-```text
-관리자 사용자 등록
-→ 사용자 로그인
-→ 자재 입고
-→ 작업지시 생성
-→ Backend가 L2에 작업지시 전달
-→ L2가 L1 설비에 공정별 작업지시 전달
-→ L1 설비가 작업 수행
-→ L1이 생산 결과/알람을 L2로 전달
-→ L2가 결과 취합 후 Backend로 전달
-→ Backend가 DB 저장
-→ Frontend가 API 조회
-→ 대시보드 출력
-```
-
-핵심 규칙은 다음과 같다.
-
-```text
-1. OK 수량만 다음 공정으로 전달한다.
-2. 최종 OK 수량은 마지막 공정의 OK 수량이다.
-3. 최종 NG 수량은 최초 작업지시 수량에서 마지막 공정 OK 수량을 뺀 값이다.
-4. 병렬 선행 공정이 있는 경우 다음 공정 투입 수량은 선행 공정 OK 수량 중 최솟값이다.
-5. 설비 이상 발생 시 해당 설비는 STOP 또는 ERROR 상태가 된다.
-6. 조치 완료 후 알람을 해제하고 작업을 재개한다.
-```
-
