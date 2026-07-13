@@ -1,6 +1,8 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
+#include <stddef.h> // size_t 정의를 위해 추가
+
 // 4.1 공정 및 설비 코드 정의
 #define PROC_COIL_WINDING   "OP20"
 #define PROC_WELDING        "OP30"
@@ -42,6 +44,9 @@
 int build_hello_msg(char *out_buf, size_t buf_size, const char *mach_id);
 int build_heartbeat_msg(char *out_buf, size_t buf_size, const char *mach_id);
 int build_production_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, int ok_qty, int ng_qty, const char *status);
+
+// ★ [누락 항목 추가] 설비 상태 메시지 빌더 원형
+int build_status_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *status, const char *lot_no, const char *proc_code, const char *msg);
 
 int build_defect_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, const char *defect_code, int defect_qty);
 int build_alarm_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *alarm_code, const char *alarm_level);
