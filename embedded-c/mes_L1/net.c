@@ -4,6 +4,8 @@
 #include <string.h>
 
 #ifdef _WIN32
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
     static char err_buf[256];
 #else
     #include <unistd.h>
