@@ -16,6 +16,7 @@ public class PasswordHashService {
     private static final int KEY_LENGTH = 256;
     private static final int SALT_LENGTH = 16;
 
+    // 회원 생성이나 비밀번호 변경 시 평문 비밀번호를 저장 가능한 해시 문자열로 만들 때 사용한다.
     public String encode(String rawPassword) {
         byte[] salt = new byte[SALT_LENGTH];
         new SecureRandom().nextBytes(salt);
@@ -26,6 +27,7 @@ public class PasswordHashService {
                 + Base64.getEncoder().encodeToString(hash);
     }
 
+    // 로그인 시 입력한 비밀번호가 DB에 저장된 해시와 일치하는지 검증할 때 사용한다.
     public boolean matches(String rawPassword, String encodedPassword) {
         if (rawPassword == null || encodedPassword == null) {
             return false;
@@ -47,6 +49,7 @@ public class PasswordHashService {
         }
     }
 
+    // PBKDF2 설정에 따라 실제 비밀번호 해시 바이트를 생성할 때 내부적으로 사용한다.
     private byte[] derive(String password, byte[] salt, int iterations) {
         PBEKeySpec specification = new PBEKeySpec(password.toCharArray(), salt, iterations, KEY_LENGTH);
         try {

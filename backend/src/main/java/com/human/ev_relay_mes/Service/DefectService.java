@@ -35,6 +35,7 @@ public class DefectService {
     private final MemberRepository memberRepository;
     private final EntityManager entityManager;
 
+    // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
     @Transactional
     public DefectHistoryResponseDto createDefect(DefectHistoryCreateRequestDto dto) {
         Lot lot = findLot(dto.getLotNo());
@@ -59,6 +60,7 @@ public class DefectService {
         return toResponse(defectHistoryRepository.save(history));
     }
 
+    // 불량 관리 화면에서 LOT·설비·공정·불량 코드·확인 여부·기간 조건으로 이력을 조회할 때 사용한다.
     public List<DefectHistoryResponseDto> search(DefectHistorySearchRequestDto condition) {
         return defectHistoryRepository.findAll().stream()
                 .filter(item -> isBlank(condition.getLotNo()) || item.getLot().getLotNo().equals(condition.getLotNo()))
@@ -72,6 +74,7 @@ public class DefectService {
                 .toList();
     }
 
+    // 관리자가 미확인 불량을 확인 처리하고 확인자를 기록할 때 사용한다.
     @Transactional
     public DefectHistoryResponseDto confirmDefect(Long historyId, Long memberId) {
         DefectHistory history = defectHistoryRepository.findById(historyId)
@@ -85,6 +88,7 @@ public class DefectService {
         return toResponse(history);
     }
 
+    // 불량 등록 요청의 LOT 번호가 실제 생산 LOT인지 확인할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
         return entityManager.createQuery("select l from Lot l where l.lotNo = :lotNo", Lot.class)
                 .setParameter("lotNo", lotNo)
@@ -93,14 +97,17 @@ public class DefectService {
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
     }
 
+    // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
+    // 불량 발생 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.
     private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {
         return (start == null || !value.isBefore(start)) && (end == null || !value.isAfter(end));
     }
 
+    // 불량 이력 Entity를 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.
     private DefectHistoryResponseDto toResponse(DefectHistory history) {
         Member confirmer = history.getConfirmedBy();
         return DefectHistoryResponseDto.builder()

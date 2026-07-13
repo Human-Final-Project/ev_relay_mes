@@ -29,6 +29,7 @@ public class ProductionService {
     private final ProcessRepository processRepository;
     private final EntityManager entityManager;
 
+    // L2 수집기가 전달한 공정별 투입·양품·불량 실적을 검증하고 생산 이력으로 저장할 때 사용한다.
     @Transactional
     public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
         if (dto.getInputQty() != dto.getOkQty() + dto.getNgQty()) {
@@ -55,6 +56,7 @@ public class ProductionService {
         return toResponse(productionLogRepository.save(log));
     }
 
+    // 생산 실적 화면에서 LOT·설비·공정·상태·기간 조건으로 실적을 조회할 때 사용한다.
     public List<ProductionLogResponseDto> search(ProductionLogSearchRequestDto condition) {
         return productionLogRepository.findAll().stream()
                 .filter(log -> isBlank(condition.getLotNo()) || log.getLot().getLotNo().equals(condition.getLotNo()))
@@ -66,12 +68,14 @@ public class ProductionService {
                 .toList();
     }
 
+    // 생산 실적 상세 화면에서 단일 공정 실적의 상세 정보를 조회할 때 사용한다.
     public ProductionLogResponseDto getProductionLog(Long id) {
         return productionLogRepository.findById(id)
                 .map(this::toResponse)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCTION_LOG_NOT_FOUND));
     }
 
+    // 생산 실적이 연결될 LOT가 실제 존재하는지 확인할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
         return entityManager.createQuery("select l from Lot l where l.lotNo = :lotNo", Lot.class)
                 .setParameter("lotNo", lotNo)
@@ -80,14 +84,17 @@ public class ProductionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
     }
 
+    // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
+    // 생산 실적 생성 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.
     private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {
         return (start == null || !value.isBefore(start)) && (end == null || !value.isAfter(end));
     }
 
+    // 생산 실적 Entity를 생산 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.
     private ProductionLogResponseDto toResponse(ProductionLog log) {
         return ProductionLogResponseDto.builder()
                 .productionLogId(log.getProductionLogId())
