@@ -2,6 +2,7 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Response.ProcessResponseDto;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Entity.Process;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
