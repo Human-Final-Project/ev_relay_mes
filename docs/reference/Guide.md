@@ -1,5 +1,8 @@
 # EV Relay Mini MES 3주 개발 가이드
 
+> **주의: 초기 기획 참고 문서**
+> 이 문서의 `C 시뮬레이터 → Spring Boot TCP Listener` 구조는 현재 구현 기준이 아니다. 현재 구조는 `L1 C 설비 → TCP → L2 C 수집기 → REST/JSON → Spring Boot`이며, 구현 시 [`../tcp-protocol.md`](../tcp-protocol.md), [`EV_Relay_MES_Overall_Flow.md`](EV_Relay_MES_Overall_Flow.md), 루트 `README.md`를 우선한다. 이 문서에 남은 Backend TCP Listener, `Product`, `Equipment`, `ProductionResult` 표현은 초기 기획 기록이다.
+
 ## 1. 프로젝트 방향 재정의
 
 이번 프로젝트는 실제 제조 현장의 완전한 MES를 구현하는 프로젝트가 아니라, 교육과정의 핵심 기술을 하나의 완성된 흐름으로 보여주는 **미니 MES 풀스택 프로젝트**입니다.
