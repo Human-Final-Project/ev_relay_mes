@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,7 +20,7 @@ import java.util.List;
 public class MemberService {
 
     private final MemberRepository memberRepository;
-    private final PasswordHashService passwordHashService;
+    private final PasswordEncoder passwordEncoder;
 
     // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
@@ -32,7 +33,7 @@ public class MemberService {
         Member createdBy = findMember(createdById);
         Member member = Member.builder()
                 .loginId(dto.getLoginId())
-                .password(passwordHashService.encode(dto.getPassword()))
+                .password(passwordEncoder.encode(dto.getPassword()))
                 .memberName(dto.getMemberName())
                 .role(role)
                 .status(Member.Status.ACTIVE)

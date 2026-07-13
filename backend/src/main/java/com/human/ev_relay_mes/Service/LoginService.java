@@ -2,43 +2,34 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.LoginRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LoginResponseDto;
-import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Exception.CustomException;
-import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.Security.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-@Transactional(readOnly = true)
 public class LoginService {
 
-    private final MemberRepository memberRepository;
-    private final PasswordHashService passwordHashService;
+    private final AuthenticationManager authenticationManager;
 
-    // 로그인 화면에서 계정과 비밀번호를 검증하고 사용자 권한 정보를 반환할 때 사용한다.
-    public LoginResponseDto login(LoginRequestDto dto) {
-        Member member = memberRepository.findByLoginId(dto.getLoginId())
-                .orElseThrow(() -> new CustomException(ErrorCode.LOGIN_FAILED));
+    // 로그인 ID와 비밀번호를 Spring Security 인증 절차에 전달한다.
+    public Authentication authenticate(LoginRequestDto dto) {
+        UsernamePasswordAuthenticationToken authenticationRequest =
+                UsernamePasswordAuthenticationToken.unauthenticated(dto.getLoginId(), dto.getPassword());
+        return authenticationManager.authenticate(authenticationRequest);
+    }
 
-        if (!passwordHashService.matches(dto.getPassword(), member.getPassword())) {
-            throw new CustomException(ErrorCode.LOGIN_FAILED);
-        }
-        if (member.getStatus() == Member.Status.LOCKED) {
-            throw new CustomException(ErrorCode.MEMBER_LOCKED);
-        }
-        if (member.getStatus() == Member.Status.RETIRED) {
-            throw new CustomException(ErrorCode.MEMBER_RETIRED);
-        }
-
+    // 인증된 사용자 정보를 로그인 및 내 정보 API 응답으로 변환한다.
+    public LoginResponseDto toResponse(CustomUserDetails userDetails) {
         return LoginResponseDto.builder()
-                .memberId(member.getMemberId())
-                .loginId(member.getLoginId())
-                .memberName(member.getMemberName())
-                .role(member.getRole().name())
-                .status(member.getStatus().name())
+                .memberId(userDetails.getMemberId())
+                .loginId(userDetails.getLoginId())
+                .memberName(userDetails.getMemberName())
+                .role(userDetails.getRole().name())
+                .status(userDetails.getStatus().name())
                 .build();
     }
 }
