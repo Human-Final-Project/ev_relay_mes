@@ -1,7 +1,7 @@
 #ifndef PROTOCOL_H
 #define PROTOCOL_H
 
-// 4.1 °øÁ¤ ¹× ¼³ºñ ÄÚµå Á¤ÀÇ
+// 4.1 ê³µì • ë° ì„¤ë¹„ ì½”ë“œ ì •ì˜
 #define PROC_COIL_WINDING   "OP20"
 #define PROC_WELDING        "OP30"
 #define PROC_ASSEMBLY       "OP40_OP50"
@@ -16,7 +16,7 @@
 #define MACH_INSPECTION     "EQ-TEST-01"
 #define MACH_PACKING        "EQ-PACK-01"
 
-// 4.2 »óÅÂ ÄÚµå Á¤ÀÇ
+// 4.2 ìƒíƒœ ì½”ë“œ ì •ì˜
 #define STATUS_IDLE         "IDLE"
 #define STATUS_RUNNING      "RUNNING"
 #define STATUS_ERROR        "ERROR"
@@ -28,18 +28,22 @@
 #define RES_OK              "OK"
 #define RES_NG              "NG"
 
-// 5.6 ¾Ë¶÷ ·¹º§ Á¤ÀÇ
+// 5.6 ì•ŒëŒ ë ˆë²¨ ì •ì˜
 #define ALARM_LVL_WARNING   "WARNING"
 #define ALARM_LVL_ERROR     "ERROR"
 
-// 5.5 ¹× 5.6 Ç¥ÁØ °áÇÔ/¾Ë¶÷ ÄÚµå
-#define DEFECT_WELD_STRENGTH "WELD_STRENGTH_NG"
-#define ALARM_MOTOR_OVERLOAD "MOTOR_OVERLOAD"
+// 5.5 ë° 5.6 í‘œì¤€ ê²°í•¨/ì•ŒëŒ ì½”ë“œ ìˆ˜ì • ë° ì¶”ê°€
+#define DEFECT_COIL_SHORT    "COIL_SHORT_NG"     // ìš©ì ‘ ëŒ€ì‹  ì½”ì¼ ë‹¨ë½ ë¶ˆëŸ‰ ì¶”ê°€
+#define DEFECT_WELD_STRENGTH "WELD_STRENGTH_NG" // (ì´ê±´ ìš©ì ‘ ì¥ë¹„ìš©)
 
-// ¸Ş½ÃÁö ºô´õ ÇÔ¼ö ¿øÇü
+#define ALARM_MOTOR_OVERLOAD "MOTOR_OVERLOAD"   // ëª¨í„° ê³¼ë¶€í•˜ëŠ” ê¶Œì„ ê¸°ì—ë„ ì í•©í•¨
+
+// ë©”ì‹œì§€ ë¹Œë” í•¨ìˆ˜ ì›í˜•
 int build_hello_msg(char *out_buf, size_t buf_size, const char *mach_id);
 int build_heartbeat_msg(char *out_buf, size_t buf_size, const char *mach_id);
 int build_production_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, int ok_qty, int ng_qty, const char *status);
-int build_status_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *status, const char *lot_no, const char *proc_code, const char *msg);
+
+int build_defect_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, const char *defect_code, int defect_qty);
+int build_alarm_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *alarm_code, const char *alarm_level);
 
 #endif // PROTOCOL_H
