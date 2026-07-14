@@ -1,6 +1,7 @@
 .vscode
 .agents
 .idea
+node_modules/
 
 # Embedded C build outputs
 embedded-c/**/*.o
@@ -11,3 +12,4 @@ embedded-c/mes_collector/collector_tests
 embedded-c/mes_L1/l1_simulator
 embedded-c/mes_L1/l1_protocol_tests
 embedded-c/mes_L1/l1_l2_contract_tests
+embedded-c/mes_L1/l1_simulator
