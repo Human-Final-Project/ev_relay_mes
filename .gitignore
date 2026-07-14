@@ -1,3 +1,11 @@
 .vscode
 .agents
 .idea
+
+# Embedded C build outputs
+embedded-c/**/*.o
+embedded-c/**/*.exe
+embedded-c/mes_collector/mes_collector
+embedded-c/mes_collector/protocol_tests
+embedded-c/mes_collector/collector_tests
+embedded-c/mes_L1/l1_simulator
