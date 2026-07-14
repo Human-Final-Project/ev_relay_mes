@@ -1,105 +1,158 @@
 #include "net.h"
+
+#include <errno.h>
+#include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #ifdef _WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    static char err_buf[256];
+#include <ws2tcpip.h>
 #else
-    #include <unistd.h>
-    #include <sys/socket.h>
-    #include <arpa/inet.h>
-    #include <errno.h>
+#include <arpa/inet.h>
+#include <sys/socket.h>
+#include <unistd.h>
 #endif
 
-int net_init(void) {
+static char error_buffer[128];
+
+int l1_net_runtime_init(void)
+{
 #ifdef _WIN32
-    WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+    WSADATA winsock_data;
+    int result = WSAStartup(MAKEWORD(2, 2), &winsock_data);
+
+    if (result != 0) {
+        snprintf(error_buffer,
+                 sizeof(error_buffer),
+                 "WSAStartup failed: %d",
+                 result);
         return -1;
     }
 #endif
     return 0;
 }
 
-void net_cleanup(void) {
+void l1_net_runtime_cleanup(void)
+{
 #ifdef _WIN32
     WSACleanup();
 #endif
 }
 
-// L1 클라이언트용 TCP 연결 기능 구현
-socket_t net_connect(const char *ip, int port) {
-    socket_t sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == SOCKET_INVALID) {
-        return SOCKET_INVALID;
+L1Socket l1_net_connect(const char *server_address, uint16_t server_port)
+{
+    L1Socket socket_handle;
+    struct sockaddr_in address;
+
+    if (server_address == NULL) {
+        return L1_INVALID_SOCKET;
+    }
+    socket_handle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (socket_handle == L1_INVALID_SOCKET) {
+        return L1_INVALID_SOCKET;
     }
 
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-
-    // IP 주소 문자열 변환
-    if (inet_pton(AF_INET, ip, &server_addr.sin_addr) <= 0) {
-        net_close(sock);
-        return SOCKET_INVALID;
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons(server_port);
+#ifdef _WIN32
+    address.sin_addr.s_addr = inet_addr(server_address);
+    if (address.sin_addr.s_addr == INADDR_NONE
+        && strcmp(server_address, "255.255.255.255") != 0) {
+        l1_net_close(socket_handle);
+        return L1_INVALID_SOCKET;
     }
-
-    // L2 서버 수집기에 연결 시도
-    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
-        net_close(sock);
-        return SOCKET_INVALID;
+#else
+    if (inet_pton(AF_INET, server_address, &address.sin_addr) != 1) {
+        l1_net_close(socket_handle);
+        return L1_INVALID_SOCKET;
     }
+#endif
 
-    return sock;
+    if (connect(socket_handle,
+                (const struct sockaddr *)&address,
+                (int)sizeof(address)) != 0) {
+        l1_net_close(socket_handle);
+        return L1_INVALID_SOCKET;
+    }
+    return socket_handle;
 }
 
-int net_send(socket_t sock, const uint8_t *buf, size_t len) {
+int l1_net_send_all(L1Socket socket_handle,
+                    const void *buffer,
+                    size_t length)
+{
+    const unsigned char *bytes = (const unsigned char *)buffer;
     size_t total_sent = 0;
-    while (total_sent < len) {
+
+    if (buffer == NULL || length > INT_MAX) {
+        return -1;
+    }
+    while (total_sent < length) {
+        int sent;
+
 #ifdef _WIN32
-        int sent = send(sock, (const char *)(buf + total_sent), (int)(len - total_sent), 0);
+        sent = send(socket_handle,
+                    (const char *)(bytes + total_sent),
+                    (int)(length - total_sent),
+                    0);
 #else
-        // Linux 환경에서 상대방이 소켓을 닫았을 때 프로세스가 시그널(SIGPIPE)로 죽는 것을 방지
-        int sent = send(sock, buf + total_sent, len - total_sent, MSG_NOSIGNAL);
+#ifdef MSG_NOSIGNAL
+        sent = (int)send(socket_handle,
+                         bytes + total_sent,
+                         length - total_sent,
+                         MSG_NOSIGNAL);
+#else
+        sent = (int)send(socket_handle,
+                         bytes + total_sent,
+                         length - total_sent,
+                         0);
+#endif
 #endif
         if (sent <= 0) {
             return -1;
         }
-        total_sent += sent;
+        total_sent += (size_t)sent;
     }
-    return (int)total_sent;
+    return 0;
 }
 
-// 명세서 v0.2 수신 대응을 위한 단순 수신 인터페이스
-int net_recv_exact(socket_t sock, uint8_t *buf, size_t len) {
-#ifdef _WIN32
-    int n = recv(sock, (char *)buf, (int)len, 0);
-#else
-    int n = recv(sock, buf, len, 0);
-#endif
-    return n;
-}
-
-void net_close(socket_t sock) {
-    if (sock != SOCKET_INVALID) {
-#ifdef _WIN32
-        closesocket(sock);
-#else
-        close(sock);
-#endif
+int l1_net_receive(L1Socket socket_handle, void *buffer, size_t capacity)
+{
+    if (buffer == NULL || capacity == 0 || capacity > INT_MAX) {
+        return -1;
     }
+#ifdef _WIN32
+    return recv(socket_handle, (char *)buffer, (int)capacity, 0);
+#else
+    return (int)recv(socket_handle, buffer, capacity, 0);
+#endif
 }
 
-const char* net_last_error(void) {
+void l1_net_close(L1Socket socket_handle)
+{
+    if (socket_handle == L1_INVALID_SOCKET) {
+        return;
+    }
 #ifdef _WIN32
-    int err = WSAGetLastError();
-    snprintf(err_buf, sizeof(err_buf), "WSA Error Code: %d", err);
-    return err_buf;
+    closesocket(socket_handle);
 #else
-    return strerror(errno);
+    close(socket_handle);
 #endif
+}
+
+const char *l1_net_last_error_message(void)
+{
+#ifdef _WIN32
+    snprintf(error_buffer,
+             sizeof(error_buffer),
+             "Winsock error %d",
+             WSAGetLastError());
+#else
+    snprintf(error_buffer,
+             sizeof(error_buffer),
+             "%s",
+             strerror(errno));
+#endif
+    return error_buffer;
 }

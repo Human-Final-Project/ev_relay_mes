@@ -1,32 +1,25 @@
-#ifndef NET_H
-#define NET_H
+#ifndef EV_RELAY_L1_NET_H
+#define EV_RELAY_L1_NET_H
 
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef _WIN32
-    #include <winsock2.h>
-    #include <ws2tcpip.h>
-    typedef SOCKET socket_t;
-    #define SOCKET_INVALID INVALID_SOCKET
+#include <winsock2.h>
+typedef SOCKET L1Socket;
+#define L1_INVALID_SOCKET INVALID_SOCKET
 #else
-    typedef int socket_t;
-    #define SOCKET_INVALID (-1)
+typedef int L1Socket;
+#define L1_INVALID_SOCKET (-1)
 #endif
 
-// 네트워크 인프라 초기화 및 해제 (Windows 필수, Linux 호환용)
-int net_init(void);
-void net_cleanup(void);
+int l1_net_runtime_init(void);
+void l1_net_runtime_cleanup(void);
 
-// L1 클라이언트용: L2 서버 주소로 TCP 연결 시도
-socket_t net_connect(const char *ip, int port);
+L1Socket l1_net_connect(const char *server_address, uint16_t server_port);
+int l1_net_send_all(L1Socket socket, const void *buffer, size_t length);
+int l1_net_receive(L1Socket socket, void *buffer, size_t capacity);
+void l1_net_close(L1Socket socket);
+const char *l1_net_last_error_message(void);
 
-// 데이터 전송 및 수신
-int net_send(socket_t sock, const uint8_t *buf, size_t len);
-int net_recv_exact(socket_t sock, uint8_t *buf, size_t len);
-
-// 소켓 닫기 및 에러 메시지 확인
-void net_close(socket_t sock);
-const char* net_last_error(void);
-
-#endif // NET_H
+#endif
