@@ -1,3 +1,4 @@
 .vscode
 .agents
 .idea
+node_modules/
