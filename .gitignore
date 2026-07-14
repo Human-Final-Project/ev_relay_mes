@@ -1,6 +1,7 @@
 .vscode
 .agents
 .idea
+node_modules/
 
 # Embedded C build outputs
 embedded-c/**/*.o

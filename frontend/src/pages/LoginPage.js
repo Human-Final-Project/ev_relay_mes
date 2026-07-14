@@ -1,28 +1,40 @@
 import React, { useState } from "react";
+// 💡 페이지 이동을 위해 useNavigate를 가져옵니다.
+import { useNavigate } from "react-router-dom";
 
-function LoginPage() {
-  // [수정 7월 10일 14:17] 상태 변수명을 사원번호(employeeId)와 비밀번호(password)로 변경
+function LoginPage({ onLoginSuccess }) { 
+  const navigate = useNavigate();
+
   const [employeeId, setEmployeeId] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
-  // [수정 7월 10일 13:52] TCP 연결 상태를 제어하기 위한 state 추가 (기본값 true)
+  const [errorMessage, setErrorMessage] = useState("");
   const [isTcpActive] = useState(true);
 
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    // [수정 7월 10일 14:17] 변경된 상태 변수명 적용
     if (employeeId && password) {
       setIsLoading(true);
+      setErrorMessage("");
 
       setTimeout(() => {
         setIsLoading(false);
-        console.log("Login attempt with:", {
-          employeeId,
-          password,
-        });
-      }, 1500);
+
+        if (employeeId === "admin" && password === "1234") {
+          // 💡 App.js의 상태를 직접 변경해 줍니다! (중요)
+          onLoginSuccess("admin");
+          // 그 후 이동
+          navigate("/admin/employees");
+        } else if (employeeId === "user" && password === "1234") {
+          // 💡 일반 유저 로그인 상태 변경
+          onLoginSuccess("user");
+          // 그 후 이동
+          navigate("/dashboard");
+        } else {
+          setErrorMessage("사원번호 또는 비밀번호가 올바르지 않습니다.");
+        }
+      }, 1000); // 1초 뒤 실행
     }
   };
 
@@ -214,6 +226,14 @@ function LoginPage() {
           box-shadow:0 0 0 2px rgba(14,165,233,.2);
         }
 
+        /* 💡 에러메시지 디자인 추가 */
+        .error-message {
+          color: #ba1a1a;
+          font-size: 13px;
+          margin: -12px 0 4px 0;
+          font-weight: 600;
+        }
+
         .submit-btn{
           width:100%;
           padding:16px;
@@ -394,21 +414,20 @@ function LoginPage() {
               <p>Relay 라인 통합 관리를 위해 인증을 진행해 주세요.</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="login-form">
+            <form onSubmit={handleSubmit} className="login-form" autoComplete="off">
               <div className="form-group">
                 <label htmlFor="employee_id">사원번호</label>
-
                 <div className="input-wrapper">
                   <span className="material-symbols-outlined input-icon">
                     badge
                   </span>
-
                   <input
                     id="employee_id"
                     type="text"
                     placeholder="사원번호를 입력하세요"
-                    value={employeeId}
+                   value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
+                    autoComplete="off" // 자동완성 끄기
                     required
                   />
                 </div>
@@ -416,22 +435,24 @@ function LoginPage() {
 
               <div className="form-group">
                 <label htmlFor="password">비밀번호</label>
-
                 <div className="input-wrapper">
                   <span className="material-symbols-outlined input-icon">
                     lock
                   </span>
-
                   <input
                     id="password"
                     type="password"
                     placeholder="비밀번호를 입력하세요"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="new-password" // "이것은 새로운 비밀번호다"라고 브라우저를 속여서 기존 비밀번호 채워넣기를 방지
                     required
                   />
                 </div>
               </div>
+
+              {/* 💡 에러 발생 시 컴포넌트 노출 */}
+              {errorMessage && <div className="error-message">{errorMessage}</div>}
 
               <button
                 type="submit"
@@ -468,7 +489,6 @@ function LoginPage() {
                     isTcpActive ? "active" : ""
                   }`}
                 />
-
                 <span>
                   {isTcpActive
                     ? "TCP Listener Active"
@@ -480,7 +500,6 @@ function LoginPage() {
 
           <footer className="page-footer">
             <p>본 시스템은 사내 전용 생산 관리 시스템입니다.</p>
-
             <div className="system-info">
               <span>v2.4.0-STABLE</span>
               <span className="separator"></span>
@@ -494,7 +513,6 @@ function LoginPage() {
             <span className="material-symbols-outlined deco-icon">
               ev_station
             </span>
-
             <p>
               PRECISION MANUFACTURING
               <br />
