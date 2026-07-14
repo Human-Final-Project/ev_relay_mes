@@ -1,54 +1,185 @@
-#ifndef PROTOCOL_H
-#define PROTOCOL_H
+#ifndef EV_RELAY_L1_PROTOCOL_H
+#define EV_RELAY_L1_PROTOCOL_H
 
-#include <stddef.h> // size_t 정의를 위해 추가
+#include <stddef.h>
+#include <stdint.h>
 
-// 4.1 공정 및 설비 코드 정의
-#define PROC_COIL_WINDING   "OP20"
-#define PROC_WELDING        "OP30"
-#define PROC_ASSEMBLY       "OP40_OP50"
-#define PROC_SEALING        "OP60"
-#define PROC_INSPECTION     "OP70"
-#define PROC_PACKING        "OP80"
+#define L1_PROTOCOL_VERSION "V1"
+#define L1_PROTOCOL_MAX_MESSAGE_SIZE 1024
 
-#define MACH_COIL_WINDING   "EQ-WIND-01"
-#define MACH_WELDING        "EQ-WELD-01"
-#define MACH_ASSEMBLY       "EQ-ASSY-01"
-#define MACH_SEALING        "EQ-SEAL-01"
-#define MACH_INSPECTION     "EQ-TEST-01"
-#define MACH_PACKING        "EQ-PACK-01"
+#define L1_MACHINE_ID_CAPACITY 51
+#define L1_PROCESS_CODE_CAPACITY 31
+#define L1_LOT_NO_CAPACITY 51
+#define L1_CODE_CAPACITY 51
+#define L1_INSPECTION_ITEM_CAPACITY 101
+#define L1_UNIT_CAPACITY 21
+#define L1_MESSAGE_CAPACITY 256
 
-// 4.2 상태 코드 정의
-#define STATUS_IDLE         "IDLE"
-#define STATUS_RUNNING      "RUNNING"
-#define STATUS_ERROR        "ERROR"
-#define STATUS_STOPPED      "STOPPED"
+typedef enum {
+    L1_PROTOCOL_OK = 0,
+    L1_PROTOCOL_NULL_ARGUMENT,
+    L1_PROTOCOL_EMPTY_MESSAGE,
+    L1_PROTOCOL_MESSAGE_TOO_LONG,
+    L1_PROTOCOL_INVALID_UTF8,
+    L1_PROTOCOL_MISSING_LINE_FEED,
+    L1_PROTOCOL_INVALID_LINE_ENDING,
+    L1_PROTOCOL_INVALID_FIELD_FORMAT,
+    L1_PROTOCOL_UNSUPPORTED_VERSION,
+    L1_PROTOCOL_UNEXPECTED_EVENT,
+    L1_PROTOCOL_FIELD_COUNT_MISMATCH,
+    L1_PROTOCOL_FIELD_TOO_LONG,
+    L1_PROTOCOL_UNKNOWN_MACHINE,
+    L1_PROTOCOL_PROCESS_MISMATCH,
+    L1_PROTOCOL_INVALID_NUMBER,
+    L1_PROTOCOL_OUT_OF_RANGE,
+    L1_PROTOCOL_INVALID_VALUE,
+    L1_PROTOCOL_BUFFER_TOO_SMALL
+} L1ProtocolResult;
 
-#define PROD_COMPLETED      "COMPLETED"
-#define PROD_FAILED         "FAILED"
+typedef enum {
+    L1_COMMAND_UNKNOWN = 0,
+    L1_COMMAND_START,
+    L1_COMMAND_STOP,
+    L1_COMMAND_RESUME
+} L1CommandType;
 
-#define RES_OK              "OK"
-#define RES_NG              "NG"
+typedef enum {
+    L1_PRODUCTION_STATUS_UNKNOWN = 0,
+    L1_PRODUCTION_COMPLETED,
+    L1_PRODUCTION_FAILED
+} L1ProductionStatus;
 
-// 5.6 알람 레벨 정의
-#define ALARM_LVL_WARNING   "WARNING"
-#define ALARM_LVL_ERROR     "ERROR"
+typedef enum {
+    L1_INSPECTION_RESULT_UNKNOWN = 0,
+    L1_INSPECTION_OK,
+    L1_INSPECTION_NG
+} L1InspectionResult;
 
-// 5.5 및 5.6 표준 결함/알람 코드 수정 및 추가
-#define DEFECT_COIL_SHORT    "COIL_SHORT_NG"     // 용접 대신 코일 단락 불량 추가
-#define DEFECT_WELD_STRENGTH "WELD_STRENGTH_NG" // (이건 용접 장비용)
+typedef enum {
+    L1_ALARM_LEVEL_UNKNOWN = 0,
+    L1_ALARM_WARNING,
+    L1_ALARM_ERROR
+} L1AlarmLevel;
 
-#define ALARM_MOTOR_OVERLOAD "MOTOR_OVERLOAD"   // 모터 과부하는 권선기에도 적합함
+typedef enum {
+    L1_MACHINE_STATUS_UNKNOWN = 0,
+    L1_MACHINE_IDLE,
+    L1_MACHINE_RUNNING,
+    L1_MACHINE_ERROR,
+    L1_MACHINE_STOPPED
+} L1MachineStatus;
 
-// 메시지 빌더 함수 원형
-int build_hello_msg(char *out_buf, size_t buf_size, const char *mach_id);
-int build_heartbeat_msg(char *out_buf, size_t buf_size, const char *mach_id);
-int build_production_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, int ok_qty, int ng_qty, const char *status);
+typedef enum {
+    L1_ACK_STATUS_UNKNOWN = 0,
+    L1_ACK_ACCEPTED,
+    L1_ACK_REJECTED
+} L1CommandAckStatus;
 
-// ★ [누락 항목 추가] 설비 상태 메시지 빌더 원형
-int build_status_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *status, const char *lot_no, const char *proc_code, const char *msg);
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char lot_no[L1_LOT_NO_CAPACITY];
+    int input_qty;
+    int ok_qty;
+    int ng_qty;
+    L1ProductionStatus status;
+} L1ProductionEvent;
 
-int build_defect_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *proc_code, const char *lot_no, const char *defect_code, int defect_qty);
-int build_alarm_msg(char *out_buf, size_t buf_size, const char *mach_id, const char *alarm_code, const char *alarm_level);
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char lot_no[L1_LOT_NO_CAPACITY];
+    char item[L1_INSPECTION_ITEM_CAPACITY];
+    double value;
+    char unit[L1_UNIT_CAPACITY];
+    int has_lower_limit;
+    double lower_limit;
+    int has_upper_limit;
+    double upper_limit;
+    L1InspectionResult result;
+} L1InspectionEvent;
 
-#endif // PROTOCOL_H
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char lot_no[L1_LOT_NO_CAPACITY];
+    char defect_code[L1_CODE_CAPACITY];
+    int defect_qty;
+    char message[L1_MESSAGE_CAPACITY];
+} L1DefectEvent;
+
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char alarm_code[L1_CODE_CAPACITY];
+    L1AlarmLevel alarm_level;
+    char message[L1_MESSAGE_CAPACITY];
+} L1AlarmEvent;
+
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    L1MachineStatus status;
+    char lot_no[L1_LOT_NO_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char message[L1_MESSAGE_CAPACITY];
+} L1MachineStatusEvent;
+
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    int64_t command_id;
+    L1CommandAckStatus status;
+    char message[L1_MESSAGE_CAPACITY];
+} L1CommandAckEvent;
+
+typedef struct {
+    int64_t command_id;
+    L1CommandType type;
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char lot_no[L1_LOT_NO_CAPACITY];
+    int input_qty;
+} L1Command;
+
+const char *l1_protocol_result_name(L1ProtocolResult result);
+const char *l1_command_type_name(L1CommandType type);
+
+L1ProtocolResult l1_protocol_parse_command(const char *line,
+                                           L1Command *out_command);
+
+L1ProtocolResult l1_protocol_build_hello(char *out_buffer,
+                                         size_t buffer_size,
+                                         const char *machine_id,
+                                         size_t *out_length);
+L1ProtocolResult l1_protocol_build_heartbeat(char *out_buffer,
+                                             size_t buffer_size,
+                                             const char *machine_id,
+                                             size_t *out_length);
+L1ProtocolResult l1_protocol_build_production(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1ProductionEvent *event,
+    size_t *out_length);
+L1ProtocolResult l1_protocol_build_inspection(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1InspectionEvent *event,
+    size_t *out_length);
+L1ProtocolResult l1_protocol_build_defect(char *out_buffer,
+                                          size_t buffer_size,
+                                          const L1DefectEvent *event,
+                                          size_t *out_length);
+L1ProtocolResult l1_protocol_build_alarm(char *out_buffer,
+                                         size_t buffer_size,
+                                         const L1AlarmEvent *event,
+                                         size_t *out_length);
+L1ProtocolResult l1_protocol_build_machine_status(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1MachineStatusEvent *event,
+    size_t *out_length);
+L1ProtocolResult l1_protocol_build_command_ack(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1CommandAckEvent *event,
+    size_t *out_length);
+
+#endif
