@@ -48,7 +48,7 @@ L1ClientFeedResult l1_client_session_feed(
     size_t length,
     const L1ClientHandlers *handlers);
 
-/* Connects one selected L1 device to L2 and runs until the socket closes. */
+/* Keeps one selected L1 device connected to L2 until externally stopped. */
 int l1_client_run(const L1DeviceConfig *device,
                   const char *server_address,
                   uint16_t server_port);
