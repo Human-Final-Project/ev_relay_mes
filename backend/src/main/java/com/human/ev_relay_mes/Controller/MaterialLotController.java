@@ -4,69 +4,46 @@ import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MaterialLotResponseDto;
 import com.human.ev_relay_mes.Entity.MaterialLot;
 import com.human.ev_relay_mes.Service.MaterialLotService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
 @RestController
-@RequestMapping("/material-lot")
+@RequestMapping("/api/material-lots")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "http://localhost:3000")
 public class MaterialLotController {
 
     private final MaterialLotService materialLotService;
 
-    // 등록
     @PostMapping
-    public ResponseEntity<MaterialLot> createMaterialLot(
-            @RequestBody MaterialLotRequestDto dto){
-
-        return ResponseEntity.ok(materialLotService.createMaterialLot(dto));
+    public ResponseEntity<MaterialLotResponseDto> createMaterialLot(
+            @Valid @RequestBody MaterialLotRequestDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(materialLotService.createMaterialLot(dto));
     }
 
-    // 전체 조회
     @GetMapping
-    public ResponseEntity<List<MaterialLotResponseDto>> getMaterialLots(){
-        return ResponseEntity.ok(materialLotService.getMaterialLots());
+    public List<MaterialLotResponseDto> getMaterialLots() {
+        return materialLotService.getMaterialLots();
     }
 
-    // 상세 조회
     @GetMapping("/{id}")
-    public ResponseEntity<MaterialLot> getMaterialLot(
-            @PathVariable Long id){
-
-        return ResponseEntity.ok(materialLotService.getMaterialLot(id));
+    public MaterialLotResponseDto getMaterialLot(@PathVariable Long id) {
+        return materialLotService.getMaterialLot(id);
     }
 
-    // 수정
-    @PutMapping
-    public ResponseEntity<MaterialLot> updateMaterialLot(
-            @RequestBody MaterialLot materialLot){
-
-        return ResponseEntity.ok(materialLotService.updateMaterialLot(materialLot));
-    }
-
-    // 삭제
-    @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteMaterialLot(
-            @PathVariable Long id){
-        materialLotService.deleteMaterialLot(id);
-
-        return ResponseEntity.ok("삭제 완료");
-    }
-
-    // 상태 변경
     @PatchMapping("/{id}/status")
-    public ResponseEntity<MaterialLot> updateStatus(
-            @PathVariable Long id,
-            @RequestParam MaterialLot.Status status){
-
-        return ResponseEntity.ok(
-                materialLotService.updateStatus(id, status)
-        );
+    public MaterialLotResponseDto updateStatus(
+            @PathVariable Long id, @RequestParam MaterialLot.Status status) {
+        return materialLotService.updateStatus(id, status);
     }
 
-
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteMaterialLot(@PathVariable Long id) {
+        materialLotService.deleteMaterialLot(id);
+        return ResponseEntity.noContent().build();
+    }
 }

@@ -2,6 +2,8 @@ package com.human.ev_relay_mes.Dto.Request;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -24,7 +26,7 @@ public class ProductionResultReceiveRequestDto {
     private String processCode;
 
     @NotNull
-    @PositiveOrZero
+    @Positive
     private Integer inputQty;
 
     @NotNull
@@ -36,6 +38,7 @@ public class ProductionResultReceiveRequestDto {
     private Integer ngQty;
 
     @NotBlank
+    @Pattern(regexp = "(?i)RUNNING|COMPLETED")
     private String status;
 
     private LocalDateTime startedAt;

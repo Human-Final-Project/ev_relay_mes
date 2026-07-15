@@ -1,0 +1,143 @@
+package com.human.ev_relay_mes.Service;
+
+import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
+import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.Exception.CustomException;
+import com.human.ev_relay_mes.Exception.ErrorCode;
+import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Repository.WorkCommandRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+class WorkCommandServiceTest {
+
+    @Mock
+    private WorkCommandRepository workCommandRepository;
+    @Mock
+    private MachineRepository machineRepository;
+    @Mock
+    private ProcessRepository processRepository;
+
+    @InjectMocks
+    private WorkCommandService workCommandService;
+
+    @Test
+    void createsStartCommandsForBothParallelProcesses() {
+        Process op20 = process("OP20", 1);
+        Process op30 = process("OP30", 2);
+        Machine wind = machine("EQ-WIND-01", op20);
+        Machine weld = machine("EQ-WELD-01", op30);
+        Lot lot = Lot.builder().lotNo("LOT-001").currentProcess(op20).inputQty(10).build();
+
+        when(processRepository.findById("OP20")).thenReturn(Optional.of(op20));
+        when(processRepository.findById("OP30")).thenReturn(Optional.of(op30));
+        when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
+        when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
+        when(workCommandRepository.save(any(WorkCommand.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var commands = workCommandService.createInitialStartCommands(lot);
+
+        assertThat(commands).hasSize(2);
+        assertThat(commands).extracting(command -> command.getProcessCode())
+                .containsExactly("OP20", "OP30");
+        assertThat(commands).allMatch(command -> command.getStatus().equals("PENDING"));
+    }
+
+    @Test
+    void claimsOnlyFirstCommandWhenSameIdleMachineHasQueue() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot firstLot = Lot.builder().lotNo("LOT-001").build();
+        Lot secondLot = Lot.builder().lotNo("LOT-002").build();
+        WorkCommand first = command(1L, firstLot, machine, process);
+        WorkCommand second = command(2L, secondLot, machine, process);
+
+        when(workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING))
+                .thenReturn(List.of(first, second));
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), anyCollection()))
+                .thenReturn(false, true);
+
+        var claimed = workCommandService.claimPendingCommands();
+
+        assertThat(claimed).hasSize(1);
+        assertThat(first.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
+        assertThat(second.getStatus()).isEqualTo(WorkCommand.Status.PENDING);
+    }
+
+    @Test
+    void acknowledgesCommandWhenMachineMatches() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        WorkCommand command = command(101L, Lot.builder().lotNo("LOT-001").build(), machine, process);
+        command.setStatus(WorkCommand.Status.DISPATCHED);
+        WorkCommandAckRequestDto dto = ack(101L, "EQ-WIND-01", "ACCEPTED");
+
+        when(workCommandRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(command));
+
+        var result = workCommandService.acknowledge(dto);
+
+        assertThat(result.getCommandId()).isEqualTo(101L);
+        assertThat(result.getMachineId()).isEqualTo("EQ-WIND-01");
+        assertThat(result.getStatus()).isEqualTo("ACCEPTED");
+    }
+
+    @Test
+    void rejectsAckWhenMachineDoesNotMatchCommand() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        WorkCommand command = command(101L, Lot.builder().lotNo("LOT-001").build(), machine, process);
+        command.setStatus(WorkCommand.Status.DISPATCHED);
+        WorkCommandAckRequestDto dto = ack(101L, "EQ-WELD-01", "ACCEPTED");
+
+        when(workCommandRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(command));
+
+        assertThatThrownBy(() -> workCommandService.acknowledge(dto))
+                .isInstanceOf(CustomException.class)
+                .extracting(exception -> ((CustomException) exception).getErrorCode())
+                .isEqualTo(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
+    }
+
+    private Process process(String code, int order) {
+        return Process.builder()
+                .processCode(code).processName(code).processOrder(order).useYn("Y").build();
+    }
+
+    private Machine machine(String id, Process process) {
+        return Machine.builder()
+                .machineId(id).machineName(id).machineType("TEST")
+                .process(process).status(Machine.Status.IDLE).useYn("Y").build();
+    }
+
+    private WorkCommand command(Long id, Lot lot, Machine machine, Process process) {
+        return WorkCommand.builder()
+                .commandId(id).commandType(WorkCommand.CommandType.START)
+                .machine(machine).process(process).lot(lot).inputQty(10).build();
+    }
+
+    private WorkCommandAckRequestDto ack(Long commandId, String machineId, String status) {
+        WorkCommandAckRequestDto dto = new WorkCommandAckRequestDto();
+        dto.setCommandId(commandId);
+        dto.setMachineId(machineId);
+        dto.setAckStatus(status);
+        return dto;
+    }
+}

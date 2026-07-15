@@ -1,0 +1,203 @@
+package com.human.ev_relay_mes.Service;
+
+import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
+import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.Entity.ProductionLog;
+import com.human.ev_relay_mes.Entity.WorkOrder;
+import com.human.ev_relay_mes.Exception.CustomException;
+import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Repository.ProductionLogRepository;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Optional;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+
+@ExtendWith(MockitoExtension.class)
+class ProductionServiceTest {
+
+    @Mock
+    private ProductionLogRepository productionLogRepository;
+    @Mock
+    private MachineRepository machineRepository;
+    @Mock
+    private ProcessRepository processRepository;
+    @Mock
+    private LotRepository lotRepository;
+    @Mock
+    private WorkCommandService workCommandService;
+
+    @InjectMocks
+    private ProductionService productionService;
+
+    @Test
+    void completesFinalProcessLotAndWorkOrder() {
+        Fixture fixture = fixture();
+        ProductionResultReceiveRequestDto request = request(10, 9, 1, "COMPLETED");
+        mockBase(fixture);
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of());
+        when(productionLogRepository.save(any(ProductionLog.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(processRepository.findFirstByProcessOrderGreaterThanAndUseYnOrderByProcessOrderAsc(1, "Y"))
+                .thenReturn(Optional.empty());
+        when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(fixture.lot));
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getStatus()).isEqualTo("COMPLETED");
+        assertThat(fixture.lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
+        assertThat(fixture.lot.getOkQty()).isEqualTo(9);
+        assertThat(fixture.lot.getNgQty()).isEqualTo(1);
+        assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.COMPLETED);
+    }
+
+    @Test
+    void rejectsQuantityOverLotInput() {
+        Fixture fixture = fixture();
+        ProductionResultReceiveRequestDto request = request(5, 5, 0, "RUNNING");
+        mockBase(fixture);
+        ProductionLog previous = ProductionLog.builder()
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(6)
+                .okQty(6)
+                .ngQty(0)
+                .build();
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of(previous));
+
+        assertThatThrownBy(() -> productionService.saveResult(request))
+                .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void advancesToAssemblyOnlyAfterBothParallelProcessesComplete() {
+        Process op20 = Process.builder()
+                .processCode("OP20").processName("Winding").processOrder(1).useYn("Y").build();
+        Process op30 = Process.builder()
+                .processCode("OP30").processName("Welding").processOrder(2).useYn("Y").build();
+        Process assembly = Process.builder()
+                .processCode("OP40_OP50").processName("Assembly").processOrder(3).useYn("Y").build();
+        Machine machine = Machine.builder()
+                .machineId("EQ-WELD-01").machineName("Welder").machineType("WELD")
+                .process(op30).status(Machine.Status.RUNNING).useYn("Y").build();
+        WorkOrder order = WorkOrder.builder()
+                .workOrderId(1L).orderNo("WO-001").targetQty(10)
+                .status(WorkOrder.Status.RUNNING).build();
+        Lot lot = Lot.builder()
+                .lotNo("LOT-001").workOrder(order).currentProcess(op20)
+                .inputQty(10).okQty(0).ngQty(0).status(Lot.Status.RUNNING).build();
+        ProductionLog op20Result = ProductionLog.builder()
+                .lot(lot).process(op20).machine(machine)
+                .inputQty(10).okQty(9).ngQty(1).status("COMPLETED").build();
+        List<ProductionLog> op30Results = new ArrayList<>();
+
+        when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
+        when(machineRepository.findById("EQ-WELD-01")).thenReturn(Optional.of(machine));
+        when(processRepository.findById("OP30")).thenReturn(Optional.of(op30));
+        when(processRepository.findById("OP40_OP50")).thenReturn(Optional.of(assembly));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP20"))
+                .thenReturn(List.of(op20Result));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP30"))
+                .thenAnswer(invocation -> List.copyOf(op30Results));
+        when(productionLogRepository.save(any(ProductionLog.class))).thenAnswer(invocation -> {
+            ProductionLog saved = invocation.getArgument(0);
+            op30Results.add(saved);
+            return saved;
+        });
+
+        ProductionResultReceiveRequestDto request = request(10, 8, 2, "COMPLETED");
+        request.setMachineId("EQ-WELD-01");
+        request.setProcessCode("OP30");
+
+        productionService.saveResult(request);
+
+        assertThat(lot.getCurrentProcess()).isEqualTo(assembly);
+        verify(workCommandService).createStartCommand(lot, assembly, 8);
+    }
+
+    private void mockBase(Fixture fixture) {
+        when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(fixture.lot));
+        when(machineRepository.findById("MC-001")).thenReturn(Optional.of(fixture.machine));
+        when(processRepository.findById("OP10")).thenReturn(Optional.of(fixture.process));
+    }
+
+    private ProductionResultReceiveRequestDto request(int input, int ok, int ng, String status) {
+        ProductionResultReceiveRequestDto request = new ProductionResultReceiveRequestDto();
+        request.setLotNo("LOT-001");
+        request.setMachineId("MC-001");
+        request.setProcessCode("OP10");
+        request.setInputQty(input);
+        request.setOkQty(ok);
+        request.setNgQty(ng);
+        request.setStatus(status);
+        return request;
+    }
+
+    private Fixture fixture() {
+        Item item = Item.builder()
+                .itemCode("FG-001")
+                .itemName("EV Relay")
+                .itemType(Item.ItemType.FG)
+                .useYn("Y")
+                .build();
+        Process process = Process.builder()
+                .processCode("OP10")
+                .processName("Assembly")
+                .processOrder(1)
+                .useYn("Y")
+                .build();
+        Machine machine = Machine.builder()
+                .machineId("MC-001")
+                .machineName("Assembly Machine")
+                .machineType("ASSEMBLY")
+                .process(process)
+                .status(Machine.Status.RUNNING)
+                .useYn("Y")
+                .build();
+        WorkOrder workOrder = WorkOrder.builder()
+                .workOrderId(1L)
+                .orderNo("WO-001")
+                .item(item)
+                .targetQty(10)
+                .status(WorkOrder.Status.RUNNING)
+                .build();
+        Lot lot = Lot.builder()
+                .lotId(1L)
+                .lotNo("LOT-001")
+                .workOrder(workOrder)
+                .item(item)
+                .currentProcess(process)
+                .inputQty(10)
+                .okQty(0)
+                .ngQty(0)
+                .status(Lot.Status.RUNNING)
+                .build();
+        return new Fixture(process, machine, workOrder, lot);
+    }
+
+    private record Fixture(Process process, Machine machine, WorkOrder workOrder, Lot lot) {
+    }
+}

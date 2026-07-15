@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.Dto.Request;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -30,6 +30,7 @@ public class InspectionResultReceiveRequestDto {
     private BigDecimal lowerLimit;
     private BigDecimal upperLimit;
 
-    @NotNull
+    @NotBlank
+    @Pattern(regexp = "(?i)OK|NG")
     private String result;
 }

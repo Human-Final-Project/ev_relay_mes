@@ -6,14 +6,17 @@ import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.Entity.AlarmCode;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
+import com.human.ev_relay_mes.Entity.MachineStatusHistory;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +32,7 @@ public class MachineAlarmService {
     private final MachineRepository machineRepository;
     private final AlarmCodeRepository alarmCodeRepository;
     private final MemberRepository memberRepository;
+    private final MachineStatusHistoryRepository machineStatusHistoryRepository;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
@@ -40,20 +44,27 @@ public class MachineAlarmService {
         if (!"Y".equalsIgnoreCase(alarmCode.getUseYn())) {
             throw new CustomException(ErrorCode.ALARM_CODE_NOT_USABLE);
         }
+        validateAlarm(machine, alarmCode, dto.getAlarmLevel());
+        String alarmLevel = dto.getAlarmLevel().toUpperCase();
 
         MachineAlarmHistory history = MachineAlarmHistory.builder()
                 .machine(machine)
                 .alarmCode(alarmCode)
-                .alarmLevel(dto.getAlarmLevel())
+                .alarmLevel(alarmLevel)
                 .occurredAt(dto.getOccurredAt())
                 .message(dto.getMessage())
                 .build();
-        return toResponse(machineAlarmHistoryRepository.save(history));
+        MachineAlarmHistory savedHistory = machineAlarmHistoryRepository.save(history);
+        if ("ERROR".equals(alarmLevel) && machine.getStatus() != Machine.Status.ERROR) {
+            changeMachineStatus(machine, Machine.Status.ERROR, "ERROR 알람 발생: " + alarmCode.getAlarmCode());
+        }
+        return toResponse(savedHistory);
     }
 
     // 알람 관리 화면에서 설비·알람 코드·등급·해제 여부·기간 조건으로 이력을 조회할 때 사용한다.
     public List<MachineAlarmResponseDto> search(MachineAlarmSearchRequestDto condition) {
-        return machineAlarmHistoryRepository.findAll().stream()
+        validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
+        return machineAlarmHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()
                 .filter(item -> isBlank(condition.getMachineId()) || item.getMachine().getMachineId().equals(condition.getMachineId()))
                 .filter(item -> isBlank(condition.getAlarmCode()) || item.getAlarmCode().getAlarmCode().equals(condition.getAlarmCode()))
                 .filter(item -> isBlank(condition.getAlarmLevel()) || item.getAlarmLevel().equalsIgnoreCase(condition.getAlarmLevel()))
@@ -67,7 +78,7 @@ public class MachineAlarmService {
     // 작업자가 발생 중인 알람을 해제하고 해제 시각과 처리자를 기록할 때 사용한다.
     @Transactional
     public MachineAlarmResponseDto clearAlarm(Long historyId, Long memberId) {
-        MachineAlarmHistory history = machineAlarmHistoryRepository.findById(historyId)
+        MachineAlarmHistory history = machineAlarmHistoryRepository.findByIdForUpdate(historyId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_ALARM_HISTORY_NOT_FOUND));
         if (history.getClearedAt() != null) {
             throw new CustomException(ErrorCode.ALARM_ALREADY_CLEARED);
@@ -76,7 +87,53 @@ public class MachineAlarmService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
         history.setClearedAt(LocalDateTime.now());
         history.setClearedBy(member);
+        restoreMachineIfNoErrorAlarm(history);
         return toResponse(history);
+    }
+
+    private void validateAlarm(Machine machine, AlarmCode alarmCode, String alarmLevel) {
+        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
+            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
+        }
+        if (!alarmCode.getMachineType().equalsIgnoreCase("COMMON")
+                && !alarmCode.getMachineType().equalsIgnoreCase(machine.getMachineType())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "설비 유형과 알람 코드의 설비 유형이 일치하지 않습니다.");
+        }
+        if (!List.of("INFO", "WARN", "ERROR").contains(alarmLevel.toUpperCase())) {
+            throw new CustomException(ErrorCode.INVALID_ALARM_LEVEL);
+        }
+    }
+
+    private void restoreMachineIfNoErrorAlarm(MachineAlarmHistory clearedHistory) {
+        if (!"ERROR".equalsIgnoreCase(clearedHistory.getAlarmLevel())) {
+            return;
+        }
+        Machine machine = clearedHistory.getMachine();
+        boolean anotherErrorExists = machineAlarmHistoryRepository
+                .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
+                        machine.getMachineId(), "ERROR", clearedHistory.getMachineAlarmHistoryId());
+        if (!anotherErrorExists && machine.getStatus() == Machine.Status.ERROR) {
+            changeMachineStatus(machine, Machine.Status.IDLE, "ERROR 알람 해제");
+        }
+    }
+
+    private void changeMachineStatus(Machine machine, Machine.Status status, String message) {
+        machine.setStatus(status);
+        MachineStatusHistory statusHistory = MachineStatusHistory.builder()
+                .machine(machine)
+                .status(status)
+                .process(machine.getProcess())
+                .message(message)
+                .build();
+        machineStatusHistoryRepository.save(statusHistory);
+    }
+
+    private void validateSearchPeriod(LocalDateTime start, LocalDateTime end) {
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "조회 종료 시각은 시작 시각보다 빠를 수 없습니다.");
+        }
     }
 
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.

@@ -1,6 +1,10 @@
 package com.human.ev_relay_mes.Repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 
@@ -8,6 +12,10 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlarmHistory, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select h from MachineAlarmHistory h where h.machineAlarmHistoryId = :id")
+    java.util.Optional<MachineAlarmHistory> findByIdForUpdate(@Param("id") Long id);
 
     // 설비 상세 화면에서 특정 설비에 발생한 알람 이력을 표시할 때 사용한다.
     List<MachineAlarmHistory> findByMachine_MachineIdOrderByOccurredAtDesc(String machineId);
@@ -26,4 +34,7 @@ public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlar
 
     // 기간별 설비 장애 현황과 알람 발생 추이를 조회할 때 사용한다.
     List<MachineAlarmHistory> findByOccurredAtBetweenOrderByOccurredAtDesc(LocalDateTime startAt, LocalDateTime endAt);
+
+    boolean existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
+            String machineId, String alarmLevel, Long historyId);
 }
