@@ -2,7 +2,20 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+#include "connection_registry.h"
+#include "thread_compat.h"
+
+typedef struct {
+    CollectorConnectionRegistry *registry;
+    CollectorConnection *connection;
+    int close_requested;
+} CollectorWorkerContext;
+
+static CollectorConnectionRegistry connection_registry;
+static int connection_registry_ready;
 
 static const char *message_machine_id(const ProtocolMessage *message)
 {
@@ -200,6 +213,45 @@ CollectorSendResult collector_send_command(const CollectorSession *session,
     return COLLECTOR_SEND_OK;
 }
 
+CollectorSendResult collector_send_command_to_machine(
+    const ProtocolCommand *command,
+    ProtocolResult *protocol_result)
+{
+    char message[COLLECTOR_MAX_MESSAGE_SIZE + 1];
+    size_t message_length = 0;
+    ProtocolResult result;
+    ConnectionSendResult send_result;
+
+    if (protocol_result != NULL) {
+        *protocol_result = PROTOCOL_RESULT_OK;
+    }
+    if (command == NULL || !connection_registry_ready) {
+        return COLLECTOR_SEND_NOT_REGISTERED;
+    }
+    result = protocol_build_command(message,
+                                    sizeof(message),
+                                    command,
+                                    &message_length);
+    if (result != PROTOCOL_RESULT_OK) {
+        if (protocol_result != NULL) {
+            *protocol_result = result;
+        }
+        return COLLECTOR_SEND_INVALID_COMMAND;
+    }
+    send_result = connection_registry_send_to_machine(
+        &connection_registry,
+        command->machine_id,
+        message,
+        message_length);
+    if (send_result == CONNECTION_SEND_MACHINE_NOT_CONNECTED) {
+        return COLLECTOR_SEND_NOT_REGISTERED;
+    }
+    if (send_result != CONNECTION_SEND_OK) {
+        return COLLECTOR_SEND_NETWORK_ERROR;
+    }
+    return COLLECTOR_SEND_OK;
+}
+
 static const char *session_error_name(CollectorSessionError error)
 {
     switch (error) {
@@ -221,12 +273,40 @@ static const char *session_error_name(CollectorSessionError error)
 static void log_received_message(const ProtocolMessage *message, void *context)
 {
     const char *machine_id = message_machine_id(message);
+    CollectorWorkerContext *worker = (CollectorWorkerContext *)context;
 
-    (void)context;
     if (message->type == PROTOCOL_EVENT_HELLO) {
+        ConnectionRegisterResult register_result =
+            connection_registry_register_machine(worker->registry,
+                                                 worker->connection,
+                                                 machine_id);
+
+        if (register_result == CONNECTION_REGISTER_DUPLICATE_MACHINE) {
+            fprintf(stderr,
+                    "[L2] Duplicate machine connection rejected: machine=%s peer=%s:%u\n",
+                    machine_id,
+                    collector_connection_peer_address(worker->connection),
+                    (unsigned int)collector_connection_peer_port(
+                        worker->connection));
+            fflush(stderr);
+            worker->close_requested = 1;
+            return;
+        }
+        if (register_result != CONNECTION_REGISTER_OK) {
+            fprintf(stderr,
+                    "[L2] Machine registration failed: machine=%s\n",
+                    machine_id != NULL ? machine_id : "-");
+            fflush(stderr);
+            worker->close_requested = 1;
+            return;
+        }
         printf("[L2] L1 registered: machine=%s\n",
                machine_id != NULL ? machine_id : "-");
-    } else {
+        printf("[L2] Registered connections: %u/%d\n",
+               (unsigned int)connection_registry_registered_count(
+                   worker->registry),
+               COLLECTOR_MAX_L1_CONNECTIONS);
+    } else if (!worker->close_requested) {
         printf("[L1 -> L2] event=%s machine=%s\n",
                protocol_event_type_name(message->type),
                machine_id != NULL ? machine_id : "-");
@@ -255,27 +335,26 @@ static void log_session_error(CollectorSessionError error,
     fflush(stderr);
 }
 
-static void handle_single_client(NetSocket client_socket,
-                                 const char *peer_address,
-                                 uint16_t peer_port)
+static void handle_client_worker(void *context)
 {
     unsigned char receive_buffer[2048];
     CollectorSession session;
     CollectorSessionHandlers handlers;
+    CollectorWorkerContext *worker = (CollectorWorkerContext *)context;
+    CollectorConnection *connection = worker->connection;
+    NetSocket client_socket = collector_connection_socket(connection);
     uint64_t connected_at;
     int blocking_mode_restored = 0;
 
     collector_session_init(&session);
     handlers.on_message = log_received_message;
     handlers.on_error = log_session_error;
-    handlers.context = NULL;
+    handlers.context = worker;
     connected_at = net_monotonic_milliseconds();
 
     printf("[L2] L1 connected: %s:%u\n",
-           peer_address != NULL && peer_address[0] != '\0'
-               ? peer_address
-               : "unknown",
-           (unsigned int)peer_port);
+           collector_connection_peer_address(connection),
+           (unsigned int)collector_connection_peer_port(connection));
     fflush(stdout);
 
     for (;;) {
@@ -351,6 +430,9 @@ static void handle_single_client(NetSocket client_socket,
             fflush(stderr);
             break;
         }
+        if (worker->close_requested) {
+            break;
+        }
     }
 
     if (session.line_length > 0) {
@@ -359,29 +441,45 @@ static void handle_single_client(NetSocket client_socket,
                 (unsigned int)session.line_length);
         fflush(stderr);
     }
+    client_socket = connection_registry_detach(worker->registry,
+                                               connection);
     net_socket_close(client_socket);
+    printf("[L2] Active connections: %u/%d\n",
+           (unsigned int)connection_registry_active_count(worker->registry),
+           COLLECTOR_MAX_L1_CONNECTIONS);
+    fflush(stdout);
+    free(worker);
 }
 
 int collector_run(void)
 {
     NetSocket server_socket;
 
+    if (connection_registry_init(&connection_registry) != 0) {
+        fprintf(stderr, "[L2] Failed to initialize connection registry.\n");
+        return -1;
+    }
+    connection_registry_ready = 1;
+
     server_socket = net_tcp_server_create(COLLECTOR_BIND_ADDRESS,
                                           COLLECTOR_TCP_PORT,
-                                          1);
+                                          COLLECTOR_MAX_L1_CONNECTIONS);
     if (server_socket == NET_INVALID_SOCKET) {
         fprintf(stderr,
                 "[L2] Failed to listen on %s:%d: %s\n",
                 COLLECTOR_BIND_ADDRESS,
                 COLLECTOR_TCP_PORT,
                 net_last_error_message());
+        connection_registry_ready = 0;
+        connection_registry_destroy(&connection_registry);
         return -1;
     }
 
     printf("EV Relay MES L2 collector\n");
-    printf("[L2] Listening on %s:%d (single active L1)\n",
+    printf("[L2] Listening on %s:%d (max %d concurrent L1 connections)\n",
            COLLECTOR_BIND_ADDRESS,
-           COLLECTOR_TCP_PORT);
+           COLLECTOR_TCP_PORT,
+           COLLECTOR_MAX_L1_CONNECTIONS);
     fflush(stdout);
 
     for (;;) {
@@ -399,6 +497,43 @@ int collector_run(void)
             net_socket_close(server_socket);
             return -1;
         }
-        handle_single_client(client_socket, peer_address, peer_port);
+        {
+            CollectorConnection *connection = connection_registry_acquire(
+                &connection_registry,
+                client_socket,
+                peer_address,
+                peer_port);
+            CollectorWorkerContext *worker;
+
+            if (connection == NULL) {
+                fprintf(stderr,
+                        "[L2] Connection rejected: maximum %d L1 connections reached.\n",
+                        COLLECTOR_MAX_L1_CONNECTIONS);
+                fflush(stderr);
+                net_socket_close(client_socket);
+                continue;
+            }
+            worker = (CollectorWorkerContext *)malloc(sizeof(*worker));
+            if (worker == NULL) {
+                fprintf(stderr, "[L2] Failed to allocate worker context.\n");
+                client_socket = connection_registry_detach(
+                    &connection_registry,
+                    connection);
+                net_socket_close(client_socket);
+                continue;
+            }
+            worker->registry = &connection_registry;
+            worker->connection = connection;
+            worker->close_requested = 0;
+            if (collector_thread_start_detached(handle_client_worker,
+                                                worker) != 0) {
+                fprintf(stderr, "[L2] Failed to start L1 worker thread.\n");
+                free(worker);
+                client_socket = connection_registry_detach(
+                    &connection_registry,
+                    connection);
+                net_socket_close(client_socket);
+            }
+        }
     }
 }

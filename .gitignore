@@ -9,6 +9,7 @@ embedded-c/**/*.exe
 embedded-c/mes_collector/mes_collector
 embedded-c/mes_collector/protocol_tests
 embedded-c/mes_collector/collector_tests
+embedded-c/mes_collector/connection_registry_tests
 embedded-c/mes_L1/l1_simulator
 embedded-c/mes_L1/l1_protocol_tests
 embedded-c/mes_L1/l1_l2_contract_tests

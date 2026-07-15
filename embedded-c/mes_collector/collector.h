@@ -68,7 +68,12 @@ CollectorSendResult collector_send_command(const CollectorSession *session,
                                            const ProtocolCommand *command,
                                            ProtocolResult *protocol_result);
 
-/* Runs the stage-4 single-active-L1 TCP accept and receive loop. */
+/* Finds the registered connection by MACHINE_ID and sends one COMMAND. */
+CollectorSendResult collector_send_command_to_machine(
+    const ProtocolCommand *command,
+    ProtocolResult *protocol_result);
+
+/* Runs the stage-5 multi-L1 accept loop with one worker per connection. */
 int collector_run(void);
 
 #endif
