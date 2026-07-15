@@ -206,51 +206,17 @@ static void handle_runtime_error(L1ClientFeedResult error,
     fflush(stderr);
 }
 
-int l1_client_run(const L1DeviceConfig *device,
-                  const char *server_address,
-                  uint16_t server_port)
+static void run_connected_session(L1Socket socket,
+                                  const L1DeviceConfig *device,
+                                  const char *heartbeat,
+                                  size_t heartbeat_length)
 {
-    L1Socket socket;
-    char hello[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
-    size_t hello_length = 0;
-    L1ProtocolResult protocol_result;
     L1ClientSession session;
     L1ClientHandlers handlers;
     RuntimeContext runtime;
     unsigned char receive_buffer[L1_RECEIVE_BUFFER_SIZE];
-    int exit_code = -1;
-
-    if (device == NULL || server_address == NULL || server_port == 0) {
-        return -1;
-    }
-
-    printf("[L1] Connecting to %s:%u...\n",
-           server_address,
-           (unsigned int)server_port);
-    socket = l1_net_connect(server_address, server_port);
-    if (socket == L1_INVALID_SOCKET) {
-        fprintf(stderr,
-                "[L1] Connection failed: %s\n",
-                l1_net_last_error_message());
-        return -1;
-    }
-    printf("[L1] Connected. machine=%s process=%s\n",
-           device->machine_id,
-           device->process_code);
-
-    protocol_result = l1_protocol_build_hello(hello,
-                                              sizeof(hello),
-                                              device->machine_id,
-                                              &hello_length);
-    if (protocol_result != L1_PROTOCOL_OK) {
-        fprintf(stderr,
-                "[L1] Failed to build HELLO: %s\n",
-                l1_protocol_result_name(protocol_result));
-        goto cleanup;
-    }
-    if (send_protocol_message(socket, hello, hello_length) != 0) {
-        goto cleanup;
-    }
+    uint64_t next_heartbeat_at =
+        l1_net_monotonic_milliseconds() + L1_HEARTBEAT_INTERVAL_MS;
 
     l1_client_session_init(&session, device);
     memset(&runtime, 0, sizeof(runtime));
@@ -261,11 +227,42 @@ int l1_client_run(const L1DeviceConfig *device,
     handlers.context = &runtime;
 
     for (;;) {
-        int received = l1_net_receive(socket,
-                                      receive_buffer,
-                                      sizeof(receive_buffer));
+        uint64_t now = l1_net_monotonic_milliseconds();
+        uint64_t wait_ms;
+        int received;
 
-        if (received < 0) {
+        if (now >= next_heartbeat_at) {
+            if (send_protocol_message(socket,
+                                      heartbeat,
+                                      heartbeat_length) != 0) {
+                break;
+            }
+            next_heartbeat_at =
+                l1_net_monotonic_milliseconds()
+                + L1_HEARTBEAT_INTERVAL_MS;
+            now = l1_net_monotonic_milliseconds();
+        }
+
+        wait_ms = next_heartbeat_at > now
+            ? next_heartbeat_at - now
+            : 1U;
+        if (wait_ms > L1_HEARTBEAT_INTERVAL_MS) {
+            wait_ms = L1_HEARTBEAT_INTERVAL_MS;
+        }
+        if (l1_net_set_receive_timeout(socket, (uint32_t)wait_ms) != 0) {
+            fprintf(stderr,
+                    "[L1] Failed to set receive timeout: %s\n",
+                    l1_net_last_error_message());
+            break;
+        }
+
+        received = l1_net_receive(socket,
+                                  receive_buffer,
+                                  sizeof(receive_buffer));
+        if (received == L1_NET_RECEIVE_TIMEOUT) {
+            continue;
+        }
+        if (received == L1_NET_RECEIVE_ERROR) {
             fprintf(stderr,
                     "[L1] Receive failed: %s\n",
                     l1_net_last_error_message());
@@ -273,7 +270,6 @@ int l1_client_run(const L1DeviceConfig *device,
         }
         if (received == 0) {
             printf("[L1] L2 closed the connection.\n");
-            exit_code = 0;
             break;
         }
 
@@ -288,13 +284,75 @@ int l1_client_run(const L1DeviceConfig *device,
 
     if (session.line_length > 0) {
         fprintf(stderr,
-                "[L1] Discarded %u bytes without LF at connection close.\n",
-                (unsigned int)session.line_length);
+                 "[L1] Discarded %u bytes without LF at connection close.\n",
+                 (unsigned int)session.line_length);
+    }
+}
+
+int l1_client_run(const L1DeviceConfig *device,
+                  const char *server_address,
+                  uint16_t server_port)
+{
+    char hello[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
+    char heartbeat[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
+    size_t hello_length = 0;
+    size_t heartbeat_length = 0;
+    L1ProtocolResult protocol_result;
+
+    if (device == NULL || server_address == NULL || server_port == 0) {
+        return -1;
     }
 
-cleanup:
-    l1_net_close(socket);
-    return exit_code;
+    protocol_result = l1_protocol_build_hello(hello,
+                                              sizeof(hello),
+                                              device->machine_id,
+                                              &hello_length);
+    if (protocol_result != L1_PROTOCOL_OK) {
+        fprintf(stderr,
+                "[L1] Failed to build HELLO: %s\n",
+                l1_protocol_result_name(protocol_result));
+        return -1;
+    }
+    protocol_result = l1_protocol_build_heartbeat(heartbeat,
+                                                  sizeof(heartbeat),
+                                                  device->machine_id,
+                                                  &heartbeat_length);
+    if (protocol_result != L1_PROTOCOL_OK) {
+        fprintf(stderr,
+                "[L1] Failed to build HEARTBEAT: %s\n",
+                l1_protocol_result_name(protocol_result));
+        return -1;
+    }
+
+    for (;;) {
+        L1Socket socket;
+
+        printf("[L1] Connecting to %s:%u...\n",
+               server_address,
+               (unsigned int)server_port);
+        socket = l1_net_connect(server_address, server_port);
+        if (socket == L1_INVALID_SOCKET) {
+            fprintf(stderr,
+                    "[L1] Connection failed: %s\n",
+                    l1_net_last_error_message());
+        } else {
+            printf("[L1] Connected. machine=%s process=%s\n",
+                   device->machine_id,
+                   device->process_code);
+            if (send_protocol_message(socket, hello, hello_length) == 0) {
+                run_connected_session(socket,
+                                      device,
+                                      heartbeat,
+                                      heartbeat_length);
+            }
+            l1_net_close(socket);
+        }
+
+        printf("[L1] Reconnecting in %u seconds.\n",
+               (unsigned int)(L1_RECONNECT_DELAY_MS / 1000U));
+        fflush(stdout);
+        l1_net_sleep_milliseconds(L1_RECONNECT_DELAY_MS);
+    }
 }
 
 const char *l1_client_feed_result_name(L1ClientFeedResult result)
