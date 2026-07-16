@@ -28,6 +28,7 @@ public class MachineService {
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final ProcessRepository processRepository;
     private final LotRepository lotRepository;
+    private final WorkCommandService workCommandService;
 
     @Transactional
     public MachineResponseDto createMachine(MachineRequestDto dto) {
@@ -92,6 +93,11 @@ public class MachineService {
                         .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
 
         machine.setStatus(status);
+        if (status == Machine.Status.RUNNING && lot != null && process != null
+                && lot.getStatus() == Lot.Status.HOLD
+                && workCommandService.completeResumeCommand(lot, process, machine)) {
+            lot.setStatus(Lot.Status.RUNNING);
+        }
         MachineStatusHistory history = MachineStatusHistory.builder()
                 .machine(machine)
                 .status(status)

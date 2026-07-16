@@ -21,6 +21,17 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
     @Query("select c from WorkCommand c where c.status = :status order by c.createdAt asc, c.commandId asc")
     List<WorkCommand> findByStatusForUpdate(@Param("status") WorkCommand.Status status);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.machine.machineId = :machineId "
+            + "and c.status in :statuses order by c.createdAt desc, c.commandId desc")
+    List<WorkCommand> findByMachineAndStatusInForUpdate(
+            @Param("machineId") String machineId,
+            @Param("statuses") Collection<WorkCommand.Status> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<WorkCommand> findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
+            String machineId, WorkCommand.Status status);
+
     boolean existsByMachine_MachineIdAndStatusIn(
             String machineId, Collection<WorkCommand.Status> statuses);
 

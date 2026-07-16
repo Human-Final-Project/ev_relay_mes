@@ -33,6 +33,7 @@ public class MachineAlarmService {
     private final AlarmCodeRepository alarmCodeRepository;
     private final MemberRepository memberRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
+    private final WorkCommandService workCommandService;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
@@ -55,8 +56,11 @@ public class MachineAlarmService {
                 .message(dto.getMessage())
                 .build();
         MachineAlarmHistory savedHistory = machineAlarmHistoryRepository.save(history);
-        if ("ERROR".equals(alarmLevel) && machine.getStatus() != Machine.Status.ERROR) {
-            changeMachineStatus(machine, Machine.Status.ERROR, "ERROR 알람 발생: " + alarmCode.getAlarmCode());
+        if ("ERROR".equals(alarmLevel)) {
+            if (machine.getStatus() != Machine.Status.ERROR) {
+                changeMachineStatus(machine, Machine.Status.ERROR, "ERROR 알람 발생: " + alarmCode.getAlarmCode());
+            }
+            workCommandService.pauseForMachineError(machine.getMachineId());
         }
         return toResponse(savedHistory);
     }
@@ -87,7 +91,7 @@ public class MachineAlarmService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
         history.setClearedAt(LocalDateTime.now());
         history.setClearedBy(member);
-        restoreMachineIfNoErrorAlarm(history);
+        requestResumeIfNoErrorAlarm(history);
         return toResponse(history);
     }
 
@@ -105,7 +109,7 @@ public class MachineAlarmService {
         }
     }
 
-    private void restoreMachineIfNoErrorAlarm(MachineAlarmHistory clearedHistory) {
+    private void requestResumeIfNoErrorAlarm(MachineAlarmHistory clearedHistory) {
         if (!"ERROR".equalsIgnoreCase(clearedHistory.getAlarmLevel())) {
             return;
         }
@@ -114,7 +118,7 @@ public class MachineAlarmService {
                 .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
                         machine.getMachineId(), "ERROR", clearedHistory.getMachineAlarmHistoryId());
         if (!anotherErrorExists && machine.getStatus() == Machine.Status.ERROR) {
-            changeMachineStatus(machine, Machine.Status.IDLE, "ERROR 알람 해제");
+            workCommandService.createResumeCommand(machine.getMachineId());
         }
     }
 
