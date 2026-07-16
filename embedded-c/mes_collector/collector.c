@@ -13,6 +13,8 @@ typedef struct {
     CollectorConnectionRegistry *registry;
     CollectorConnection *connection;
     int close_requested;
+    int machine_registered;
+    uint64_t last_message_at;
 } CollectorWorkerContext;
 
 static CollectorConnectionRegistry connection_registry;
@@ -253,6 +255,50 @@ CollectorSendResult collector_send_command_to_machine(
     return COLLECTOR_SEND_OK;
 }
 
+int collector_build_communication_failure_events(
+    const char *machine_id,
+    CollectorCommunicationFailure failure,
+    ProtocolMessage *alarm,
+    ProtocolMessage *machine_status)
+{
+    const char *alarm_code;
+    const char *alarm_message;
+    const char *status_message;
+
+    if (machine_id == NULL || machine_id[0] == '\0'
+        || strlen(machine_id) >= PROTOCOL_MACHINE_ID_CAPACITY
+        || alarm == NULL || machine_status == NULL
+        || (failure != COLLECTOR_COMM_DISCONNECTED
+            && failure != COLLECTOR_COMM_TIMEOUT)) {
+        return -1;
+    }
+    if (failure == COLLECTOR_COMM_TIMEOUT) {
+        alarm_code = "COMM_TIMEOUT";
+        alarm_message = "l1_communication_timeout";
+        status_message = "communication_timeout";
+    } else {
+        alarm_code = "COMM_DISCONNECTED";
+        alarm_message = "l1_connection_disconnected";
+        status_message = "communication_disconnected";
+    }
+
+    memset(alarm, 0, sizeof(*alarm));
+    alarm->type = PROTOCOL_EVENT_ALARM;
+    strcpy(alarm->data.alarm.machine_id, machine_id);
+    strcpy(alarm->data.alarm.alarm_code, alarm_code);
+    strcpy(alarm->data.alarm.alarm_level, "ERROR");
+    strcpy(alarm->data.alarm.message, alarm_message);
+
+    memset(machine_status, 0, sizeof(*machine_status));
+    machine_status->type = PROTOCOL_EVENT_MACHINE_STATUS;
+    strcpy(machine_status->data.machine_status.machine_id, machine_id);
+    strcpy(machine_status->data.machine_status.status, "ERROR");
+    strcpy(machine_status->data.machine_status.lot_no, "-");
+    strcpy(machine_status->data.machine_status.process_code, "-");
+    strcpy(machine_status->data.machine_status.message, status_message);
+    return 0;
+}
+
 static const char *session_error_name(CollectorSessionError error)
 {
     switch (error) {
@@ -268,6 +314,27 @@ static const char *session_error_name(CollectorSessionError error)
         return "MESSAGE_TOO_LONG";
     default:
         return "UNKNOWN";
+    }
+}
+
+static void send_backend_event(const ProtocolMessage *message)
+{
+    ApiClientResult api_result;
+    int http_status = 0;
+
+    api_result = api_client_send_event(message, &http_status);
+    if (api_result == API_CLIENT_OK) {
+        printf("[L2 -> Backend] event=%s status=%d\n",
+               protocol_event_type_name(message->type),
+               http_status);
+    } else if (api_result != API_CLIENT_SKIPPED) {
+        fprintf(stderr,
+                "[L2 -> Backend] event=%s failed=%s status=%d retry=%d\n",
+                protocol_event_type_name(message->type),
+                api_client_result_name(api_result),
+                http_status,
+                MES_HTTP_MAX_RETRIES);
+        fflush(stderr);
     }
 }
 
@@ -307,28 +374,43 @@ static void log_received_message(const ProtocolMessage *message, void *context)
                (unsigned int)connection_registry_registered_count(
                    worker->registry),
                COLLECTOR_MAX_L1_CONNECTIONS);
+        worker->machine_registered = 1;
+        worker->last_message_at = net_monotonic_milliseconds();
     } else if (!worker->close_requested) {
-        ApiClientResult api_result;
-        int http_status = 0;
-
+        worker->last_message_at = net_monotonic_milliseconds();
         printf("[L1 -> L2] event=%s machine=%s\n",
                protocol_event_type_name(message->type),
                machine_id != NULL ? machine_id : "-");
-        api_result = api_client_send_event(message, &http_status);
-        if (api_result == API_CLIENT_OK) {
-            printf("[L2 -> Backend] event=%s status=%d\n",
-                   protocol_event_type_name(message->type),
-                   http_status);
-        } else if (api_result != API_CLIENT_SKIPPED) {
-            fprintf(stderr,
-                    "[L2 -> Backend] event=%s failed=%s status=%d retry=0\n",
-                    protocol_event_type_name(message->type),
-                    api_client_result_name(api_result),
-                    http_status);
-            fflush(stderr);
-        }
+        send_backend_event(message);
     }
     fflush(stdout);
+}
+
+static void report_communication_failure(
+    const CollectorWorkerContext *worker,
+    const CollectorSession *session,
+    CollectorCommunicationFailure failure)
+{
+    ProtocolMessage alarm;
+    ProtocolMessage machine_status;
+
+    if (!worker->machine_registered
+        || collector_build_communication_failure_events(
+               session->machine_id,
+               failure,
+               &alarm,
+               &machine_status) != 0) {
+        return;
+    }
+    fprintf(stderr,
+            "[L2] communication failure: machine=%s alarm=%s\n",
+            session->machine_id,
+            alarm.data.alarm.alarm_code);
+    fflush(stderr);
+
+    /* The alarm must reach Backend before its ERROR status event. */
+    send_backend_event(&alarm);
+    send_backend_event(&machine_status);
 }
 
 static void log_session_error(CollectorSessionError error,
@@ -361,7 +443,7 @@ static void handle_client_worker(void *context)
     CollectorConnection *connection = worker->connection;
     NetSocket client_socket = collector_connection_socket(connection);
     uint64_t connected_at;
-    int blocking_mode_restored = 0;
+    int communication_failure = -1;
 
     collector_session_init(&session);
     handlers.on_message = log_received_message;
@@ -399,38 +481,69 @@ static void handle_client_worker(void *context)
                 fflush(stderr);
                 break;
             }
-        } else if (!blocking_mode_restored) {
-            if (net_set_receive_timeout(client_socket, 0) != 0) {
+        } else {
+            uint64_t now = net_monotonic_milliseconds();
+            uint64_t elapsed = now >= worker->last_message_at
+                ? now - worker->last_message_at
+                : 0;
+            uint64_t timeout_ms =
+                (uint64_t)COLLECTOR_COMM_TIMEOUT_SECONDS * 1000U;
+
+            if (elapsed >= timeout_ms) {
+                communication_failure = COLLECTOR_COMM_TIMEOUT;
+                break;
+            }
+            if (net_set_receive_timeout(
+                    client_socket,
+                    (uint32_t)(timeout_ms - elapsed)) != 0) {
                 fprintf(stderr,
-                        "[L2] Failed to restore blocking mode: %s\n",
+                        "[L2] Failed to set communication timeout: %s\n",
                         net_last_error_message());
                 fflush(stderr);
                 break;
             }
-            blocking_mode_restored = 1;
         }
 
         received = net_receive(client_socket,
                                receive_buffer,
                                sizeof(receive_buffer));
         if (received == NET_RECEIVE_TIMEOUT) {
-            fprintf(stderr,
-                    "[L2] HELLO timeout after %d seconds.\n",
-                    COLLECTOR_HELLO_TIMEOUT_SECONDS);
-            fflush(stderr);
-            break;
+            if (!session.hello_received) {
+                fprintf(stderr,
+                        "[L2] HELLO timeout after %d seconds.\n",
+                        COLLECTOR_HELLO_TIMEOUT_SECONDS);
+                fflush(stderr);
+                break;
+            }
+            {
+                uint64_t now = net_monotonic_milliseconds();
+                uint64_t elapsed = now >= worker->last_message_at
+                    ? now - worker->last_message_at
+                    : 0;
+
+                if (elapsed
+                    >= (uint64_t)COLLECTOR_COMM_TIMEOUT_SECONDS * 1000U) {
+                    communication_failure = COLLECTOR_COMM_TIMEOUT;
+                    break;
+                }
+            }
+            continue;
         }
         if (received == NET_RECEIVE_ERROR) {
             fprintf(stderr,
                     "[L2] Receive failed: %s\n",
                     net_last_error_message());
             fflush(stderr);
+            if (worker->machine_registered) {
+                communication_failure = COLLECTOR_COMM_DISCONNECTED;
+            }
             break;
         }
         if (received == 0) {
             if (session.hello_received) {
                 printf("[L2] L1 disconnected: machine=%s\n",
                        session.machine_id);
+                communication_failure = COLLECTOR_COMM_DISCONNECTED;
             } else {
                 printf("[L2] Unregistered L1 disconnected.\n");
             }
@@ -450,6 +563,13 @@ static void handle_client_worker(void *context)
         if (worker->close_requested) {
             break;
         }
+    }
+
+    if (communication_failure >= 0) {
+        report_communication_failure(
+            worker,
+            &session,
+            (CollectorCommunicationFailure)communication_failure);
     }
 
     if (session.line_length > 0) {
