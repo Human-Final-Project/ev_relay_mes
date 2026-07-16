@@ -26,6 +26,11 @@ NetSocket net_tcp_server_create(const char *bind_address,
                                 uint16_t port,
                                 int backlog);
 
+/* Connects to one numeric IPv4 address within the supplied timeout. */
+NetSocket net_tcp_client_connect(const char *server_address,
+                                 uint16_t port,
+                                 uint32_t timeout_ms);
+
 /* Accepts one client and optionally returns its printable address and port. */
 NetSocket net_accept_client(NetSocket server_socket,
                             char *peer_address,
@@ -40,6 +45,7 @@ int net_send_all(NetSocket socket, const void *buffer, size_t length);
 
 /* Sets the receive timeout. Zero restores blocking mode. */
 int net_set_receive_timeout(NetSocket socket, uint32_t timeout_ms);
+int net_set_send_timeout(NetSocket socket, uint32_t timeout_ms);
 
 void net_socket_close(NetSocket socket);
 const char *net_last_error_message(void);

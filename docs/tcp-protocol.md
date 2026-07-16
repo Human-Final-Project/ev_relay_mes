@@ -431,6 +431,7 @@ REST API 경로는 `/api/collector` 아래에서 이벤트별로 분리한다.
 | `DEFECT`         | 발생 시      | 제품 불량 상세 저장                       |
 | `ALARM`          | 발생 시      | 설비 알람 상세 저장                       |
 | `MACHINE_STATUS` | 상태 변경 시 | 설비 현재 상태와 상태 이력 저장           |
+| `COMMAND_ACK`    | 응답 시      | Backend 작업명령 상태 갱신                 |
 
 최종 완제품 수량은 OP80 `PRODUCTION`의 `okQty`를 사용한다. L2는 최종 수량을 계산하지 않으며 Backend가 LOT에 반영한다.
 
@@ -484,6 +485,13 @@ L2가 직접 생성하는 통신 끊김 알람 JSON 예시:
   "message": "L1 connection disconnected"
 }
 ```
+
+L2와 현재 Backend DTO 사이의 값 변환 규칙:
+
+- TCP 선택 필드의 `-`는 JSON `null`로 변환한다.
+- TCP `ALARM_LEVEL`의 `WARNING`은 Backend DTO의 `WARN`으로 변환한다.
+- 현재 Backend `ProductionResultReceiveRequestDto`는 생산 상태로 `RUNNING`, `COMPLETED`만 허용한다. TCP 명세의 `FAILED`를 실제로 사용하려면 Backend 상태 계약을 먼저 수정해야 한다. 계약 수정 전 `FAILED`를 전송하면 HTTP 400으로 처리한다.
+- Backend 개발 서버 포트는 `backend/src/main/resources/application.properties` 기준 `8111`을 사용한다.
 
 - `Content-Type`은 `application/json; charset=UTF-8`을 사용한다.
 - HTTP 2xx는 성공으로 처리한다.
