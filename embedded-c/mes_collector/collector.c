@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "api_client.h"
 #include "connection_registry.h"
 #include "thread_compat.h"
 
@@ -307,9 +308,25 @@ static void log_received_message(const ProtocolMessage *message, void *context)
                    worker->registry),
                COLLECTOR_MAX_L1_CONNECTIONS);
     } else if (!worker->close_requested) {
+        ApiClientResult api_result;
+        int http_status = 0;
+
         printf("[L1 -> L2] event=%s machine=%s\n",
                protocol_event_type_name(message->type),
                machine_id != NULL ? machine_id : "-");
+        api_result = api_client_send_event(message, &http_status);
+        if (api_result == API_CLIENT_OK) {
+            printf("[L2 -> Backend] event=%s status=%d\n",
+                   protocol_event_type_name(message->type),
+                   http_status);
+        } else if (api_result != API_CLIENT_SKIPPED) {
+            fprintf(stderr,
+                    "[L2 -> Backend] event=%s failed=%s status=%d retry=0\n",
+                    protocol_event_type_name(message->type),
+                    api_client_result_name(api_result),
+                    http_status);
+            fflush(stderr);
+        }
     }
     fflush(stdout);
 }

@@ -13,6 +13,7 @@
 
 #ifndef _WIN32
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <time.h>
@@ -30,12 +31,53 @@ static int net_last_error_code(void)
 #endif
 }
 
+static void net_set_last_error_code(int error_code)
+{
+#ifdef _WIN32
+    WSASetLastError(error_code);
+#else
+    errno = error_code;
+#endif
+}
+
 static int net_error_is_timeout(int error_code)
 {
 #ifdef _WIN32
     return error_code == WSAETIMEDOUT || error_code == WSAEWOULDBLOCK;
 #else
     return error_code == EAGAIN || error_code == EWOULDBLOCK;
+#endif
+}
+
+static int net_error_is_connect_pending(int error_code)
+{
+#ifdef _WIN32
+    return error_code == WSAEINPROGRESS
+        || error_code == WSAEWOULDBLOCK
+        || error_code == WSAEINVAL;
+#else
+    return error_code == EINPROGRESS;
+#endif
+}
+
+static int net_set_blocking(NetSocket socket_handle, int blocking)
+{
+#ifdef _WIN32
+    u_long mode = blocking ? 0UL : 1UL;
+
+    return ioctlsocket(socket_handle, FIONBIO, &mode) == 0 ? 0 : -1;
+#else
+    int flags = fcntl(socket_handle, F_GETFL, 0);
+
+    if (flags < 0) {
+        return -1;
+    }
+    if (blocking) {
+        flags &= ~O_NONBLOCK;
+    } else {
+        flags |= O_NONBLOCK;
+    }
+    return fcntl(socket_handle, F_SETFL, flags) == 0 ? 0 : -1;
 #endif
 }
 
@@ -127,6 +169,116 @@ NetSocket net_tcp_server_create(const char *bind_address,
         return NET_INVALID_SOCKET;
     }
     return server_socket;
+}
+
+NetSocket net_tcp_client_connect(const char *server_address,
+                                 uint16_t port,
+                                 uint32_t timeout_ms)
+{
+    NetSocket client_socket;
+    struct sockaddr_in address;
+    int connect_result;
+    int error_code;
+
+    if (server_address == NULL || port == 0 || timeout_ms == 0) {
+        return NET_INVALID_SOCKET;
+    }
+    client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (client_socket == NET_INVALID_SOCKET) {
+        return NET_INVALID_SOCKET;
+    }
+
+    memset(&address, 0, sizeof(address));
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+#ifdef _WIN32
+    address.sin_addr.s_addr = inet_addr(server_address);
+    if (address.sin_addr.s_addr == INADDR_NONE
+        && strcmp(server_address, "255.255.255.255") != 0) {
+        net_socket_close(client_socket);
+        WSASetLastError(WSAEINVAL);
+        return NET_INVALID_SOCKET;
+    }
+#else
+    if (inet_pton(AF_INET, server_address, &address.sin_addr) != 1) {
+        net_socket_close(client_socket);
+        errno = EINVAL;
+        return NET_INVALID_SOCKET;
+    }
+#endif
+
+    if (net_set_blocking(client_socket, 0) != 0) {
+        error_code = net_last_error_code();
+        net_socket_close(client_socket);
+        net_set_last_error_code(error_code);
+        return NET_INVALID_SOCKET;
+    }
+    connect_result = connect(client_socket,
+                             (const struct sockaddr *)&address,
+                             (int)sizeof(address));
+    if (connect_result != 0) {
+        fd_set write_set;
+        struct timeval timeout;
+        int selected;
+        int socket_error = 0;
+#ifdef _WIN32
+        int socket_error_length = (int)sizeof(socket_error);
+#else
+        socklen_t socket_error_length = (socklen_t)sizeof(socket_error);
+#endif
+
+        error_code = net_last_error_code();
+        if (!net_error_is_connect_pending(error_code)) {
+            net_socket_close(client_socket);
+            net_set_last_error_code(error_code);
+            return NET_INVALID_SOCKET;
+        }
+
+        FD_ZERO(&write_set);
+        FD_SET(client_socket, &write_set);
+        timeout.tv_sec = (long)(timeout_ms / 1000U);
+        timeout.tv_usec = (long)((timeout_ms % 1000U) * 1000U);
+        selected = select((int)(client_socket + 1),
+                          NULL,
+                          &write_set,
+                          NULL,
+                          &timeout);
+        if (selected <= 0) {
+#ifdef _WIN32
+            error_code = selected == 0 ? WSAETIMEDOUT : net_last_error_code();
+#else
+            error_code = selected == 0 ? ETIMEDOUT : net_last_error_code();
+#endif
+            net_socket_close(client_socket);
+            net_set_last_error_code(error_code);
+            return NET_INVALID_SOCKET;
+        }
+        if (getsockopt(client_socket,
+                       SOL_SOCKET,
+                       SO_ERROR,
+#ifdef _WIN32
+                       (char *)&socket_error,
+#else
+                       &socket_error,
+#endif
+                       &socket_error_length) != 0
+            || socket_error != 0) {
+            error_code = socket_error != 0
+                ? socket_error
+                : net_last_error_code();
+            net_socket_close(client_socket);
+            net_set_last_error_code(error_code);
+            return NET_INVALID_SOCKET;
+        }
+    }
+
+    if (net_set_blocking(client_socket, 1) != 0) {
+        error_code = net_last_error_code();
+        net_socket_close(client_socket);
+        net_set_last_error_code(error_code);
+        return NET_INVALID_SOCKET;
+    }
+    return client_socket;
 }
 
 NetSocket net_accept_client(NetSocket server_socket,
@@ -250,6 +402,33 @@ int net_set_receive_timeout(NetSocket socket, uint32_t timeout_ms)
     return setsockopt(socket,
                       SOL_SOCKET,
                       SO_RCVTIMEO,
+                      &value,
+                      sizeof(value)) == 0
+        ? 0
+        : -1;
+#endif
+}
+
+int net_set_send_timeout(NetSocket socket, uint32_t timeout_ms)
+{
+#ifdef _WIN32
+    DWORD value = (DWORD)timeout_ms;
+
+    return setsockopt(socket,
+                      SOL_SOCKET,
+                      SO_SNDTIMEO,
+                      (const char *)&value,
+                      (int)sizeof(value)) == 0
+        ? 0
+        : -1;
+#else
+    struct timeval value;
+
+    value.tv_sec = (time_t)(timeout_ms / 1000U);
+    value.tv_usec = (suseconds_t)((timeout_ms % 1000U) * 1000U);
+    return setsockopt(socket,
+                      SOL_SOCKET,
+                      SO_SNDTIMEO,
                       &value,
                       sizeof(value)) == 0
         ? 0

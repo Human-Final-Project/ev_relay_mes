@@ -284,7 +284,7 @@ ProductionEventService 호출
 
 ```text
 React: 3000
-Spring REST API: 8080
+Spring REST API: 8111
 TCP Listener: 9000
 MySQL: 3306
 ```

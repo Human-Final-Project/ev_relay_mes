@@ -11,8 +11,10 @@
 #define COLLECTOR_COMM_TIMEOUT_SECONDS 15
 #define COLLECTOR_RECONNECT_DELAY_SECONDS 3
 
-/* L2 -> Backend HTTP settings. Paths are finalized with the Backend team later. */
-#define MES_BACKEND_BASE_URL "http://127.0.0.1:8080"
+/* L2 -> Backend HTTP settings (backend/application.properties). */
+#define MES_BACKEND_ADDRESS "127.0.0.1"
+#define MES_BACKEND_PORT 8111
+#define MES_BACKEND_BASE_URL "http://127.0.0.1:8111"
 #define MES_HTTP_CONNECT_TIMEOUT_SECONDS 3
 #define MES_HTTP_REQUEST_TIMEOUT_SECONDS 5
 #define MES_HTTP_MAX_RETRIES 0
