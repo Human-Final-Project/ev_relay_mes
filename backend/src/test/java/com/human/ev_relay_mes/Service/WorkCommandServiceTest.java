@@ -4,11 +4,13 @@ import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,7 +25,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class WorkCommandServiceTest {
@@ -34,6 +38,8 @@ class WorkCommandServiceTest {
     private MachineRepository machineRepository;
     @Mock
     private ProcessRepository processRepository;
+    @Mock
+    private ProductionLogRepository productionLogRepository;
 
     @InjectMocks
     private WorkCommandService workCommandService;
@@ -114,6 +120,70 @@ class WorkCommandServiceTest {
                 .isInstanceOf(CustomException.class)
                 .extracting(exception -> ((CustomException) exception).getErrorCode())
                 .isEqualTo(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
+    }
+
+    @Test
+    void cancelsRunningCommandAndHoldsLotWhenMachineErrors() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-001").status(Lot.Status.RUNNING).build();
+        WorkCommand command = command(101L, lot, machine, process);
+        command.setStatus(WorkCommand.Status.ACCEPTED);
+        when(workCommandRepository.findByMachineAndStatusInForUpdate(
+                eq("EQ-WIND-01"), anyCollection())).thenReturn(List.of(command));
+
+        workCommandService.pauseForMachineError("EQ-WIND-01");
+
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+        assertThat(command.getCompletedAt()).isNotNull();
+        assertThat(lot.getStatus()).isEqualTo(Lot.Status.HOLD);
+    }
+
+    @Test
+    void createsResumeCommandForRemainingQuantity() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        machine.setStatus(Machine.Status.ERROR);
+        Lot lot = Lot.builder().lotNo("LOT-001").status(Lot.Status.HOLD).build();
+        WorkCommand interrupted = command(101L, lot, machine, process);
+        interrupted.setStatus(WorkCommand.Status.CANCELED);
+        ProductionLog partial = ProductionLog.builder().inputQty(4).build();
+
+        when(workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
+                        "EQ-WIND-01", WorkCommand.Status.CANCELED))
+                .thenReturn(Optional.of(interrupted));
+        when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-001"))
+                .thenReturn(List.of(interrupted));
+        when(productionLogRepository.findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                "LOT-001", "OP20")).thenReturn(List.of(partial));
+        when(workCommandRepository.save(any(WorkCommand.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = workCommandService.createResumeCommand("EQ-WIND-01");
+
+        ArgumentCaptor<WorkCommand> captor = ArgumentCaptor.forClass(WorkCommand.class);
+        org.mockito.Mockito.verify(workCommandRepository).save(captor.capture());
+        assertThat(result).isPresent();
+        assertThat(captor.getValue().getCommandType()).isEqualTo(WorkCommand.CommandType.RESUME);
+        assertThat(captor.getValue().getInputQty()).isEqualTo(6);
+        assertThat(captor.getValue().getStatus()).isEqualTo(WorkCommand.Status.PENDING);
+    }
+
+    @Test
+    void dispatchesResumeCommandWhileMachineIsInError() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        machine.setStatus(Machine.Status.ERROR);
+        WorkCommand resume = command(201L, Lot.builder().lotNo("LOT-001").build(), machine, process);
+        resume.setCommandType(WorkCommand.CommandType.RESUME);
+        when(workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING))
+                .thenReturn(List.of(resume));
+
+        var claimed = workCommandService.claimPendingCommands();
+
+        assertThat(claimed).hasSize(1);
+        assertThat(resume.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
     }
 
     private Process process(String code, int order) {

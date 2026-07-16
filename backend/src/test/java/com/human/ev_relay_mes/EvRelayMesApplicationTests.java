@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes;
 
+import jakarta.servlet.http.Cookie;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -7,6 +8,9 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
+
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -36,6 +40,35 @@ class EvRelayMesApplicationTests {
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void exposesSwaggerUiAndOpenApiDocsWithoutAuthentication() throws Exception {
+		mockMvc.perform(get("/swagger-ui.html"))
+				.andExpect(status().is3xxRedirection());
+
+		mockMvc.perform(get("/swagger-ui/index.html"))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(get("/v3/api-docs"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.openapi").exists());
+	}
+
+	@Test
+	void acceptsCookieCsrfTokenSentBySwagger() throws Exception {
+		MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
+				.andExpect(status().isOk())
+				.andReturn();
+		Cookie csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
+		assertNotNull(csrfCookie);
+
+		mockMvc.perform(post("/api/auth/login")
+					.cookie(csrfCookie)
+					.header("X-XSRF-TOKEN", csrfCookie.getValue())
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"loginId\":\"unknown-user\",\"password\":\"wrong-password\"}"))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test

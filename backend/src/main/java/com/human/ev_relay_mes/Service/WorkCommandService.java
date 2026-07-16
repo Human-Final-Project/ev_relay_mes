@@ -10,6 +10,7 @@ import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -35,10 +37,14 @@ public class WorkCommandService {
     private static final EnumSet<WorkCommand.Status> MACHINE_RESERVED_STATUSES = EnumSet.of(
             WorkCommand.Status.DISPATCHED,
             WorkCommand.Status.ACCEPTED);
+    private static final EnumSet<WorkCommand.Status> INTERRUPTIBLE_STATUSES = EnumSet.of(
+            WorkCommand.Status.DISPATCHED,
+            WorkCommand.Status.ACCEPTED);
 
     private final WorkCommandRepository workCommandRepository;
     private final MachineRepository machineRepository;
     private final ProcessRepository processRepository;
+    private final ProductionLogRepository productionLogRepository;
 
     @Transactional
     public List<WorkCommandResponseDto> createInitialStartCommands(Lot lot) {
@@ -87,7 +93,7 @@ public class WorkCommandService {
         LocalDateTime now = LocalDateTime.now();
 
         return pending.stream()
-                .filter(command -> command.getMachine().getStatus() == Machine.Status.IDLE)
+                .filter(this::canDispatch)
                 .filter(command -> !workCommandRepository.existsByMachine_MachineIdAndStatusIn(
                         command.getMachine().getMachineId(), MACHINE_RESERVED_STATUSES))
                 .map(command -> {
@@ -96,6 +102,78 @@ public class WorkCommandService {
                     return WorkCommandResponseDto.fromEntity(command);
                 })
                 .toList();
+    }
+
+    @Transactional
+    public void pauseForMachineError(String machineId) {
+        LocalDateTime now = LocalDateTime.now();
+        workCommandRepository.findByMachineAndStatusInForUpdate(machineId, INTERRUPTIBLE_STATUSES)
+                .forEach(command -> {
+                    command.setStatus(WorkCommand.Status.CANCELED);
+                    command.setCompletedAt(now);
+                    Lot lot = command.getLot();
+                    if (lot.getStatus() == Lot.Status.RUNNING) {
+                        lot.setStatus(Lot.Status.HOLD);
+                    }
+                });
+    }
+
+    @Transactional
+    public Optional<WorkCommandResponseDto> createResumeCommand(String machineId) {
+        WorkCommand interrupted = workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
+                        machineId, WorkCommand.Status.CANCELED)
+                .orElse(null);
+        if (interrupted == null || interrupted.getLot().getStatus() != Lot.Status.HOLD) {
+            return Optional.empty();
+        }
+
+        Lot lot = interrupted.getLot();
+        Process process = interrupted.getProcess();
+        Machine machine = interrupted.getMachine();
+        if (workCommandRepository
+                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
+                        lot.getLotNo(), process.getProcessCode(),
+                        WorkCommand.CommandType.RESUME, ACTIVE_STATUSES)) {
+            throw new CustomException(ErrorCode.WORK_COMMAND_ALREADY_EXISTS);
+        }
+
+        int targetQty = originalTargetQty(interrupted);
+        int processedQty = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        lot.getLotNo(), process.getProcessCode())
+                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int remainingQty = targetQty - processedQty;
+        if (remainingQty <= 0) {
+            return Optional.empty();
+        }
+
+        WorkCommand resume = WorkCommand.builder()
+                .commandType(WorkCommand.CommandType.RESUME)
+                .machine(machine)
+                .process(process)
+                .lot(lot)
+                .inputQty(remainingQty)
+                .build();
+        return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(resume)));
+    }
+
+    @Transactional
+    public boolean completeResumeCommand(Lot lot, Process process, Machine machine) {
+        List<WorkCommand> commands = workCommandRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+                        lot.getLotNo(), process.getProcessCode(), machine.getMachineId(),
+                        WorkCommand.CommandType.RESUME,
+                        EnumSet.of(WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED));
+        if (commands.isEmpty()) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        commands.forEach(command -> {
+            command.setStatus(WorkCommand.Status.COMPLETED);
+            command.setCompletedAt(now);
+        });
+        return true;
     }
 
     @Transactional
@@ -132,6 +210,27 @@ public class WorkCommandService {
     public List<WorkCommandResponseDto> getCommands(String lotNo) {
         return workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo)
                 .stream().map(WorkCommandResponseDto::fromEntity).toList();
+    }
+
+    private boolean canDispatch(WorkCommand command) {
+        Machine.Status machineStatus = command.getMachine().getStatus();
+        if (command.getCommandType() == WorkCommand.CommandType.RESUME) {
+            return machineStatus == Machine.Status.ERROR || machineStatus == Machine.Status.STOPPED;
+        }
+        return machineStatus == Machine.Status.IDLE;
+    }
+
+    private int originalTargetQty(WorkCommand interrupted) {
+        return workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(interrupted.getLot().getLotNo())
+                .stream()
+                .filter(command -> command.getCommandType() == WorkCommand.CommandType.START)
+                .filter(command -> command.getProcess().getProcessCode()
+                        .equals(interrupted.getProcess().getProcessCode()))
+                .filter(command -> command.getMachine().getMachineId()
+                        .equals(interrupted.getMachine().getMachineId()))
+                .map(WorkCommand::getInputQty)
+                .findFirst()
+                .orElse(interrupted.getInputQty());
     }
 
     private Process activeProcess(String processCode) {
