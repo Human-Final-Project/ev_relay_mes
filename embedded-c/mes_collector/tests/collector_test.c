@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "api_client.h"
 #include "collector.h"
 
 typedef struct {
@@ -284,6 +285,86 @@ static void test_command_send_preconditions(void)
     CHECK(protocol_result == PROTOCOL_RESULT_OUT_OF_RANGE);
 }
 
+static void test_disconnected_events_are_built_in_backend_order(void)
+{
+    ProtocolMessage alarm;
+    ProtocolMessage status;
+    char path[API_CLIENT_PATH_CAPACITY];
+    char json[API_CLIENT_JSON_CAPACITY];
+
+    CHECK(collector_build_communication_failure_events(
+              "EQ-WIND-01",
+              COLLECTOR_COMM_DISCONNECTED,
+              &alarm,
+              &status) == 0);
+    CHECK(alarm.type == PROTOCOL_EVENT_ALARM);
+    CHECK(strcmp(alarm.data.alarm.machine_id, "EQ-WIND-01") == 0);
+    CHECK(strcmp(alarm.data.alarm.alarm_code,
+                 "COMM_DISCONNECTED") == 0);
+    CHECK(strcmp(alarm.data.alarm.alarm_level, "ERROR") == 0);
+    CHECK(status.type == PROTOCOL_EVENT_MACHINE_STATUS);
+    CHECK(strcmp(status.data.machine_status.status, "ERROR") == 0);
+    CHECK(strcmp(status.data.machine_status.lot_no, "-") == 0);
+    CHECK(strcmp(status.data.machine_status.process_code, "-") == 0);
+
+    CHECK(api_client_build_event_request(&alarm,
+                                         path,
+                                         sizeof(path),
+                                         json,
+                                         sizeof(json)) == API_CLIENT_OK);
+    CHECK(strcmp(path, "/api/collector/machine-alarms") == 0);
+    CHECK(strstr(json, "\"alarmCode\":\"COMM_DISCONNECTED\"")
+          != NULL);
+    CHECK(api_client_build_event_request(&status,
+                                         path,
+                                         sizeof(path),
+                                         json,
+                                         sizeof(json)) == API_CLIENT_OK);
+    CHECK(strcmp(path, "/api/collector/machine-statuses") == 0);
+    CHECK(strstr(json, "\"status\":\"ERROR\"") != NULL);
+    CHECK(strstr(json, "\"lotNo\":null") != NULL);
+    CHECK(strstr(json, "\"processCode\":null") != NULL);
+}
+
+static void test_timeout_events_use_timeout_alarm_only(void)
+{
+    ProtocolMessage alarm;
+    ProtocolMessage status;
+
+    CHECK(collector_build_communication_failure_events(
+              "EQ-TEST-01",
+              COLLECTOR_COMM_TIMEOUT,
+              &alarm,
+              &status) == 0);
+    CHECK(strcmp(alarm.data.alarm.alarm_code, "COMM_TIMEOUT") == 0);
+    CHECK(strcmp(alarm.data.alarm.message,
+                 "l1_communication_timeout") == 0);
+    CHECK(strcmp(status.data.machine_status.message,
+                 "communication_timeout") == 0);
+}
+
+static void test_communication_failure_arguments_are_validated(void)
+{
+    ProtocolMessage alarm;
+    ProtocolMessage status;
+
+    CHECK(collector_build_communication_failure_events(
+              NULL,
+              COLLECTOR_COMM_DISCONNECTED,
+              &alarm,
+              &status) != 0);
+    CHECK(collector_build_communication_failure_events(
+              "EQ-WIND-01",
+              (CollectorCommunicationFailure)99,
+              &alarm,
+              &status) != 0);
+    CHECK(collector_build_communication_failure_events(
+              "EQ-WIND-01",
+              COLLECTOR_COMM_TIMEOUT,
+              NULL,
+              &status) != 0);
+}
+
 int main(void)
 {
     test_fragmented_hello();
@@ -295,6 +376,9 @@ int main(void)
     test_duplicate_hello_is_discarded();
     test_oversized_message_is_discarded_until_lf();
     test_command_send_preconditions();
+    test_disconnected_events_are_built_in_backend_order();
+    test_timeout_events_use_timeout_alarm_only();
+    test_communication_failure_arguments_are_validated();
 
     if (tests_failed == 0) {
         printf("PASS: %d collector checks\n", tests_run);

@@ -516,7 +516,7 @@ L2가 직접 생성하는 통신 끊김 알람 JSON 예시:
   "machineId": "EQ-WIND-01",
   "alarmCode": "COMM_DISCONNECTED",
   "alarmLevel": "ERROR",
-  "message": "L1 connection disconnected"
+  "message": "l1_connection_disconnected"
 }
 ```
 
