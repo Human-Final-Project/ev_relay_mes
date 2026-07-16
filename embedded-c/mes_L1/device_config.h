@@ -6,6 +6,8 @@
 typedef struct {
     const char *machine_id;
     const char *process_code;
+    const char *error_alarm_code;
+    const char *error_message;
 } L1DeviceConfig;
 
 size_t l1_device_config_count(void);

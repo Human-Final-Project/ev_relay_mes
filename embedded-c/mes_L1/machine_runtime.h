@@ -1,0 +1,72 @@
+#ifndef EV_RELAY_L1_MACHINE_RUNTIME_H
+#define EV_RELAY_L1_MACHINE_RUNTIME_H
+
+#include <stddef.h>
+
+#include "device_config.h"
+#include "protocol.h"
+
+#define L1_RUNTIME_MAX_ACTIONS 4
+
+typedef enum {
+    L1_RUNTIME_IDLE = 0,
+    L1_RUNTIME_RUNNING,
+    L1_RUNTIME_ERROR_PAUSED,
+    L1_RUNTIME_STOPPED
+} L1RuntimeState;
+
+typedef enum {
+    L1_RUNTIME_ACTION_COMMAND_ACK = 0,
+    L1_RUNTIME_ACTION_PRODUCTION,
+    L1_RUNTIME_ACTION_ALARM,
+    L1_RUNTIME_ACTION_MACHINE_STATUS
+} L1RuntimeActionType;
+
+typedef struct {
+    L1RuntimeActionType type;
+    union {
+        L1CommandAckEvent command_ack;
+        L1ProductionEvent production;
+        L1AlarmEvent alarm;
+        L1MachineStatusEvent machine_status;
+    } data;
+} L1RuntimeAction;
+
+typedef struct {
+    L1RuntimeAction actions[L1_RUNTIME_MAX_ACTIONS];
+    size_t count;
+} L1RuntimeActions;
+
+typedef struct {
+    const L1DeviceConfig *device;
+    L1RuntimeState state;
+    char lot_no[L1_LOT_NO_CAPACITY];
+    int target_qty;
+    int processed_qty;
+    int reported_qty;
+    int error_after_qty;
+    int error_triggered;
+} L1MachineRuntime;
+
+void l1_machine_runtime_init(L1MachineRuntime *runtime,
+                             const L1DeviceConfig *device,
+                             int error_after_qty);
+
+/* Handles START, STOP or RESUME and returns ordered outbound actions. */
+int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
+                                      const L1Command *command,
+                                      L1RuntimeActions *out_actions);
+
+/* Processes one product while RUNNING and returns ordered outbound actions. */
+int l1_machine_runtime_tick(L1MachineRuntime *runtime,
+                            L1RuntimeActions *out_actions);
+
+/* Called only after a PRODUCTION action was successfully sent to L2. */
+int l1_machine_runtime_mark_reported(L1MachineRuntime *runtime,
+                                     int quantity);
+
+int l1_machine_runtime_remaining_qty(const L1MachineRuntime *runtime);
+int l1_machine_runtime_unreported_qty(const L1MachineRuntime *runtime);
+const char *l1_machine_runtime_state_name(L1RuntimeState state);
+
+#endif

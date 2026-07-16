@@ -3,12 +3,12 @@
 #include <string.h>
 
 static const L1DeviceConfig DEVICE_CONFIGS[] = {
-    {"EQ-WIND-01", "OP20"},
-    {"EQ-WELD-01", "OP30"},
-    {"EQ-ASSY-01", "OP40_OP50"},
-    {"EQ-SEAL-01", "OP60"},
-    {"EQ-TEST-01", "OP70"},
-    {"EQ-PACK-01", "OP80"}
+    {"EQ-WIND-01", "OP20", "WIRE_BREAK", "wire_break"},
+    {"EQ-WELD-01", "OP30", "WELD_POWER_ERROR", "weld_power_error"},
+    {"EQ-ASSY-01", "OP40_OP50", "ASSEMBLY_JAM", "assembly_jam"},
+    {"EQ-SEAL-01", "OP60", "CHAMBER_PRESSURE_ERROR", "chamber_pressure_error"},
+    {"EQ-TEST-01", "OP70", "TEST_PROBE_ERROR", "test_probe_error"},
+    {"EQ-PACK-01", "OP80", "LABEL_PRINTER_ERROR", "label_printer_error"}
 };
 
 size_t l1_device_config_count(void)

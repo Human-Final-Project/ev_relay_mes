@@ -4,11 +4,14 @@
 #include <string.h>
 
 #include "config.h"
+#include "machine_runtime.h"
 #include "net.h"
 
 typedef struct {
     L1Socket socket;
     const L1DeviceConfig *device;
+    L1MachineRuntime *machine;
+    uint64_t next_production_at;
     int send_failed;
 } RuntimeContext;
 
@@ -141,13 +144,81 @@ static int send_protocol_message(L1Socket socket,
     return 0;
 }
 
+static L1ProtocolResult build_runtime_action(
+    const L1RuntimeAction *action,
+    char *output,
+    size_t output_capacity,
+    size_t *output_length)
+{
+    switch (action->type) {
+    case L1_RUNTIME_ACTION_COMMAND_ACK:
+        return l1_protocol_build_command_ack(
+            output,
+            output_capacity,
+            &action->data.command_ack,
+            output_length);
+    case L1_RUNTIME_ACTION_PRODUCTION:
+        return l1_protocol_build_production(
+            output,
+            output_capacity,
+            &action->data.production,
+            output_length);
+    case L1_RUNTIME_ACTION_ALARM:
+        return l1_protocol_build_alarm(output,
+                                       output_capacity,
+                                       &action->data.alarm,
+                                       output_length);
+    case L1_RUNTIME_ACTION_MACHINE_STATUS:
+        return l1_protocol_build_machine_status(
+            output,
+            output_capacity,
+            &action->data.machine_status,
+            output_length);
+    default:
+        return L1_PROTOCOL_INVALID_VALUE;
+    }
+}
+
+static int execute_runtime_actions(RuntimeContext *runtime,
+                                   const L1RuntimeActions *actions)
+{
+    size_t index;
+
+    for (index = 0; index < actions->count; ++index) {
+        const L1RuntimeAction *action = &actions->actions[index];
+        char output[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
+        size_t output_length = 0;
+        L1ProtocolResult result = build_runtime_action(action,
+                                                       output,
+                                                       sizeof(output),
+                                                       &output_length);
+
+        if (result != L1_PROTOCOL_OK) {
+            fprintf(stderr,
+                    "[L1] Failed to build runtime event: %s\n",
+                    l1_protocol_result_name(result));
+            return -1;
+        }
+        if (send_protocol_message(runtime->socket,
+                                  output,
+                                  output_length) != 0) {
+            return -1;
+        }
+        if (action->type == L1_RUNTIME_ACTION_PRODUCTION
+            && l1_machine_runtime_mark_reported(
+                   runtime->machine,
+                   action->data.production.input_qty) != 0) {
+            fprintf(stderr, "[L1] Failed to update reported quantity.\n");
+            return -1;
+        }
+    }
+    return 0;
+}
+
 static void handle_runtime_command(const L1Command *command, void *context)
 {
     RuntimeContext *runtime = (RuntimeContext *)context;
-    L1CommandAckEvent ack;
-    char output[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
-    size_t output_length = 0;
-    L1ProtocolResult result;
+    L1RuntimeActions actions;
 
     printf("[L2 -> L1] COMMAND id=%lld type=%s machine=%s process=%s lot=%s inputQty=%d\n",
            (long long)command->command_id,
@@ -157,27 +228,20 @@ static void handle_runtime_command(const L1Command *command, void *context)
            command->lot_no,
            command->input_qty);
 
-    memset(&ack, 0, sizeof(ack));
-    strcpy(ack.machine_id, runtime->device->machine_id);
-    ack.command_id = command->command_id;
-    ack.status = L1_ACK_ACCEPTED;
-    strcpy(ack.message, "command_received");
-
-    result = l1_protocol_build_command_ack(output,
-                                           sizeof(output),
-                                           &ack,
-                                           &output_length);
-    if (result != L1_PROTOCOL_OK) {
-        fprintf(stderr,
-                "[L1] Failed to build COMMAND_ACK: %s\n",
-                l1_protocol_result_name(result));
+    if (l1_machine_runtime_handle_command(runtime->machine,
+                                          command,
+                                          &actions) != 0) {
+        fprintf(stderr, "[L1] Failed to handle COMMAND.\n");
         runtime->send_failed = 1;
         return;
     }
-    if (send_protocol_message(runtime->socket,
-                              output,
-                              output_length) != 0) {
+    if (execute_runtime_actions(runtime, &actions) != 0) {
         runtime->send_failed = 1;
+        return;
+    }
+    if (runtime->machine->state == L1_RUNTIME_RUNNING) {
+        runtime->next_production_at =
+            l1_net_monotonic_milliseconds() + L1_PRODUCTION_TICK_MS;
     }
 }
 
@@ -208,6 +272,7 @@ static void handle_runtime_error(L1ClientFeedResult error,
 
 static void run_connected_session(L1Socket socket,
                                   const L1DeviceConfig *device,
+                                  L1MachineRuntime *machine,
                                   const char *heartbeat,
                                   size_t heartbeat_length)
 {
@@ -222,6 +287,9 @@ static void run_connected_session(L1Socket socket,
     memset(&runtime, 0, sizeof(runtime));
     runtime.socket = socket;
     runtime.device = device;
+    runtime.machine = machine;
+    runtime.next_production_at =
+        l1_net_monotonic_milliseconds() + L1_PRODUCTION_TICK_MS;
     handlers.on_command = handle_runtime_command;
     handlers.on_error = handle_runtime_error;
     handlers.context = &runtime;
@@ -230,6 +298,20 @@ static void run_connected_session(L1Socket socket,
         uint64_t now = l1_net_monotonic_milliseconds();
         uint64_t wait_ms;
         int received;
+
+        if (machine->state == L1_RUNTIME_RUNNING
+            && now >= runtime.next_production_at) {
+            L1RuntimeActions actions;
+
+            if (l1_machine_runtime_tick(machine, &actions) != 0
+                || execute_runtime_actions(&runtime, &actions) != 0) {
+                runtime.send_failed = 1;
+                break;
+            }
+            runtime.next_production_at =
+                l1_net_monotonic_milliseconds() + L1_PRODUCTION_TICK_MS;
+            now = l1_net_monotonic_milliseconds();
+        }
 
         if (now >= next_heartbeat_at) {
             if (send_protocol_message(socket,
@@ -248,6 +330,15 @@ static void run_connected_session(L1Socket socket,
             : 1U;
         if (wait_ms > L1_HEARTBEAT_INTERVAL_MS) {
             wait_ms = L1_HEARTBEAT_INTERVAL_MS;
+        }
+        if (machine->state == L1_RUNTIME_RUNNING) {
+            uint64_t production_wait = runtime.next_production_at > now
+                ? runtime.next_production_at - now
+                : 1U;
+
+            if (production_wait < wait_ms) {
+                wait_ms = production_wait;
+            }
         }
         if (l1_net_set_receive_timeout(socket, (uint32_t)wait_ms) != 0) {
             fprintf(stderr,
@@ -291,17 +382,20 @@ static void run_connected_session(L1Socket socket,
 
 int l1_client_run(const L1DeviceConfig *device,
                   const char *server_address,
-                  uint16_t server_port)
+                  uint16_t server_port,
+                  int error_after_qty)
 {
     char hello[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
     char heartbeat[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
     size_t hello_length = 0;
     size_t heartbeat_length = 0;
     L1ProtocolResult protocol_result;
+    L1MachineRuntime machine;
 
     if (device == NULL || server_address == NULL || server_port == 0) {
         return -1;
     }
+    l1_machine_runtime_init(&machine, device, error_after_qty);
 
     protocol_result = l1_protocol_build_hello(hello,
                                               sizeof(hello),
@@ -342,6 +436,7 @@ int l1_client_run(const L1DeviceConfig *device,
             if (send_protocol_message(socket, hello, hello_length) == 0) {
                 run_connected_session(socket,
                                       device,
+                                      &machine,
                                       heartbeat,
                                       heartbeat_length);
             }

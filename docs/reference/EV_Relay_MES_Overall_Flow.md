@@ -108,10 +108,26 @@ Backend는 OP20과 OP30의 `START` 명령을 각각 생성하고 L2는 두 L1에
 MACHINE_STATUS RUNNING
 → 공정 수행
 → DEFECT (제품 불량이 있을 때만)
-→ ALARM (설비 이상이 있을 때만)
-→ PRODUCTION (공정 완료 요약, 항상)
+→ PRODUCTION(COMPLETED) (공정 완료 실적, 항상)
 → MACHINE_STATUS IDLE
 ```
+
+설비 오류가 발생하면 프로세스와 TCP 연결은 유지하고 생산만 중단한다.
+
+```text
+미전송 부분 PRODUCTION(RUNNING)
+→ ALARM(ERROR)
+→ MACHINE_STATUS ERROR
+→ 현재 LOT·공정·진행 수량 메모리 유지
+→ RESUME 대기
+→ COMMAND_ACK ACCEPTED
+→ MACHINE_STATUS RUNNING
+→ 남은 수량부터 재개
+→ 잔여 PRODUCTION(COMPLETED)
+→ MACHINE_STATUS IDLE
+```
+
+Backend는 부분 실적을 저장한 뒤 `최초 목표 수량 - 누적 처리 수량`으로 RESUME 수량을 계산한다. L1은 같은 LOT·공정과 정확한 남은 수량의 RESUME만 수락한다.
 
 L2 처리:
 
@@ -132,18 +148,19 @@ TCP 수신
 |---|---|---|
 | `HELLO` | 아니요 | L2 연결 식별에만 사용 |
 | `HEARTBEAT` | 아니요 | L2 Timeout 판정에만 사용 |
-| `PRODUCTION` | 예 | 공정 완료 시 LOT·공정별 생산 요약 저장 |
+| `PRODUCTION` | 예 | 정상 완료 실적 또는 오류·정지 시 부분 실적 저장 |
 | `DEFECT` | 발생 시 | 제품 불량 상세 저장 |
 | `ALARM` | 발생 시 | 설비 알람 상세 저장 |
 | `MACHINE_STATUS` | 상태 변경 시 | 현재 설비 상태 및 상태 이력 저장 |
 | 개발자용 로그 | 아니요 | L1/L2 터미널에만 출력 |
 
-### 4.1 공정별 생산 요약
+### 4.1 공정별 생산 실적
 
-MVP에서는 재작업과 공정 재실행을 제외하므로 LOT 한 개에 대해 공정별 생산 요약 한 건을 저장한다.
+정상 완료 공정은 LOT·공정별 `COMPLETED` 실적 한 건을 저장한다. 설비 오류나 정지가 발생한 공정은 중단 시점의 `RUNNING` 부분 실적과 재개 후 잔여 `COMPLETED` 실적을 각각 저장한다. Backend는 같은 LOT·공정의 여러 실적 행을 합산해 공정 누적 수량을 계산한다.
 
 ```text
-LOT 1개 × 6개 공정 = production_logs 6행
+정상 실행: LOT 1개 × 6개 공정 = production_logs 6행
+오류·정지 발생: 해당 공정에 부분 실적 행이 추가될 수 있음
 ```
 
 예시:

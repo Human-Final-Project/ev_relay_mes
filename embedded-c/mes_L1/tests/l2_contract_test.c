@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "../machine_runtime.h"
 #include "../protocol.h"
 #include "../../mes_collector/protocol.h"
 
@@ -78,6 +79,16 @@ static void test_l1_messages_are_accepted_by_l2(void)
                                        &length) == L1_PROTOCOL_OK);
     expect_l2_event(output, PROTOCOL_EVENT_PRODUCTION);
 
+    production.input_qty = 40;
+    production.ok_qty = 40;
+    production.ng_qty = 0;
+    production.status = L1_PRODUCTION_RUNNING;
+    CHECK(l1_protocol_build_production(output,
+                                       sizeof(output),
+                                       &production,
+                                       &length) == L1_PROTOCOL_OK);
+    expect_l2_event(output, PROTOCOL_EVENT_PRODUCTION);
+
     CHECK(l1_protocol_build_inspection(output,
                                        sizeof(output),
                                        &inspection,
@@ -137,10 +148,130 @@ static void test_l2_command_is_accepted_by_l1(void)
     CHECK(l1_command.input_qty == 50);
 }
 
+static L1ProtocolResult build_runtime_action(
+    const L1RuntimeAction *action,
+    char *output,
+    size_t output_capacity,
+    size_t *output_length)
+{
+    switch (action->type) {
+    case L1_RUNTIME_ACTION_COMMAND_ACK:
+        return l1_protocol_build_command_ack(output,
+                                             output_capacity,
+                                             &action->data.command_ack,
+                                             output_length);
+    case L1_RUNTIME_ACTION_PRODUCTION:
+        return l1_protocol_build_production(output,
+                                            output_capacity,
+                                            &action->data.production,
+                                            output_length);
+    case L1_RUNTIME_ACTION_ALARM:
+        return l1_protocol_build_alarm(output,
+                                       output_capacity,
+                                       &action->data.alarm,
+                                       output_length);
+    case L1_RUNTIME_ACTION_MACHINE_STATUS:
+        return l1_protocol_build_machine_status(
+            output,
+            output_capacity,
+            &action->data.machine_status,
+            output_length);
+    default:
+        return L1_PROTOCOL_INVALID_VALUE;
+    }
+}
+
+static ProtocolMessage parse_runtime_action(const L1RuntimeAction *action)
+{
+    char output[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
+    size_t length = 0;
+    ProtocolMessage message;
+
+    memset(&message, 0, sizeof(message));
+    CHECK(build_runtime_action(action,
+                               output,
+                               sizeof(output),
+                               &length) == L1_PROTOCOL_OK);
+    CHECK(protocol_parse_message(output, &message) == PROTOCOL_RESULT_OK);
+    return message;
+}
+
+static void test_error_resume_flow_is_accepted_by_l2(void)
+{
+    const L1DeviceConfig *device = l1_device_config_find("EQ-WIND-01");
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command command = {
+        301,
+        L1_COMMAND_START,
+        "EQ-WIND-01",
+        "OP20",
+        "EVR-LOT-003",
+        10
+    };
+    ProtocolMessage message;
+    int index;
+
+    CHECK(device != NULL);
+    l1_machine_runtime_init(&runtime, device, 4);
+    CHECK(l1_machine_runtime_handle_command(&runtime,
+                                             &command,
+                                             &actions) == 0);
+    CHECK(actions.count == 2);
+
+    for (index = 0; index < 4; ++index) {
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    }
+    CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
+    CHECK(actions.count == 3);
+
+    message = parse_runtime_action(&actions.actions[0]);
+    CHECK(message.type == PROTOCOL_EVENT_PRODUCTION);
+    CHECK(message.data.production.input_qty == 4);
+    CHECK(strcmp(message.data.production.status, "RUNNING") == 0);
+    CHECK(l1_machine_runtime_mark_reported(
+              &runtime,
+              actions.actions[0].data.production.input_qty) == 0);
+
+    message = parse_runtime_action(&actions.actions[1]);
+    CHECK(message.type == PROTOCOL_EVENT_ALARM);
+    CHECK(strcmp(message.data.alarm.alarm_code, "WIRE_BREAK") == 0);
+    CHECK(strcmp(message.data.alarm.alarm_level, "ERROR") == 0);
+
+    message = parse_runtime_action(&actions.actions[2]);
+    CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
+    CHECK(strcmp(message.data.machine_status.status, "ERROR") == 0);
+
+    command.command_id = 302;
+    command.type = L1_COMMAND_RESUME;
+    command.input_qty = 6;
+    CHECK(l1_machine_runtime_handle_command(&runtime,
+                                             &command,
+                                             &actions) == 0);
+    CHECK(actions.count == 2);
+    message = parse_runtime_action(&actions.actions[0]);
+    CHECK(message.type == PROTOCOL_EVENT_COMMAND_ACK);
+    CHECK(strcmp(message.data.command_ack.ack_status, "ACCEPTED") == 0);
+    message = parse_runtime_action(&actions.actions[1]);
+    CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
+    CHECK(strcmp(message.data.machine_status.status, "RUNNING") == 0);
+
+    for (index = 0; index < 6; ++index) {
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    }
+    CHECK(runtime.state == L1_RUNTIME_IDLE);
+    CHECK(actions.count == 2);
+    message = parse_runtime_action(&actions.actions[0]);
+    CHECK(message.type == PROTOCOL_EVENT_PRODUCTION);
+    CHECK(message.data.production.input_qty == 6);
+    CHECK(strcmp(message.data.production.status, "COMPLETED") == 0);
+}
+
 int main(void)
 {
     test_l1_messages_are_accepted_by_l2();
     test_l2_command_is_accepted_by_l1();
+    test_error_resume_flow_is_accepted_by_l2();
 
     if (tests_failed == 0) {
         printf("PASS: %d L1-L2 contract checks\n", tests_run);

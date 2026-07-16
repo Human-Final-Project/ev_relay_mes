@@ -413,7 +413,11 @@ static ProtocolResult parse_production(char **fields, ProtocolMessage *message)
         != (int64_t)event->ok_qty + (int64_t)event->ng_qty) {
         return PROTOCOL_RESULT_INVALID_VALUE;
     }
-    if (!string_is_one_of(fields[8], "COMPLETED", "FAILED", NULL, NULL)) {
+    if (!string_is_one_of(fields[8],
+                          "RUNNING",
+                          "COMPLETED",
+                          "FAILED",
+                          NULL)) {
         return PROTOCOL_RESULT_INVALID_VALUE;
     }
     if ((result = copy_field(event->machine_id, sizeof(event->machine_id), fields[2])) != PROTOCOL_RESULT_OK

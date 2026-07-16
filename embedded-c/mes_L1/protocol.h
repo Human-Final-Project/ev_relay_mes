@@ -45,6 +45,7 @@ typedef enum {
 
 typedef enum {
     L1_PRODUCTION_STATUS_UNKNOWN = 0,
+    L1_PRODUCTION_RUNNING,
     L1_PRODUCTION_COMPLETED,
     L1_PRODUCTION_FAILED
 } L1ProductionStatus;
