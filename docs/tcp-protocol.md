@@ -485,8 +485,6 @@ L2가 직접 생성하는 통신 끊김 알람 JSON 예시:
 }
 ```
 
-L2는 모든 Backend 요청에 `X-L2-API-Key` 헤더를 포함한다.
-
 - `Content-Type`은 `application/json; charset=UTF-8`을 사용한다.
 - HTTP 2xx는 성공으로 처리한다.
 - HTTP 4xx는 데이터 오류로 기록한다.

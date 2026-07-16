@@ -6,7 +6,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
-import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -16,7 +15,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
-@TestPropertySource(properties = "L2_API_KEY=test-l2-key")
 class EvRelayMesApplicationTests {
 
 	@Autowired
@@ -33,56 +31,11 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
-	void rejectsL2RequestWithoutApiKey() throws Exception {
+	void collectorApiDoesNotRequireApiKeyButStillValidatesRequestBody() throws Exception {
 		mockMvc.perform(post("/api/collector/production-logs")
 					.contentType(MediaType.APPLICATION_JSON)
-					.content("""
-							{
-							  "lotNo": "LOT-001",
-							  "machineId": "MC-001",
-							  "processCode": "OP10",
-							  "inputQty": 10,
-							  "okQty": 10,
-							  "ngQty": 0,
-							  "status": "COMPLETED"
-							}
-							"""))
-				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("M002"));
-	}
-
-	@Test
-	void rejectsL2DefectWithoutApiKey() throws Exception {
-		mockMvc.perform(post("/api/collector/defects")
-					.contentType(MediaType.APPLICATION_JSON)
-					.content("""
-							{
-							  "lotNo": "EVR-LOT-20260708-001",
-							  "machineId": "EQ-WELD-01",
-							  "processCode": "OP30",
-							  "defectCode": "WELD_STRENGTH_NG",
-							  "defectQty": 3,
-							  "message": "Weld strength below limit"
-							}
-							"""))
-				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("M002"));
-	}
-
-	@Test
-	void rejectsCollectorCommandAckWithoutApiKey() throws Exception {
-		mockMvc.perform(post("/api/collector/command-acks")
-					.contentType(MediaType.APPLICATION_JSON)
-					.content("""
-							{
-							  "machineId": "EQ-WIND-01",
-							  "commandId": 101,
-							  "ackStatus": "ACCEPTED",
-							  "message": null
-							}
-							"""))
-				.andExpect(status().isUnauthorized())
-				.andExpect(jsonPath("$.code").value("M002"));
+					.content("{}"))
+				.andExpect(status().isBadRequest());
 	}
 
 	@Test
