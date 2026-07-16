@@ -118,7 +118,6 @@ Backend가 업무 규칙상 같은 LOT·공정의 생산 요약을 중복 생성
 ### 아직 임시인 값
 
 - L2 TCP 포트 `9000`
-- Backend Collector API 경로와 JSON 필드명
 - Linux/Windows 최종 실행 환경
 - HTTP 최종 실패 데이터 보관 방식
 

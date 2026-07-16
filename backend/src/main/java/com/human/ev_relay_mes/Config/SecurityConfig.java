@@ -5,6 +5,7 @@ import com.human.ev_relay_mes.Security.RestAuthenticationEntryPoint;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -67,14 +68,51 @@ public class SecurityConfig {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf
-                        .csrfTokenRepository(csrfTokenRepository))
+                        .csrfTokenRepository(csrfTokenRepository)
+                        .ignoringRequestMatchers("/api/collector/**"))
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/api/collector/**", "/error").permitAll()
                         .requestMatchers("/api/members/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/machines/status")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/production-logs")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/quality/inspections", "/api/quality/defects", "/api/machines/alarms")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.PATCH, "/api/quality/defects/*/confirm")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.PATCH, "/api/machines/alarms/*/clear")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.GET,
+                                "/api/items/**", "/api/boms/**", "/api/processes/**",
+                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**",
+                                "/api/material-lots/**", "/api/work-orders/**", "/api/lots/**")
+                                .authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/production-logs/**")
+                                .authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/quality/**")
+                                .authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/mes/**")
+                                .authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/mes/order")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/mes/material/inbound")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(
+                                "/api/items/**", "/api/boms/**", "/api/processes/**",
+                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/material-lots/**")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers("/api/work-orders/**")
+                                .hasAnyRole("ADMIN", "MANAGER")
+                        .requestMatchers("/api/lots/**")
+                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
                         .anyRequest().authenticated())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)

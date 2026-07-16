@@ -1,6 +1,10 @@
 package com.human.ev_relay_mes.Repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
 
 import com.human.ev_relay_mes.Entity.Machine;
 
@@ -16,6 +20,11 @@ public interface MachineRepository extends JpaRepository<Machine, String> {
 
     // 작업지시나 생산 실적 처리 시 해당 공정을 수행할 설비를 찾을 때 사용한다.
     List<Machine> findByProcess_ProcessCodeOrderByMachineIdAsc(String processCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from Machine m where m.process.processCode = :processCode "
+            + "and upper(m.useYn) = 'Y' order by m.machineId asc")
+    List<Machine> findUsableByProcessForUpdate(@Param("processCode") String processCode);
 
     // 설비 유형별 현황 조회와 동일 유형 설비 비교 화면에서 사용한다.
     List<Machine> findByMachineTypeOrderByMachineIdAsc(String machineType);

@@ -23,4 +23,7 @@ public interface ProductionLogRepository extends JpaRepository<ProductionLog, Lo
 
     // 대시보드와 기간 검색에서 일별·주간 생산 실적을 집계할 때 사용한다.
     List<ProductionLog> findByCreatedAtBetweenOrderByCreatedAtDesc(LocalDateTime startAt, LocalDateTime endAt);
+
+    List<ProductionLog> findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+            String lotNo, String processCode);
 }

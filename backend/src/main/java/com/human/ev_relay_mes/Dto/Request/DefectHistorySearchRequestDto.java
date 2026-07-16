@@ -3,6 +3,7 @@ package com.human.ev_relay_mes.Dto.Request;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.format.annotation.DateTimeFormat;
 
 import java.time.LocalDateTime;
 
@@ -16,6 +17,8 @@ public class DefectHistorySearchRequestDto {
     private String processCode;
     private String defectCode;
     private Boolean confirmed;
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime startAt;
+    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime endAt;
 }

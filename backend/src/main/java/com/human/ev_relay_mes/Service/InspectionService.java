@@ -6,13 +6,15 @@ import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
 import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
+import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,28 +29,25 @@ public class InspectionService {
     private final InspectionRepository inspectionRepository;
     private final MachineRepository machineRepository;
     private final ProcessRepository processRepository;
-    private final EntityManager entityManager;
+    private final LotRepository lotRepository;
 
     // L2 수집기가 전달한 검사 측정값과 판정 결과를 검사 이력으로 저장할 때 사용한다.
     @Transactional
     public InspectionResponseDto saveResult(InspectionResultReceiveRequestDto dto) {
-        if (dto.getLowerLimit() != null && dto.getUpperLimit() != null
-                && dto.getLowerLimit().compareTo(dto.getUpperLimit()) > 0) {
-            throw new CustomException(ErrorCode.INVALID_INSPECTION_LIMIT);
-        }
-
-        Inspection.Result result;
-        try {
-            result = Inspection.Result.valueOf(dto.getResult().toUpperCase());
-        } catch (RuntimeException exception) {
-            throw new CustomException(ErrorCode.INVALID_INSPECTION_RESULT);
-        }
+        validateLimits(dto);
+        Inspection.Result result = parseResult(dto.getResult());
+        validateMeasuredResult(dto, result);
 
         Lot lot = findLot(dto.getLotNo());
+        if (lot.getStatus() == Lot.Status.SCRAPPED) {
+            throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
+                    "폐기된 LOT에는 검사결과를 등록할 수 없습니다.");
+        }
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        com.human.ev_relay_mes.Entity.Process process = processRepository.findById(dto.getProcessCode())
+        Process process = processRepository.findById(dto.getProcessCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        validateMachineAndProcess(machine, process);
         Inspection inspection = Inspection.builder()
                 .lot(lot)
                 .machine(machine)
@@ -65,7 +64,8 @@ public class InspectionService {
 
     // 검사 결과 화면에서 LOT·설비·공정·판정·기간 조건으로 검사 이력을 조회할 때 사용한다.
     public List<InspectionResponseDto> search(InspectionSearchRequestDto condition) {
-        return inspectionRepository.findAll().stream()
+        validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
+        return inspectionRepository.findAll(Sort.by(Sort.Direction.DESC, "inspectedAt")).stream()
                 .filter(item -> isBlank(condition.getLotNo()) || item.getLot().getLotNo().equals(condition.getLotNo()))
                 .filter(item -> isBlank(condition.getMachineId()) || item.getMachine().getMachineId().equals(condition.getMachineId()))
                 .filter(item -> isBlank(condition.getProcessCode()) || item.getProcess().getProcessCode().equals(condition.getProcessCode()))
@@ -77,11 +77,62 @@ public class InspectionService {
 
     // 검사 결과가 연결될 생산 LOT를 LOT 번호로 확인할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
-        return entityManager.createQuery("select l from Lot l where l.lotNo = :lotNo", Lot.class)
-                .setParameter("lotNo", lotNo)
-                .getResultStream()
-                .findFirst()
+        return lotRepository.findByLotNo(lotNo)
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+    }
+
+    private void validateLimits(InspectionResultReceiveRequestDto dto) {
+        if (dto.getLowerLimit() != null && dto.getUpperLimit() != null
+                && dto.getLowerLimit().compareTo(dto.getUpperLimit()) > 0) {
+            throw new CustomException(ErrorCode.INVALID_INSPECTION_LIMIT);
+        }
+        if (dto.getMeasuredValue() == null
+                && (dto.getLowerLimit() != null || dto.getUpperLimit() != null)) {
+            throw new CustomException(ErrorCode.INVALID_INSPECTION_VALUE,
+                    "검사 기준값이 있으면 측정값이 필요합니다.");
+        }
+    }
+
+    private Inspection.Result parseResult(String result) {
+        try {
+            return Inspection.Result.valueOf(result.toUpperCase());
+        } catch (RuntimeException exception) {
+            throw new CustomException(ErrorCode.INVALID_INSPECTION_RESULT);
+        }
+    }
+
+    private void validateMeasuredResult(
+            InspectionResultReceiveRequestDto dto, Inspection.Result result) {
+        if (dto.getMeasuredValue() == null) {
+            return;
+        }
+        boolean belowLower = dto.getLowerLimit() != null
+                && dto.getMeasuredValue().compareTo(dto.getLowerLimit()) < 0;
+        boolean aboveUpper = dto.getUpperLimit() != null
+                && dto.getMeasuredValue().compareTo(dto.getUpperLimit()) > 0;
+        Inspection.Result expected = belowLower || aboveUpper
+                ? Inspection.Result.NG : Inspection.Result.OK;
+        if ((dto.getLowerLimit() != null || dto.getUpperLimit() != null) && result != expected) {
+            throw new CustomException(ErrorCode.INVALID_INSPECTION_RESULT,
+                    "측정값과 검사 판정 결과가 일치하지 않습니다.");
+        }
+    }
+
+    private void validateMachineAndProcess(Machine machine, Process process) {
+        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
+            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
+        }
+        if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "설비에 지정된 공정과 검사 공정이 일치하지 않습니다.");
+        }
+    }
+
+    private void validateSearchPeriod(LocalDateTime start, LocalDateTime end) {
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "조회 종료 시각은 시작 시각보다 빠를 수 없습니다.");
+        }
     }
 
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.

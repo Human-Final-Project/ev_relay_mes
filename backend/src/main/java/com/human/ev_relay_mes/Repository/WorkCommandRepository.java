@@ -1,0 +1,44 @@
+package com.human.ev_relay_mes.Repository;
+
+import com.human.ev_relay_mes.Entity.WorkCommand;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
+
+public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> {
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.commandId = :id")
+    Optional<WorkCommand> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.status = :status order by c.createdAt asc, c.commandId asc")
+    List<WorkCommand> findByStatusForUpdate(@Param("status") WorkCommand.Status status);
+
+    boolean existsByMachine_MachineIdAndStatusIn(
+            String machineId, Collection<WorkCommand.Status> statuses);
+
+    long countByMachine_MachineIdAndStatusIn(
+            String machineId, Collection<WorkCommand.Status> statuses);
+
+    boolean existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
+            String lotNo,
+            String processCode,
+            WorkCommand.CommandType commandType,
+            Collection<WorkCommand.Status> statuses);
+
+    List<WorkCommand> findByLot_LotNoOrderByCreatedAtAsc(String lotNo);
+
+    List<WorkCommand> findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+            String lotNo,
+            String processCode,
+            String machineId,
+            WorkCommand.CommandType commandType,
+            Collection<WorkCommand.Status> statuses);
+}

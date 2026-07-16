@@ -130,6 +130,7 @@ Spring Boot JPA 기반 MES API 서버와 DB 저장 로직을 담당합니다. TC
 - 관리자 권한 처리
 - 제품 / BOM / 공정 / LOT REST API
 - L2 전용 Collector 요청 DTO / Controller / Service
+- Collector REST API 경로 `/api/collector/**`
 - L2가 전달한 JSON 검증 및 업무 처리
 - LOT 상태 자동 변경
 - 공정별 생산 요약 저장

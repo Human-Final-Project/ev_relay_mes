@@ -12,6 +12,7 @@ public class MaterialLotResponseDto {
     private Long materialLotId;
     private String materialLotNo;
     private String itemCode;
+    private String itemName;
     private Integer receivedQty;
     private Integer currentQty;
     private String status;
@@ -22,10 +23,11 @@ public class MaterialLotResponseDto {
                 .materialLotId(lot.getMaterialLotId())
                 .materialLotNo(lot.getMaterialLotNo())
                 .itemCode(lot.getItem().getItemCode())
+                .itemName(lot.getItem().getItemName())
                 .receivedQty(lot.getReceivedQty())
                 .currentQty(lot.getCurrentQty())
                 .status(lot.getStatus().name())
-                .receivedBy(lot.getReceivedBy().getMemberName())
+                .receivedBy(lot.getReceivedBy() == null ? null : lot.getReceivedBy().getMemberName())
                 .receivedAt(lot.getReceivedAt())
                 .build();
     }

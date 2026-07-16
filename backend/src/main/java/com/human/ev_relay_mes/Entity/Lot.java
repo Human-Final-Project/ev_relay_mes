@@ -56,6 +56,9 @@ public class Lot {
     @Column(name = "started_at")
     private LocalDateTime startedAt;
 
+    @Column(name = "start_requested_at")
+    private LocalDateTime startRequestedAt;
+
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 

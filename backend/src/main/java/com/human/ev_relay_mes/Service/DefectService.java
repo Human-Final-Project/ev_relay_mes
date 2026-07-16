@@ -8,15 +8,17 @@ import com.human.ev_relay_mes.Entity.DefectHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.DefectCodeRepository;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
+import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
-import jakarta.persistence.EntityManager;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,21 +35,28 @@ public class DefectService {
     private final MachineRepository machineRepository;
     private final ProcessRepository processRepository;
     private final MemberRepository memberRepository;
-    private final EntityManager entityManager;
+    private final LotRepository lotRepository;
 
     // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
     @Transactional
     public DefectHistoryResponseDto createDefect(DefectHistoryCreateRequestDto dto) {
-        Lot lot = findLot(dto.getLotNo());
+        Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
+                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        if (lot.getStatus() == Lot.Status.SCRAPPED) {
+            throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
+                    "폐기된 LOT에는 불량을 등록할 수 없습니다.");
+        }
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        com.human.ev_relay_mes.Entity.Process process = processRepository.findById(dto.getProcessCode())
+        Process process = processRepository.findById(dto.getProcessCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
         DefectCode defectCode = defectCodeRepository.findById(dto.getDefectCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.DEFECT_CODE_NOT_FOUND));
         if (!"Y".equalsIgnoreCase(defectCode.getUseYn())) {
             throw new CustomException(ErrorCode.DEFECT_CODE_NOT_USABLE);
         }
+        validateRelations(machine, process, defectCode);
+        validateDefectQuantity(lot, dto.getDefectQty());
 
         DefectHistory history = DefectHistory.builder()
                 .lot(lot)
@@ -62,7 +71,8 @@ public class DefectService {
 
     // 불량 관리 화면에서 LOT·설비·공정·불량 코드·확인 여부·기간 조건으로 이력을 조회할 때 사용한다.
     public List<DefectHistoryResponseDto> search(DefectHistorySearchRequestDto condition) {
-        return defectHistoryRepository.findAll().stream()
+        validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
+        return defectHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()
                 .filter(item -> isBlank(condition.getLotNo()) || item.getLot().getLotNo().equals(condition.getLotNo()))
                 .filter(item -> isBlank(condition.getMachineId()) || item.getMachine().getMachineId().equals(condition.getMachineId()))
                 .filter(item -> isBlank(condition.getProcessCode()) || item.getProcess().getProcessCode().equals(condition.getProcessCode()))
@@ -90,11 +100,42 @@ public class DefectService {
 
     // 불량 등록 요청의 LOT 번호가 실제 생산 LOT인지 확인할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
-        return entityManager.createQuery("select l from Lot l where l.lotNo = :lotNo", Lot.class)
-                .setParameter("lotNo", lotNo)
-                .getResultStream()
-                .findFirst()
+        return lotRepository.findByLotNo(lotNo)
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+    }
+
+    private void validateRelations(Machine machine, Process process, DefectCode defectCode) {
+        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
+            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
+        }
+        if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "설비에 지정된 공정과 불량 발생 공정이 일치하지 않습니다.");
+        }
+        if (!defectCode.getProcess().getProcessCode().equals(process.getProcessCode())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "불량 코드에 지정된 공정과 불량 발생 공정이 일치하지 않습니다.");
+        }
+    }
+
+    private void validateDefectQuantity(Lot lot, int newDefectQty) {
+        int registeredQty = defectHistoryRepository
+                .findByLot_LotNoOrderByOccurredAtDesc(lot.getLotNo()).stream()
+                .mapToInt(DefectHistory::getDefectQty)
+                .sum();
+        int maximumQty = lot.getStatus() == Lot.Status.COMPLETED
+                ? lot.getNgQty() : lot.getInputQty();
+        if (registeredQty + newDefectQty > maximumQty) {
+            throw new CustomException(ErrorCode.INVALID_DEFECT_QUANTITY,
+                    "등록된 불량수량 합계가 LOT의 허용 불량수량을 초과합니다.");
+        }
+    }
+
+    private void validateSearchPeriod(LocalDateTime start, LocalDateTime end) {
+        if (start != null && end != null && start.isAfter(end)) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "조회 종료 시각은 시작 시각보다 빠를 수 없습니다.");
+        }
     }
 
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.

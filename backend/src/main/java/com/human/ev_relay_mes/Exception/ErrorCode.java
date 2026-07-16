@@ -14,6 +14,8 @@ public enum ErrorCode {
     DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "C005", "이미 존재하는 리소스입니다."),
     INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "C999", "서버 내부 오류가 발생했습니다."),
 
+    RESOURCE_CONFLICT(HttpStatus.CONFLICT, "C006", "다른 데이터에서 사용 중이어서 처리할 수 없습니다."),
+
     // Auth / Member
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "M001", "아이디 또는 비밀번호가 올바르지 않습니다."),
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "M002", "인증이 필요합니다."),
@@ -115,13 +117,12 @@ public enum ErrorCode {
     MACHINE_STATUS_HISTORY_NOT_FOUND(HttpStatus.NOT_FOUND, "MS001", "설비 상태 이력을 찾을 수 없습니다."),
     INVALID_MACHINE_STATUS_HISTORY(HttpStatus.BAD_REQUEST, "MS002", "설비 상태 이력 값이 올바르지 않습니다."),
 
-    // TCP / message
-    TCP_CONNECTION_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "T001", "TCP 연결에 실패했습니다."),
-    TCP_MESSAGE_SEND_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "T002", "TCP 메시지 전송에 실패했습니다."),
-    TCP_MESSAGE_RECEIVE_FAILED(HttpStatus.SERVICE_UNAVAILABLE, "T003", "TCP 메시지 수신에 실패했습니다."),
-    INVALID_TCP_MESSAGE_FORMAT(HttpStatus.BAD_REQUEST, "T004", "TCP 메시지 형식이 올바르지 않습니다."),
-    UNSUPPORTED_TCP_MESSAGE_TYPE(HttpStatus.BAD_REQUEST, "T005", "지원하지 않는 TCP 메시지 유형입니다."),
-    REQUIRED_TCP_MESSAGE_FIELD_MISSING(HttpStatus.BAD_REQUEST, "T006", "TCP 메시지 필수 항목이 누락되었습니다.");
+    // Work command
+    WORK_COMMAND_NOT_FOUND(HttpStatus.NOT_FOUND, "WC001", "작업명령을 찾을 수 없습니다."),
+    WORK_COMMAND_ALREADY_EXISTS(HttpStatus.CONFLICT, "WC002", "동일 LOT와 공정의 진행 중인 작업명령이 이미 존재합니다."),
+    INVALID_WORK_COMMAND_STATUS(HttpStatus.CONFLICT, "WC003", "작업명령 상태가 올바르지 않습니다."),
+    PROCESS_MACHINE_NOT_CONFIGURED(HttpStatus.CONFLICT, "WC004", "공정에 사용할 수 있는 설비가 등록되어 있지 않습니다."),
+    WORK_COMMAND_MACHINE_MISMATCH(HttpStatus.CONFLICT, "WC005", "작업명령의 설비와 ACK 설비가 일치하지 않습니다.");
 
     private final HttpStatus status;
     private final String code;

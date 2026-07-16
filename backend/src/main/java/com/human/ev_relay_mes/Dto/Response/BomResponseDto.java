@@ -22,7 +22,7 @@ public class BomResponseDto {
                 .parentItemCode(bom.getParentItem().getItemCode())
                 .childItemCode(bom.getChildItem().getItemCode())
                 .quantity(bom.getQuantity())
-                .processCode(bom.getProcess().getProcessCode())
+                .processCode(bom.getProcess() == null ? null : bom.getProcess().getProcessCode())
                 .useYn(bom.getUseYn())
                 .build();
     }
