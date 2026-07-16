@@ -357,6 +357,8 @@ static L1CommandType command_type_from_name(const char *name)
 static const char *production_status_name(L1ProductionStatus status)
 {
     switch (status) {
+    case L1_PRODUCTION_RUNNING:
+        return "RUNNING";
     case L1_PRODUCTION_COMPLETED:
         return "COMPLETED";
     case L1_PRODUCTION_FAILED:

@@ -21,7 +21,8 @@ static void print_available_machines(void)
 
 static void print_usage(const char *program_name)
 {
-    printf("Usage: %s MACHINE_ID [L2_IP] [L2_PORT]\n", program_name);
+    printf("Usage: %s MACHINE_ID [L2_IP] [L2_PORT] [ERROR_AFTER_QTY]\n",
+           program_name);
     printf("       %s --list\n", program_name);
     print_available_machines();
 }
@@ -42,18 +43,35 @@ static int parse_port(const char *text, uint16_t *out_port)
     return 0;
 }
 
+static int parse_nonnegative_quantity(const char *text, int *out_quantity)
+{
+    char *end = NULL;
+    unsigned long value;
+
+    if (text == NULL || out_quantity == NULL || text[0] == '\0') {
+        return -1;
+    }
+    value = strtoul(text, &end, 10);
+    if (*end != '\0' || value > 2147483647UL) {
+        return -1;
+    }
+    *out_quantity = (int)value;
+    return 0;
+}
+
 int main(int argc, char **argv)
 {
     const L1DeviceConfig *config;
     const char *server_address = L1_DEFAULT_SERVER_ADDRESS;
     uint16_t server_port = L1_DEFAULT_SERVER_PORT;
+    int error_after_qty = 0;
     int exit_code;
 
     if (argc == 2 && strcmp(argv[1], "--list") == 0) {
         print_available_machines();
         return 0;
     }
-    if (argc < 2 || argc > 4) {
+    if (argc < 2 || argc > 5) {
         print_usage(argv[0]);
         return 1;
     }
@@ -68,14 +86,25 @@ int main(int argc, char **argv)
     if (argc >= 3) {
         server_address = argv[2];
     }
-    if (argc == 4 && parse_port(argv[3], &server_port) != 0) {
+    if (argc >= 4 && parse_port(argv[3], &server_port) != 0) {
         fprintf(stderr, "Invalid L2_PORT: %s\n", argv[3]);
+        return 1;
+    }
+    if (argc == 5
+        && parse_nonnegative_quantity(argv[4], &error_after_qty) != 0) {
+        fprintf(stderr, "Invalid ERROR_AFTER_QTY: %s\n", argv[4]);
         return 1;
     }
 
     printf("EV Relay MES L1 simulator\n");
     printf("Machine: %s\n", config->machine_id);
     printf("Process: %s\n", config->process_code);
+    printf("Error injection: %s",
+           error_after_qty > 0 ? "enabled" : "disabled");
+    if (error_after_qty > 0) {
+        printf(" after %d products", error_after_qty);
+    }
+    printf("\n");
 
     if (l1_net_runtime_init() != 0) {
         fprintf(stderr,
@@ -85,7 +114,8 @@ int main(int argc, char **argv)
     }
     exit_code = l1_client_run(config,
                               server_address,
-                              server_port) == 0
+                              server_port,
+                              error_after_qty) == 0
                     ? 0
                     : 1;
     l1_net_runtime_cleanup();

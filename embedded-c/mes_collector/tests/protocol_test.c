@@ -64,6 +64,12 @@ static void test_production(void)
     CHECK(event->ok_qty == 97);
     CHECK(event->ng_qty == 3);
     CHECK(strcmp(event->status, "COMPLETED") == 0);
+
+    CHECK(protocol_parse_message(
+              "V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-001,40,40,0,RUNNING\n",
+              &message)
+          == PROTOCOL_RESULT_OK);
+    CHECK(strcmp(message.data.production.status, "RUNNING") == 0);
 }
 
 static void test_inspection(void)

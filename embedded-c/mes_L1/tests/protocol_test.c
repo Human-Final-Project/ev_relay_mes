@@ -111,12 +111,24 @@ static void test_production_message(void)
                  "V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-001,100,97,3,COMPLETED\n")
           == 0);
 
-    event.ok_qty = 96;
+    event.input_qty = 40;
+    event.ok_qty = 40;
+    event.ng_qty = 0;
+    event.status = L1_PRODUCTION_RUNNING;
+    CHECK(l1_protocol_build_production(output,
+                                       sizeof(output),
+                                       &event,
+                                       &length) == L1_PROTOCOL_OK);
+    CHECK(strcmp(output,
+                 "V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-001,40,40,0,RUNNING\n")
+          == 0);
+
+    event.ok_qty = 39;
     CHECK(l1_protocol_build_production(output,
                                        sizeof(output),
                                        &event,
                                        &length) == L1_PROTOCOL_INVALID_VALUE);
-    event.ok_qty = 97;
+    event.ok_qty = 40;
     strcpy(event.process_code, "OP30");
     CHECK(l1_protocol_build_production(output,
                                        sizeof(output),

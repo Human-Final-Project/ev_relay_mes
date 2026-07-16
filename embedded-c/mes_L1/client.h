@@ -51,7 +51,8 @@ L1ClientFeedResult l1_client_session_feed(
 /* Keeps one selected L1 device connected to L2 until externally stopped. */
 int l1_client_run(const L1DeviceConfig *device,
                   const char *server_address,
-                  uint16_t server_port);
+                  uint16_t server_port,
+                  int error_after_qty);
 
 const char *l1_client_feed_result_name(L1ClientFeedResult result);
 
