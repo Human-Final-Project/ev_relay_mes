@@ -4,9 +4,17 @@
 #ifdef _WIN32
 #include <windows.h>
 typedef CRITICAL_SECTION CollectorMutex;
+typedef struct {
+    HANDLE handle;
+    int started;
+} CollectorThread;
 #else
 #include <pthread.h>
 typedef pthread_mutex_t CollectorMutex;
+typedef struct {
+    pthread_t handle;
+    int started;
+} CollectorThread;
 #endif
 
 typedef void (*CollectorThreadRoutine)(void *context);
@@ -19,5 +27,12 @@ void collector_mutex_unlock(CollectorMutex *mutex);
 /* Starts a detached worker. Linux uses pthread; Windows uses Win32 threads. */
 int collector_thread_start_detached(CollectorThreadRoutine routine,
                                     void *context);
+
+/* Starts a joinable worker and waits for it during orderly shutdown. */
+int collector_thread_start(CollectorThread *thread,
+                           CollectorThreadRoutine routine,
+                           void *context);
+int collector_thread_join(CollectorThread *thread);
+void collector_thread_sleep_milliseconds(unsigned int milliseconds);
 
 #endif

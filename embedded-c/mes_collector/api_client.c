@@ -1,5 +1,6 @@
 #include "api_client.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
@@ -13,6 +14,8 @@
 #define API_PATH_ALARM "/api/collector/machine-alarms"
 #define API_PATH_MACHINE_STATUS "/api/collector/machine-statuses"
 #define API_PATH_COMMAND_ACK "/api/collector/command-acks"
+#define API_PATH_PENDING_COMMANDS "/api/collector/commands/pending"
+#define API_CLIENT_HTTP_RESPONSE_CAPACITY 32768
 
 typedef struct {
     char *buffer;
@@ -394,6 +397,232 @@ static ApiClientResult api_client_post_json(const char *path,
         return API_CLIENT_HTTP_SERVER_ERROR;
     }
     return API_CLIENT_HTTP_UNEXPECTED_STATUS;
+}
+
+static ApiClientResult classify_http_status(int status)
+{
+    if (status >= 200 && status < 300) {
+        return API_CLIENT_OK;
+    }
+    if (status >= 400 && status < 500) {
+        return API_CLIENT_HTTP_CLIENT_ERROR;
+    }
+    if (status >= 500 && status < 600) {
+        return API_CLIENT_HTTP_SERVER_ERROR;
+    }
+    return API_CLIENT_HTTP_UNEXPECTED_STATUS;
+}
+
+static int bytes_contain_ignore_case(const char *text,
+                                     size_t text_length,
+                                     const char *pattern)
+{
+    size_t pattern_length = strlen(pattern);
+    size_t index;
+
+    if (pattern_length == 0 || pattern_length > text_length) {
+        return 0;
+    }
+    for (index = 0; index + pattern_length <= text_length; ++index) {
+        size_t offset;
+
+        for (offset = 0; offset < pattern_length; ++offset) {
+            if (tolower((unsigned char)text[index + offset])
+                != tolower((unsigned char)pattern[offset])) {
+                break;
+            }
+        }
+        if (offset == pattern_length) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static ApiClientResult decode_chunked_body(const char *body,
+                                           size_t body_length,
+                                           char *output,
+                                           size_t output_capacity,
+                                           size_t *output_length)
+{
+    size_t input_offset = 0;
+    size_t written = 0;
+
+    while (input_offset < body_length) {
+        const char *line_end = NULL;
+        size_t index;
+        size_t chunk_size = 0;
+        int digit_count = 0;
+
+        for (index = input_offset; index + 1 < body_length; ++index) {
+            if (body[index] == '\r' && body[index + 1] == '\n') {
+                line_end = body + index;
+                break;
+            }
+        }
+        if (line_end == NULL) {
+            return API_CLIENT_INVALID_RESPONSE;
+        }
+        for (index = input_offset;
+             body + index < line_end && body[index] != ';';
+             ++index) {
+            unsigned char byte = (unsigned char)body[index];
+            unsigned int digit;
+
+            if (byte >= '0' && byte <= '9') {
+                digit = byte - '0';
+            } else if (byte >= 'a' && byte <= 'f') {
+                digit = byte - 'a' + 10U;
+            } else if (byte >= 'A' && byte <= 'F') {
+                digit = byte - 'A' + 10U;
+            } else {
+                return API_CLIENT_INVALID_RESPONSE;
+            }
+            if (chunk_size > (SIZE_MAX - digit) / 16U) {
+                return API_CLIENT_INVALID_RESPONSE;
+            }
+            chunk_size = chunk_size * 16U + digit;
+            ++digit_count;
+        }
+        if (digit_count == 0) {
+            return API_CLIENT_INVALID_RESPONSE;
+        }
+        input_offset = (size_t)(line_end - body) + 2U;
+        if (chunk_size == 0) {
+            if (written >= output_capacity) {
+                return API_CLIENT_BUFFER_TOO_SMALL;
+            }
+            output[written] = '\0';
+            *output_length = written;
+            return API_CLIENT_OK;
+        }
+        if (chunk_size > body_length - input_offset
+            || chunk_size + 2U > body_length - input_offset) {
+            return API_CLIENT_INVALID_RESPONSE;
+        }
+        if (chunk_size >= output_capacity - written) {
+            return API_CLIENT_BUFFER_TOO_SMALL;
+        }
+        memcpy(output + written, body + input_offset, chunk_size);
+        written += chunk_size;
+        input_offset += chunk_size;
+        if (body[input_offset] != '\r' || body[input_offset + 1] != '\n') {
+            return API_CLIENT_INVALID_RESPONSE;
+        }
+        input_offset += 2U;
+    }
+    return API_CLIENT_INVALID_RESPONSE;
+}
+
+ApiClientResult api_client_get_pending_commands(
+    char *json,
+    size_t json_capacity,
+    size_t *json_length,
+    int *http_status)
+{
+    char request[512];
+    char response[API_CLIENT_HTTP_RESPONSE_CAPACITY];
+    size_t response_length = 0;
+    char *header_end;
+    const char *body;
+    size_t header_length;
+    size_t body_length;
+    NetSocket socket;
+    int request_length;
+    int status = 0;
+    ApiClientResult status_result;
+    uint32_t connect_timeout_ms =
+        (uint32_t)MES_HTTP_CONNECT_TIMEOUT_SECONDS * 1000U;
+    uint32_t request_timeout_ms =
+        (uint32_t)MES_HTTP_REQUEST_TIMEOUT_SECONDS * 1000U;
+
+    if (json == NULL || json_capacity == 0 || json_length == NULL) {
+        return API_CLIENT_INVALID_ARGUMENT;
+    }
+    json[0] = '\0';
+    *json_length = 0;
+    if (http_status != NULL) {
+        *http_status = 0;
+    }
+    request_length = snprintf(
+        request,
+        sizeof(request),
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s:%d\r\n"
+        "Accept: application/json\r\n"
+        "Accept-Encoding: identity\r\n"
+        "Connection: close\r\n\r\n",
+        API_PATH_PENDING_COMMANDS,
+        MES_BACKEND_ADDRESS,
+        MES_BACKEND_PORT);
+    if (request_length < 0 || (size_t)request_length >= sizeof(request)) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
+
+    socket = net_tcp_client_connect(MES_BACKEND_ADDRESS,
+                                    MES_BACKEND_PORT,
+                                    connect_timeout_ms);
+    if (socket == NET_INVALID_SOCKET) {
+        return API_CLIENT_CONNECT_ERROR;
+    }
+    if (net_set_send_timeout(socket, request_timeout_ms) != 0
+        || net_set_receive_timeout(socket, request_timeout_ms) != 0
+        || net_send_all(socket, request, (size_t)request_length) != 0) {
+        net_socket_close(socket);
+        return API_CLIENT_IO_ERROR;
+    }
+    while (response_length + 1U < sizeof(response)) {
+        int received = net_receive(socket,
+                                   response + response_length,
+                                   sizeof(response) - response_length - 1U);
+
+        if (received == NET_RECEIVE_ERROR || received == NET_RECEIVE_TIMEOUT) {
+            net_socket_close(socket);
+            return API_CLIENT_IO_ERROR;
+        }
+        if (received == 0) {
+            break;
+        }
+        response_length += (size_t)received;
+    }
+    net_socket_close(socket);
+    if (response_length + 1U == sizeof(response)) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
+    response[response_length] = '\0';
+    if (sscanf(response, "HTTP/%*u.%*u %d", &status) != 1) {
+        return API_CLIENT_INVALID_RESPONSE;
+    }
+    if (http_status != NULL) {
+        *http_status = status;
+    }
+    status_result = classify_http_status(status);
+    if (status_result != API_CLIENT_OK) {
+        return status_result;
+    }
+    header_end = strstr(response, "\r\n\r\n");
+    if (header_end == NULL) {
+        return API_CLIENT_INVALID_RESPONSE;
+    }
+    body = header_end + 4;
+    header_length = (size_t)(header_end - response) + 4U;
+    body_length = response_length - header_length;
+    if (bytes_contain_ignore_case(response,
+                                  header_length,
+                                  "Transfer-Encoding: chunked")) {
+        return decode_chunked_body(body,
+                                   body_length,
+                                   json,
+                                   json_capacity,
+                                   json_length);
+    }
+    if (body_length >= json_capacity) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
+    memcpy(json, body, body_length);
+    json[body_length] = '\0';
+    *json_length = body_length;
+    return API_CLIENT_OK;
 }
 
 int api_client_init(void)

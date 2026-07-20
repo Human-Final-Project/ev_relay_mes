@@ -315,6 +315,8 @@ V1,COMMAND,103,RESUME,EQ-WIND-01,OP20,EVR-LOT-001,60\n
 - `START`, `RESUME`의 `INPUT_QTY`는 1 이상이어야 한다.
 - `STOP`의 `INPUT_QTY`는 `0`을 사용한다.
 - L2는 `MACHINE_ID`로 등록된 L1 연결을 찾아 명령을 전송한다.
+- Backend는 Pending 명령 조회 응답을 만들 때 해당 명령을 `DISPATCHED`로 변경한다. 대상 L1이 아직 연결되지 않았다면 L2는 `commandId` 기준 메모리 대기열에 명령을 보관하고 TCP 전송 성공 시 제거한다.
+- 같은 Polling 응답이나 대기열에 같은 `commandId`가 다시 들어오면 중복 추가하지 않는다.
 - `RESUME`의 `LOT_NO`, `PROCESS_CODE`는 L1 메모리에 보존된 중단 작업과 같아야 한다.
 - `RESUME INPUT_QTY`는 `최초 목표 수량 - 현재까지 처리한 수량`과 같아야 한다.
 

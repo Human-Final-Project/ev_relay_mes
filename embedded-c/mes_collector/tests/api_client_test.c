@@ -15,6 +15,7 @@ typedef struct {
     CollectorMutex mutex;
     char request[8192];
     size_t request_length;
+    const char *response;
 } MockHttpServer;
 
 #define CHECK(condition)                                                     \
@@ -52,10 +53,13 @@ static void run_mock_http_server(void *context)
     char request[8192];
     size_t received_total = 0;
     size_t expected_total = 0;
-    const char response[] =
+    const char default_response[] =
         "HTTP/1.1 201 Created\r\n"
         "Content-Length: 2\r\n"
         "Connection: close\r\n\r\n{}";
+    const char *response = server->response != NULL
+        ? server->response
+        : default_response;
 
     if (client_socket == NET_INVALID_SOCKET) {
         net_socket_close(server_socket);
@@ -76,13 +80,16 @@ static void run_mock_http_server(void *context)
             char *header_end = strstr(request, "\r\n\r\n");
             char *content_length = strstr(request, "Content-Length:");
 
-            if (header_end != NULL && content_length != NULL) {
-                unsigned long body_length = strtoul(
-                    content_length + strlen("Content-Length:"),
-                    NULL,
-                    10);
-                expected_total = (size_t)(header_end + 4 - request)
-                    + (size_t)body_length;
+            if (header_end != NULL) {
+                expected_total = (size_t)(header_end + 4 - request);
+                if (content_length != NULL) {
+                    unsigned long body_length = strtoul(
+                        content_length + strlen("Content-Length:"),
+                        NULL,
+                        10);
+
+                    expected_total += (size_t)body_length;
+                }
             }
         }
         if (expected_total > 0 && received_total >= expected_total) {
@@ -99,7 +106,7 @@ static void run_mock_http_server(void *context)
     server->request_length = received_total;
     collector_mutex_unlock(&server->mutex);
 
-    net_send_all(client_socket, response, sizeof(response) - 1);
+    net_send_all(client_socket, response, strlen(response));
     net_socket_close(client_socket);
 }
 
@@ -271,6 +278,7 @@ static void test_http_post_receives_created_response(void)
 {
     ProtocolMessage message;
     MockHttpServer server;
+    CollectorThread server_thread = {0};
     int http_status = 0;
     ApiClientResult result;
 
@@ -288,10 +296,13 @@ static void test_http_post_receives_created_response(void)
         collector_mutex_destroy(&server.mutex);
         return;
     }
-    CHECK(collector_thread_start_detached(run_mock_http_server, &server) == 0);
+    CHECK(collector_thread_start(&server_thread,
+                                 run_mock_http_server,
+                                 &server) == 0);
     result = api_client_send_event(&message, &http_status);
     CHECK(result == API_CLIENT_OK);
     CHECK(http_status == 201);
+    CHECK(collector_thread_join(&server_thread) == 0);
 
     collector_mutex_lock(&server.mutex);
     CHECK(server.request_length > 0);
@@ -305,6 +316,102 @@ static void test_http_post_receives_created_response(void)
                  "\r\n\r\n{\"lotNo\":\"EVR-LOT-001\"")
           != NULL);
     collector_mutex_unlock(&server.mutex);
+    collector_mutex_destroy(&server.mutex);
+}
+
+static void test_http_get_pending_commands(void)
+{
+    const char body[] =
+        "[{\"commandId\":101,\"commandType\":\"START\","
+        "\"machineId\":\"EQ-WIND-01\",\"processCode\":\"OP20\","
+        "\"lotNo\":\"EVR-LOT-001\",\"inputQty\":100,"
+        "\"status\":\"DISPATCHED\"}]";
+    char response[4096];
+    char json[API_CLIENT_PENDING_JSON_CAPACITY];
+    size_t json_length = 0;
+    MockHttpServer server;
+    CollectorThread server_thread = {0};
+    int http_status = 0;
+    ApiClientResult result;
+
+    memset(&server, 0, sizeof(server));
+    snprintf(response,
+             sizeof(response),
+             "HTTP/1.1 200 OK\r\n"
+             "Content-Type: application/json\r\n"
+             "Content-Length: %u\r\n"
+             "Connection: close\r\n\r\n%s",
+             (unsigned int)strlen(body),
+             body);
+    server.response = response;
+    CHECK(collector_mutex_init(&server.mutex) == 0);
+    server.server_socket = net_tcp_server_create(MES_BACKEND_ADDRESS,
+                                                 MES_BACKEND_PORT,
+                                                 1);
+    CHECK(server.server_socket != NET_INVALID_SOCKET);
+    if (server.server_socket == NET_INVALID_SOCKET) {
+        collector_mutex_destroy(&server.mutex);
+        return;
+    }
+    CHECK(collector_thread_start(&server_thread,
+                                 run_mock_http_server,
+                                 &server) == 0);
+    result = api_client_get_pending_commands(json,
+                                             sizeof(json),
+                                             &json_length,
+                                             &http_status);
+    CHECK(result == API_CLIENT_OK);
+    CHECK(http_status == 200);
+    CHECK(json_length == strlen(body));
+    CHECK(strcmp(json, body) == 0);
+    CHECK(collector_thread_join(&server_thread) == 0);
+
+    collector_mutex_lock(&server.mutex);
+    CHECK(strstr(server.request,
+                 "GET /api/collector/commands/pending HTTP/1.1\r\n")
+          == server.request);
+    CHECK(strstr(server.request, "Accept: application/json\r\n") != NULL);
+    collector_mutex_unlock(&server.mutex);
+    collector_mutex_destroy(&server.mutex);
+}
+
+static void test_http_get_decodes_chunked_body(void)
+{
+    const char response[] =
+        "HTTP/1.1 200 OK\r\n"
+        "Transfer-Encoding: chunked\r\n"
+        "Connection: close\r\n\r\n"
+        "1\r\n[\r\n"
+        "1\r\n]\r\n"
+        "0\r\n\r\n";
+    char json[16];
+    size_t json_length = 0;
+    MockHttpServer server;
+    CollectorThread server_thread = {0};
+    int http_status = 0;
+
+    memset(&server, 0, sizeof(server));
+    server.response = response;
+    CHECK(collector_mutex_init(&server.mutex) == 0);
+    server.server_socket = net_tcp_server_create(MES_BACKEND_ADDRESS,
+                                                 MES_BACKEND_PORT,
+                                                 1);
+    CHECK(server.server_socket != NET_INVALID_SOCKET);
+    if (server.server_socket == NET_INVALID_SOCKET) {
+        collector_mutex_destroy(&server.mutex);
+        return;
+    }
+    CHECK(collector_thread_start(&server_thread,
+                                 run_mock_http_server,
+                                 &server) == 0);
+    CHECK(api_client_get_pending_commands(json,
+                                          sizeof(json),
+                                          &json_length,
+                                          &http_status) == API_CLIENT_OK);
+    CHECK(http_status == 200);
+    CHECK(json_length == 2);
+    CHECK(strcmp(json, "[]") == 0);
+    CHECK(collector_thread_join(&server_thread) == 0);
     collector_mutex_destroy(&server.mutex);
 }
 
@@ -323,6 +430,8 @@ int main(void)
     test_connection_events_are_skipped();
     test_small_buffer_is_rejected();
     test_http_post_receives_created_response();
+    test_http_get_pending_commands();
+    test_http_get_decodes_chunked_body();
 
     net_runtime_cleanup();
 

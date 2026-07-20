@@ -32,6 +32,8 @@
 
 L2는 Backend REST API를 1초마다 Polling하여 대기 작업명령을 가져오고, 기존 L1 TCP 연결로 `START`, `STOP`, `RESUME` 명령을 전달한다. L1은 `COMMAND_ACK`로 수락 또는 거부를 응답한다.
 
+Backend는 Polling 응답에 포함한 명령을 즉시 `DISPATCHED`로 변경한다. 해당 L1이 아직 연결되지 않은 경우 L2는 명령을 `commandId` 기준 메모리 대기열에 보관하고 TCP 전송 성공 후 제거한다. 이 대기열은 L2 프로세스 재시작 시 복구되는 영속 저장소가 아니며 MVP의 정상 네트워크·정상 실행 가정을 따른다.
+
 ```text
 Backend 명령 저장
 → L2 REST Polling

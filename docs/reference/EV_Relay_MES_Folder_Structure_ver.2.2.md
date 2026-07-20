@@ -432,6 +432,9 @@ L2 mes_collector
 ├── scheduler.c
 ├── scheduler.h
 │
+├── command_json.c
+├── command_json.h
+│
 ├── api_client.c
 ├── api_client.h
 │
@@ -441,10 +444,13 @@ L2 mes_collector
 ├── net.c
 ├── net.h
 │
-├── config.h
+├── connection_registry.c
+├── connection_registry.h
 │
-├── cJSON.c
-├── cJSON.h
+├── thread_compat.c
+├── thread_compat.h
+│
+├── config.h
 │
 └── Makefile
 ```

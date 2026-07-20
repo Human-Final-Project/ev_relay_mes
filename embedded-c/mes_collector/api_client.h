@@ -7,6 +7,7 @@
 
 #define API_CLIENT_PATH_CAPACITY 64
 #define API_CLIENT_JSON_CAPACITY 4096
+#define API_CLIENT_PENDING_JSON_CAPACITY 16384
 
 typedef enum {
     API_CLIENT_OK = 0,
@@ -36,6 +37,13 @@ ApiClientResult api_client_build_event_request(
 /* Sends one event once. HELLO and HEARTBEAT return API_CLIENT_SKIPPED. */
 ApiClientResult api_client_send_event(const ProtocolMessage *message,
                                       int *http_status);
+
+/* Fetches the JSON array claimed by GET /api/collector/commands/pending. */
+ApiClientResult api_client_get_pending_commands(
+    char *json,
+    size_t json_capacity,
+    size_t *json_length,
+    int *http_status);
 
 const char *api_client_result_name(ApiClientResult result);
 
