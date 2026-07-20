@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -289,13 +290,13 @@ static void test_command_ack_json(void)
     memset(&message, 0, sizeof(message));
     message.type = PROTOCOL_EVENT_COMMAND_ACK;
     strcpy(message.data.command_ack.machine_id, "EQ-WIND-01");
-    message.data.command_ack.command_id = 101;
+    message.data.command_ack.command_id = INT64_MAX;
     strcpy(message.data.command_ack.ack_status, "ACCEPTED");
     strcpy(message.data.command_ack.message, "-");
 
     CHECK(build(&message, path, json) == API_CLIENT_OK);
     CHECK(strcmp(path, "/api/collector/command-acks") == 0);
-    CHECK(strstr(json, "\"commandId\":101") != NULL);
+    CHECK(strstr(json, "\"commandId\":9223372036854775807") != NULL);
     CHECK(strstr(json, "\"message\":null") != NULL);
 }
 
@@ -343,10 +344,12 @@ static void test_command_response_parser(void)
     const char *two_commands =
         "[{\"commandId\":601,\"commandType\":\"STOP\","
         "\"machineId\":\"EQ-WIND-01\",\"processCode\":\"OP20\","
-        "\"lotNo\":\"LOT-601\",\"inputQty\":0},"
+        "\"lotNo\":\"LOT-601\",\"inputQty\":0,"
+        "\"status\":\"DISPATCHED\"},"
         "{\"commandId\":602,\"commandType\":\"RESUME\","
         "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP70\","
-        "\"lotNo\":\"LOT-602\",\"inputQty\":7}]";
+        "\"lotNo\":\"LOT-602\",\"inputQty\":7,"
+        "\"status\":\"DISPATCHED\"}]";
 
     CHECK(api_client_parse_command_response("[]",
                                             commands,
@@ -382,8 +385,24 @@ static void test_command_response_parser(void)
                                             &count) == API_CLIENT_BUFFER_TOO_SMALL);
     CHECK(api_client_parse_command_response(
               "[{\"commandId\":1,\"commandType\":\"START\","
-              "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP20\","
+              "\"machineId\":\"EQ-WIND-01\",\"processCode\":\"OP20\","
               "\"lotNo\":\"LOT-X\",\"inputQty\":1}]",
+              commands,
+              API_CLIENT_MAX_COMMANDS,
+              &count) == API_CLIENT_INVALID_RESPONSE);
+    CHECK(api_client_parse_command_response(
+              "[{\"commandId\":1,\"commandType\":\"START\","
+              "\"machineId\":\"EQ-WIND-01\",\"processCode\":\"OP20\","
+              "\"lotNo\":\"LOT-X\",\"inputQty\":1,"
+              "\"status\":\"PENDING\"}]",
+              commands,
+              API_CLIENT_MAX_COMMANDS,
+              &count) == API_CLIENT_INVALID_RESPONSE);
+    CHECK(api_client_parse_command_response(
+              "[{\"commandId\":1,\"commandType\":\"START\","
+              "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP20\","
+              "\"lotNo\":\"LOT-X\",\"inputQty\":1,"
+              "\"status\":\"DISPATCHED\"}]",
               commands,
               API_CLIENT_MAX_COMMANDS,
               &count) == API_CLIENT_INVALID_RESPONSE);
@@ -406,13 +425,15 @@ static void test_http_release_command_request(void)
         return;
     }
     CHECK(collector_thread_start_detached(run_mock_http_server, &server) == 0);
-    result = api_client_release_command(801, "EQ-TEST-01", &http_status);
+    result = api_client_release_command(INT64_MAX,
+                                        "EQ-TEST-01",
+                                        &http_status);
     CHECK(result == API_CLIENT_OK);
     CHECK(http_status == 201);
 
     collector_mutex_lock(&server.mutex);
     CHECK(strstr(server.request,
-                 "POST /api/collector/commands/801/release?machineId=EQ-TEST-01 HTTP/1.1\r\n")
+                 "POST /api/collector/commands/9223372036854775807/release?machineId=EQ-TEST-01 HTTP/1.1\r\n")
           == server.request);
     CHECK(strstr(server.request, "\r\n\r\n{}") != NULL);
     collector_mutex_unlock(&server.mutex);

@@ -109,22 +109,27 @@ lots.ngQty = 최초 LOT inputQty - OP80 okQty
 - OP80 `okQty`를 최종 완제품 수량으로 표시한다.
 - 영문 코드 자체를 번역하지 않고 Backend가 제공하는 코드 마스터의 한글 이름을 표시한다.
 
-## 6. 작업명령 및 네트워크 가정
+## 6. 작업명령 및 네트워크 장애 대응
+
+> 2026-07-20 변경: 정상 네트워크 가정을 제거하고 최신 `develop`의 HTTP 재시도·영속 큐·`eventId` 구현을 기준으로 통일한다.
 
 - L2는 Backend REST API를 1초마다 Polling하여 `PENDING` 작업명령을 가져온다.
 - L2는 기존 L1 TCP 연결로 `START`, `STOP`, `RESUME` 명령을 전달한다.
 - L1은 `COMMAND_ACK`로 `ACCEPTED` 또는 `REJECTED`를 응답한다.
 - Backend가 생성한 `commandId`로 명령과 ACK를 연결한다.
-- MVP는 정상 네트워크를 가정하므로 L2→Backend HTTP 자동 재시도와 `eventId` 중복 제거는 구현하지 않는다.
-- HTTP 요청 실패 시 L2는 오류 로그만 남긴다.
+- L2→Backend HTTP의 연결·송수신 오류, 잘못된 응답과 HTTP 5xx는 최초 전송 후 최대 2회 재시도한다.
+- 재시도 후에도 실패하면 요청과 JSON을 `mes_http_retry.queue`에 저장하고 3초마다 복구 전송한다.
+- HTTP 4xx와 예상하지 못한 상태 코드는 `mes_http_dead_letter.queue`에 저장한다.
+- 생산·검사·불량·알람·설비 상태 이벤트에는 L2가 `eventId`를 생성한다.
+- Backend는 같은 `eventId`가 다시 수신되면 새 행을 만들지 않고 기존 결과를 반환한다.
+- `COMMAND_ACK`는 별도 `eventId`가 아니라 `commandId`로 중복 명령과 ACK를 처리한다.
 
-Backend가 업무 규칙상 같은 LOT·공정의 생산 요약을 중복 생성하지 않도록 검사하는 것은 권장하지만, 네트워크 재시도 중복 대응은 MVP 필수 범위가 아니다.
+같은 LOT·공정의 업무 중복 검사와 별도로, 네트워크 재시도에 따른 동일 이벤트 중복 저장은 `eventId`로 방지한다.
 
 ### 아직 임시인 값
 
 - L2 TCP 포트 `9000`
 - Linux/Windows 최종 실행 환경
-- HTTP 최종 실패 데이터 보관 방식
 
 ## 7. 구현 기준 문서
 
