@@ -38,6 +38,13 @@ public class MachineAlarmService {
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
     public MachineAlarmResponseDto createAlarm(MachineAlarmReceiveRequestDto dto) {
+        String eventId = normalizeEventId(dto.getEventId());
+        if (eventId != null) {
+            var existing = machineAlarmHistoryRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
         AlarmCode alarmCode = alarmCodeRepository.findById(dto.getAlarmCode())
@@ -49,6 +56,7 @@ public class MachineAlarmService {
         String alarmLevel = dto.getAlarmLevel().toUpperCase();
 
         MachineAlarmHistory history = MachineAlarmHistory.builder()
+                .eventId(eventId)
                 .machine(machine)
                 .alarmCode(alarmCode)
                 .alarmLevel(alarmLevel)
@@ -143,6 +151,10 @@ public class MachineAlarmService {
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeEventId(String eventId) {
+        return isBlank(eventId) ? null : eventId.trim();
     }
 
     // 알람 발생 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.

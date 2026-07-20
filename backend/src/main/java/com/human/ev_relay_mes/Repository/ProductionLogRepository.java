@@ -6,8 +6,11 @@ import com.human.ev_relay_mes.Entity.ProductionLog;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface ProductionLogRepository extends JpaRepository<ProductionLog, Long> {
+
+    Optional<ProductionLog> findByEventId(String eventId);
 
     // LOT 상세 화면에서 공정별 투입·양품·불량 생산 실적을 표시할 때 사용한다.
     List<ProductionLog> findByLot_LotNoOrderByCreatedAtDesc(String lotNo);

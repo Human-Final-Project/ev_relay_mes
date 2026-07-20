@@ -6,8 +6,11 @@ import com.human.ev_relay_mes.Entity.Inspection;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface InspectionRepository extends JpaRepository<Inspection, Long> {
+
+    Optional<Inspection> findByEventId(String eventId);
 
     // LOT 상세 화면에서 해당 생산 LOT의 검사 결과와 합격 여부를 표시할 때 사용한다.
     List<Inspection> findByLot_LotNoOrderByInspectedAtDesc(String lotNo);

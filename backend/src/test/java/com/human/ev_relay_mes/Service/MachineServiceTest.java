@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -34,6 +35,33 @@ class MachineServiceTest {
     @Mock WorkCommandService workCommandService;
 
     @InjectMocks MachineService machineService;
+
+    @Test
+    void returnsExistingStatusForDuplicateEventId() {
+        Process process = Process.builder()
+                .processCode("OP20").processName("winding").processOrder(20).build();
+        Machine machine = Machine.builder()
+                .machineId("EQ-WIND-01").machineName("winder").machineType("WINDER")
+                .process(process).status(Machine.Status.RUNNING).useYn("Y").build();
+        MachineStatusHistory existing = MachineStatusHistory.builder()
+                .machineStatusHistoryId(11L)
+                .eventId("status-001")
+                .machine(machine)
+                .status(Machine.Status.RUNNING)
+                .process(process)
+                .build();
+        MachineStatusReceiveRequestDto dto = new MachineStatusReceiveRequestDto();
+        dto.setEventId("status-001");
+        dto.setMachineId("EQ-WIND-01");
+        dto.setStatus("RUNNING");
+        when(machineStatusHistoryRepository.findByEventId("status-001"))
+                .thenReturn(Optional.of(existing));
+
+        var result = machineService.updateStatus(dto);
+
+        assertThat(result.getMachineStatusHistoryId()).isEqualTo(11L);
+        verifyNoInteractions(machineRepository, processRepository, lotRepository, workCommandService);
+    }
 
     @Test
     void l1RunningReplyCompletesResumeAndRestartsHeldLot() {

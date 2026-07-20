@@ -7,8 +7,11 @@ import com.human.ev_relay_mes.Entity.MachineStatusHistory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface MachineStatusHistoryRepository extends JpaRepository<MachineStatusHistory, Long> {
+
+    Optional<MachineStatusHistory> findByEventId(String eventId);
 
     // 설비 상세 화면에서 가동·대기·오류 상태의 변경 이력을 표시할 때 사용한다.
     List<MachineStatusHistory> findByMachine_MachineIdOrderByRecordedAtDesc(String machineId);

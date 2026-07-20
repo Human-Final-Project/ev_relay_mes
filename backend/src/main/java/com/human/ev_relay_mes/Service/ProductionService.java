@@ -40,6 +40,13 @@ public class ProductionService {
 
     @Transactional
     public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
+        String eventId = normalizeEventId(dto.getEventId());
+        if (eventId != null) {
+            Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
         validateRequest(dto);
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
@@ -62,6 +69,7 @@ public class ProductionService {
         String logStatus = totalInputQty == expectedInputQty ? "COMPLETED" : "RUNNING";
 
         ProductionLog log = ProductionLog.builder()
+                .eventId(eventId)
                 .lot(lot)
                 .machine(machine)
                 .process(process)
@@ -279,6 +287,10 @@ public class ProductionService {
 
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeEventId(String eventId) {
+        return isBlank(eventId) ? null : eventId.trim();
     }
 
     private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {

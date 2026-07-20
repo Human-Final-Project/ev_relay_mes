@@ -85,6 +85,13 @@ public class MachineService {
     // L2가 전달한 설비 상태를 현재 상태에 반영하고 상태 변경 이력을 남길 때 사용한다.
     @Transactional
     public MachineStatusHistoryResponseDto updateStatus(MachineStatusReceiveRequestDto dto) {
+        String eventId = normalizeEventId(dto.getEventId());
+        if (eventId != null) {
+            var existing = machineStatusHistoryRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toHistoryResponse(existing.get());
+            }
+        }
         Machine machine = findMachine(dto.getMachineId());
         Machine.Status status = parseStatus(dto.getStatus());
         Lot lot = isBlank(dto.getLotNo()) ? null : findLot(dto.getLotNo());
@@ -99,6 +106,7 @@ public class MachineService {
             lot.setStatus(Lot.Status.RUNNING);
         }
         MachineStatusHistory history = MachineStatusHistory.builder()
+                .eventId(eventId)
                 .machine(machine)
                 .status(status)
                 .lot(lot)
@@ -139,6 +147,10 @@ public class MachineService {
     // LOT나 공정처럼 생략 가능한 메시지 값이 비어 있는지 판단할 때 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeEventId(String eventId) {
+        return isBlank(eventId) ? null : eventId.trim();
     }
 
     // 설비 Entity를 설비 현황 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.

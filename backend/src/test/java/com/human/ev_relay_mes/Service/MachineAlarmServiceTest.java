@@ -39,6 +39,33 @@ class MachineAlarmServiceTest {
     @InjectMocks MachineAlarmService machineAlarmService;
 
     @Test
+    void returnsExistingAlarmForDuplicateEventIdWithoutPausingAgain() {
+        Process process = process();
+        Machine machine = machine(process, Machine.Status.ERROR);
+        MachineAlarmHistory existing = MachineAlarmHistory.builder()
+                .machineAlarmHistoryId(12L)
+                .eventId("alarm-001")
+                .machine(machine)
+                .alarmCode(alarmCode())
+                .alarmLevel("ERROR")
+                .occurredAt(LocalDateTime.now())
+                .build();
+        MachineAlarmReceiveRequestDto dto = new MachineAlarmReceiveRequestDto();
+        dto.setEventId("alarm-001");
+        dto.setMachineId("EQ-WIND-01");
+        dto.setAlarmCode("MOTOR_OVERLOAD");
+        dto.setAlarmLevel("ERROR");
+        when(machineAlarmHistoryRepository.findByEventId("alarm-001"))
+                .thenReturn(Optional.of(existing));
+
+        var response = machineAlarmService.createAlarm(dto);
+
+        assertThat(response.getMachineAlarmHistoryId()).isEqualTo(12L);
+        verifyNoInteractions(machineRepository, alarmCodeRepository,
+                machineStatusHistoryRepository, workCommandService);
+    }
+
+    @Test
     void errorAlarmStopsMachineAndPausesItsWork() {
         Process process = process();
         Machine machine = machine(process, Machine.Status.RUNNING);

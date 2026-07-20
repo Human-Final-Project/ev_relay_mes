@@ -34,6 +34,13 @@ public class InspectionService {
     // L2 수집기가 전달한 검사 측정값과 판정 결과를 검사 이력으로 저장할 때 사용한다.
     @Transactional
     public InspectionResponseDto saveResult(InspectionResultReceiveRequestDto dto) {
+        String eventId = normalizeEventId(dto.getEventId());
+        if (eventId != null) {
+            var existing = inspectionRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
         validateLimits(dto);
         Inspection.Result result = parseResult(dto.getResult());
         validateMeasuredResult(dto, result);
@@ -49,6 +56,7 @@ public class InspectionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
         validateMachineAndProcess(machine, process);
         Inspection inspection = Inspection.builder()
+                .eventId(eventId)
                 .lot(lot)
                 .machine(machine)
                 .process(process)
@@ -138,6 +146,10 @@ public class InspectionService {
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeEventId(String eventId) {
+        return isBlank(eventId) ? null : eventId.trim();
     }
 
     // 검사 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.
