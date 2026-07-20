@@ -92,9 +92,6 @@ public class InspectionService {
                 .inspectionItem(snapshot.getInspectionItem())
                 .measuredValue(dto.getMeasuredValue())
                 .unit(snapshot.getUnit())
-                .lowerLimit(snapshot.getLowerLimit())
-                .upperLimit(snapshot.getUpperLimit())
-                .standardVersion(snapshot.getStandardVersion())
                 .result(result)
                 .build();
         Inspection saved = inspectionRepository.save(inspection);
@@ -196,9 +193,6 @@ public class InspectionService {
     }
 
     private void validateMachineAndProcess(Machine machine, Process process) {
-        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
-            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
-        }
         if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "설비에 지정된 공정과 검사 공정이 일치하지 않습니다.");
@@ -244,9 +238,9 @@ public class InspectionService {
                 .inspectionItem(inspection.getInspectionItem())
                 .measuredValue(inspection.getMeasuredValue())
                 .unit(inspection.getUnit())
-                .lowerLimit(inspection.getLowerLimit())
-                .upperLimit(inspection.getUpperLimit())
-                .standardVersion(inspection.getStandardVersion())
+                .lowerLimit(inspection.getStandardSnapshot().getLowerLimit())
+                .upperLimit(inspection.getStandardSnapshot().getUpperLimit())
+                .standardVersion(inspection.getStandardSnapshot().getStandardVersion())
                 .result(inspection.getResult().name())
                 .inspectedAt(inspection.getInspectedAt())
                 .build();

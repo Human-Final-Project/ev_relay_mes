@@ -5,8 +5,6 @@ import com.human.ev_relay_mes.Dto.Response.InspectionStandardResponseDto;
 import com.human.ev_relay_mes.Service.InspectionStandardService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -15,7 +13,6 @@ import java.util.List;
 @RequestMapping("/api/inspection-standards")
 @RequiredArgsConstructor
 public class InspectionStandardController {
-
     private final InspectionStandardService inspectionStandardService;
 
     @GetMapping
@@ -23,17 +20,10 @@ public class InspectionStandardController {
         return inspectionStandardService.getAll();
     }
 
-    @PostMapping
-    public ResponseEntity<InspectionStandardResponseDto> create(
-            @Valid @RequestBody InspectionStandardRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(inspectionStandardService.create(dto));
-    }
-
-    @PutMapping("/{standardId}")
-    public InspectionStandardResponseDto update(
+    @PatchMapping("/{standardId}/limits")
+    public InspectionStandardResponseDto updateLimits(
             @PathVariable Long standardId,
             @Valid @RequestBody InspectionStandardRequestDto dto) {
-        return inspectionStandardService.update(standardId, dto);
+        return inspectionStandardService.updateLimits(standardId, dto);
     }
 }

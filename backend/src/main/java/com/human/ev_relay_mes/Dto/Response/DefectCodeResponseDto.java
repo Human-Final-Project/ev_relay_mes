@@ -15,7 +15,6 @@ public class DefectCodeResponseDto {
     private String processCode;
     private String processName;
     private String description;
-    private String useYn;
     private LocalDateTime createdAt;
 
     public static DefectCodeResponseDto fromEntity(DefectCode defectCode) {
@@ -25,7 +24,6 @@ public class DefectCodeResponseDto {
                 .processCode(defectCode.getProcess().getProcessCode())
                 .processName(defectCode.getProcess().getProcessName())
                 .description(defectCode.getDescription())
-                .useYn(defectCode.getUseYn())
                 .createdAt(defectCode.getCreatedAt())
                 .build();
     }

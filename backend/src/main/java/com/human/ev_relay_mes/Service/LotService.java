@@ -55,7 +55,7 @@ public class LotService {
         }
         Member creator = memberRepository.findById(memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
-        Process firstProcess = processRepository.findFirstByUseYnOrderByProcessOrderAsc("Y")
+        Process firstProcess = processRepository.findFirstByOrderByProcessOrderAsc()
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
         Lot lot = Lot.builder()
                 .lotNo(generateLotNo())

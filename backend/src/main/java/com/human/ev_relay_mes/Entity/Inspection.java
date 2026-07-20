@@ -59,15 +59,6 @@ public class Inspection {
     @Column(name = "unit", nullable = false, length = 20)
     private String unit;
 
-    @Column(name = "lower_limit", precision = 12, scale = 3)
-    private BigDecimal lowerLimit;
-
-    @Column(name = "upper_limit", precision = 12, scale = 3)
-    private BigDecimal upperLimit;
-
-    @Column(name = "standard_version", nullable = false)
-    private Integer standardVersion;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "result", nullable = false, length = 10)
     private Result result;

@@ -45,10 +45,6 @@ public class InspectionStandard {
     @Column(name = "upper_limit", precision = 12, scale = 3)
     private BigDecimal upperLimit;
 
-    @Column(name = "use_yn", nullable = false, length = 1)
-    @Builder.Default
-    private String useYn = "Y";
-
     @Column(name = "standard_version", nullable = false)
     @Builder.Default
     private Integer standardVersion = 1;

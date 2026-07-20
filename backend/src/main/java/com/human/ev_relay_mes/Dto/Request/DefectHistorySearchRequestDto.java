@@ -16,7 +16,6 @@ public class DefectHistorySearchRequestDto {
     private String machineId;
     private String processCode;
     private String defectCode;
-    private Boolean confirmed;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime startAt;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)

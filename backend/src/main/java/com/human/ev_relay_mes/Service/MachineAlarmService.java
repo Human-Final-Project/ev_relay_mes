@@ -49,9 +49,6 @@ public class MachineAlarmService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
         AlarmCode alarmCode = alarmCodeRepository.findById(dto.getAlarmCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.ALARM_CODE_NOT_FOUND));
-        if (!"Y".equalsIgnoreCase(alarmCode.getUseYn())) {
-            throw new CustomException(ErrorCode.ALARM_CODE_NOT_USABLE);
-        }
         validateAlarm(machine, alarmCode, dto.getAlarmLevel());
         String alarmLevel = dto.getAlarmLevel().toUpperCase();
 
@@ -104,9 +101,6 @@ public class MachineAlarmService {
     }
 
     private void validateAlarm(Machine machine, AlarmCode alarmCode, String alarmLevel) {
-        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
-            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
-        }
         if (!alarmCode.getMachineType().equalsIgnoreCase("COMMON")
                 && !alarmCode.getMachineType().equalsIgnoreCase(machine.getMachineType())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,

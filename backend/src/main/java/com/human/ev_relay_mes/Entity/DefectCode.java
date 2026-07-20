@@ -31,10 +31,6 @@ public class DefectCode {
     @Column(name = "description", length = 255)
     private String description;
 
-    @Column(name = "use_yn", nullable = false, length = 1)
-    @Builder.Default
-    private String useYn = "Y";
-
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
