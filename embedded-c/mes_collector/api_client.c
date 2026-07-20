@@ -48,6 +48,49 @@ typedef struct {
     int failed;
 } JsonBuilder;
 
+static int api_uint64_to_text(uint64_t value,
+                              char *output,
+                              size_t output_capacity)
+{
+    char reversed[20];
+    size_t length = 0;
+    size_t index;
+
+    do {
+        reversed[length++] = (char)('0' + (value % 10U));
+        value /= 10U;
+    } while (value > 0U);
+    if (length + 1U > output_capacity) {
+        return -1;
+    }
+    for (index = 0; index < length; ++index) {
+        output[index] = reversed[length - index - 1U];
+    }
+    output[length] = '\0';
+    return 0;
+}
+
+static int api_int64_to_text(int64_t value,
+                             char *output,
+                             size_t output_capacity)
+{
+    uint64_t magnitude;
+
+    if (value >= 0) {
+        return api_uint64_to_text((uint64_t)value,
+                                  output,
+                                  output_capacity);
+    }
+    if (output_capacity < 2U) {
+        return -1;
+    }
+    output[0] = '-';
+    magnitude = (uint64_t)(-(value + 1)) + 1U;
+    return api_uint64_to_text(magnitude,
+                              output + 1,
+                              output_capacity - 1U);
+}
+
 static void json_append_format(JsonBuilder *builder, const char *format, ...)
 {
     va_list arguments;
@@ -171,8 +214,14 @@ static void json_append_int64_field(JsonBuilder *builder,
                                     int64_t value,
                                     int *first)
 {
+    char value_text[22];
+
     json_append_field_name(builder, name, first);
-    json_append_format(builder, "%lld", (long long)value);
+    if (api_int64_to_text(value, value_text, sizeof(value_text)) != 0) {
+        builder->failed = 1;
+        return;
+    }
+    json_append_format(builder, "%s", value_text);
 }
 
 static void json_append_double_field(JsonBuilder *builder,
@@ -890,6 +939,7 @@ static ApiClientResult api_parse_command_object(const char *object,
                                                 ProtocolCommand *command)
 {
     char command_type[32];
+    char status[32];
 
     memset(command, 0, sizeof(*command));
     if (json_get_required_int64(object, "commandId", &command->command_id) != 0
@@ -909,11 +959,16 @@ static ApiClientResult api_parse_command_object(const char *object,
                                     "lotNo",
                                     command->lot_no,
                                     sizeof(command->lot_no)) != 0
-        || json_get_required_int(object, "inputQty", &command->input_qty) != 0) {
+        || json_get_required_int(object, "inputQty", &command->input_qty) != 0
+        || json_get_required_string(object,
+                                    "status",
+                                    status,
+                                    sizeof(status)) != 0) {
         return API_CLIENT_INVALID_RESPONSE;
     }
     command->type = api_command_type_from_text(command_type);
     if (command->command_id <= 0 || command->type == PROTOCOL_COMMAND_UNKNOWN
+        || strcmp(status, "DISPATCHED") != 0
         || !protocol_machine_matches_process(command->machine_id,
                                              command->process_code)
         || command->lot_no[0] == '\0'
@@ -1050,16 +1105,22 @@ ApiClientResult api_client_release_command(int64_t command_id,
                                            int *http_status)
 {
     char path[API_CLIENT_PATH_CAPACITY];
+    char command_id_text[21];
     int written;
 
     if (command_id <= 0 || machine_id == NULL || machine_id[0] == '\0') {
         return API_CLIENT_INVALID_ARGUMENT;
     }
+    if (api_int64_to_text(command_id,
+                          command_id_text,
+                          sizeof(command_id_text)) != 0) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
     written = snprintf(path,
                        sizeof(path),
-                       "%s%lld/release?machineId=%s",
+                       "%s%s/release?machineId=%s",
                        API_PATH_RELEASE_COMMAND_PREFIX,
-                       (long long)command_id,
+                       command_id_text,
                        machine_id);
     if (written < 0 || (size_t)written >= sizeof(path)) {
         return API_CLIENT_BUFFER_TOO_SMALL;
@@ -1291,9 +1352,11 @@ static int api_generate_event_id(const ProtocolMessage *message,
                                  size_t capacity)
 {
     unsigned long sequence;
-    unsigned long long monotonic_ms;
+    uint64_t monotonic_ms;
     long process_id;
     time_t now = time(NULL);
+    char now_text[22];
+    char monotonic_text[21];
     int written;
 
     if (message == NULL || event_id == NULL || capacity == 0) {
@@ -1302,7 +1365,15 @@ static int api_generate_event_id(const ProtocolMessage *message,
     collector_mutex_lock(&queue_mutex);
     sequence = ++event_sequence;
     collector_mutex_unlock(&queue_mutex);
-    monotonic_ms = (unsigned long long)net_monotonic_milliseconds();
+    monotonic_ms = (uint64_t)net_monotonic_milliseconds();
+    if (api_int64_to_text((int64_t)now,
+                          now_text,
+                          sizeof(now_text)) != 0
+        || api_uint64_to_text(monotonic_ms,
+                              monotonic_text,
+                              sizeof(monotonic_text)) != 0) {
+        return -1;
+    }
 #ifdef _WIN32
     process_id = (long)_getpid();
 #else
@@ -1310,11 +1381,11 @@ static int api_generate_event_id(const ProtocolMessage *message,
 #endif
     written = snprintf(event_id,
                        capacity,
-                       "L2-%s-%s-%lld-%llu-%ld-%lu",
+                       "L2-%s-%s-%s-%s-%ld-%lu",
                        api_message_machine_id(message),
                        protocol_event_type_name(message->type),
-                       (long long)now,
-                       monotonic_ms,
+                       now_text,
+                       monotonic_text,
                        process_id,
                        sequence);
     return written >= 0 && (size_t)written < capacity ? 0 : -1;

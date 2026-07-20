@@ -32,6 +32,8 @@
 
 L2는 Backend REST API를 1초마다 Polling하여 대기 작업명령을 가져오고, 기존 L1 TCP 연결로 `START`, `STOP`, `RESUME` 명령을 전달한다. L1은 `COMMAND_ACK`로 수락 또는 거부를 응답한다.
 
+L2는 현재 연결된 설비의 `machineId`로 명령을 조회한다. Backend는 조회 응답에 포함한 명령을 `DISPATCHED`로 선점한다. L1 TCP 전송 전에 연결이 끊기거나 전송이 실패하면 L2는 release API를 호출해 해당 명령을 `PENDING`으로 반환한다. ACK 없이 10초 이상 `DISPATCHED` 상태가 유지된 명령도 Backend가 다음 Polling 시 `PENDING`으로 되돌린다.
+
 ```text
 Backend 명령 저장
 → L2 REST Polling
@@ -40,7 +42,7 @@ Backend 명령 저장
 → L2가 Backend에 명령 상태 보고
 ```
 
-MVP는 정상 네트워크를 가정하므로 L2→Backend HTTP 자동 재시도와 `eventId` 중복 제거는 구현하지 않는다. `commandId`는 네트워크 중복 제거가 아니라 작업명령과 ACK를 연결하기 위해 사용한다.
+L2는 Backend 전송이 연결·송수신 오류, 잘못된 응답 또는 HTTP 5xx로 실패하면 500ms 간격으로 최대 2회 재시도한다. 계속 실패한 요청은 디스크 큐에 저장하고 3초마다 복구 전송한다. 생산·검사·불량·알람·설비 상태 이벤트에는 `eventId`를 부여하며 Backend는 같은 `eventId`를 중복 저장하지 않는다. `COMMAND_ACK`는 별도 `eventId` 대신 Backend가 발급한 `commandId`로 명령과 ACK를 연결한다.
 
 ## 2. 생산 공정 흐름
 
@@ -269,5 +271,5 @@ OP40_OP50에서 두 반제품 합류    O
 재작업                           X (MVP 제외)
 Backend 명령 REST Polling         O (1초)
 L2→L1 START/STOP/RESUME          O
-HTTP 자동 재시도/eventId         X (정상 네트워크 가정)
+HTTP 자동 재시도/eventId         O (최대 2회 재시도·영속 큐·중복 방지)
 ```

@@ -20,7 +20,8 @@
 - TCP 포트와 Backend URL은 확정 전까지 임시값을 사용한다.
 - L2는 Backend REST API를 1초마다 Polling하여 대기 작업명령을 조회한다.
 - L2는 조회한 작업명령을 기존 L1 TCP 연결로 전달하고 L1은 `COMMAND_ACK`로 수락 여부를 응답한다.
-- MVP는 정상 네트워크를 가정하며 L2→Backend HTTP 요청은 자동 재시도하지 않는다.
+- L2→Backend HTTP 요청은 일시적 통신 실패에 대비해 재시도하며, 최종 실패 데이터는 디스크 큐에 보관한다.
+- L2는 업무 이벤트에 `eventId`를 부여하고 Backend는 같은 `eventId`를 중복 저장하지 않는다.
 
 ## 2. 연결 규칙
 
@@ -315,6 +316,10 @@ V1,COMMAND,103,RESUME,EQ-WIND-01,OP20,EVR-LOT-001,60\n
 - `START`, `RESUME`의 `INPUT_QTY`는 1 이상이어야 한다.
 - `STOP`의 `INPUT_QTY`는 `0`을 사용한다.
 - L2는 `MACHINE_ID`로 등록된 L1 연결을 찾아 명령을 전송한다.
+- L2는 현재 연결된 설비별로 `GET /api/collector/commands/pending?machineId={MACHINE_ID}`를 호출한다.
+- Backend는 Polling 응답에 포함한 명령을 `DISPATCHED`로 변경하며, L2는 응답 상태가 `DISPATCHED`인 명령만 L1에 전달한다.
+- L1 TCP 전송 전에 연결이 끊기거나 전송이 실패하면 L2는 `POST /api/collector/commands/{COMMAND_ID}/release?machineId={MACHINE_ID}`를 호출해 명령을 `PENDING`으로 반환한다.
+- ACK 없이 10초 이상 `DISPATCHED`인 명령은 Backend가 다음 Polling 시 `PENDING`으로 되돌린다. L1은 같은 `COMMAND_ID`를 다시 받으면 작업을 중복 실행하지 않고 기존 ACK를 다시 전송한다.
 - `RESUME`의 `LOT_NO`, `PROCESS_CODE`는 L1 메모리에 보존된 중단 작업과 같아야 한다.
 - `RESUME INPUT_QTY`는 `최초 목표 수량 - 현재까지 처리한 수량`과 같아야 한다.
 
@@ -529,9 +534,13 @@ L2와 현재 Backend DTO 사이의 값 변환 규칙:
 
 - `Content-Type`은 `application/json; charset=UTF-8`을 사용한다.
 - HTTP 2xx는 성공으로 처리한다.
-- HTTP 4xx는 데이터 오류로 기록한다.
-- HTTP 5xx 또는 연결 실패는 서버 장애로 기록한다.
-- MVP는 정상 네트워크를 가정하므로 HTTP 요청은 한 번만 전송하고 자동 재시도·디스크 큐·`eventId` 중복 제거를 구현하지 않는다.
+- 연결 실패, 송수신 실패, 잘못된 HTTP 응답, HTTP 5xx는 재시도 가능한 오류로 처리한다.
+- 재시도 가능한 오류는 최초 전송 후 최대 2회 재시도하므로 요청당 최대 전송 횟수는 `1 + 2 = 3회`다. 재시도 간격은 500ms다.
+- 최대 재시도 후에도 실패한 요청은 `mes_http_retry.queue`에 저장하고, 백그라운드 작업이 3초마다 복구 전송을 시도한다.
+- HTTP 4xx와 그 밖의 예상하지 못한 상태 코드는 같은 요청을 반복해도 해결되지 않는 오류로 보고 `mes_http_dead_letter.queue`에 저장한다.
+- L2는 `PRODUCTION`, `INSPECTION`, `DEFECT`, `ALARM`, `MACHINE_STATUS` JSON에 `eventId`를 추가한다. 재시도와 큐 복구 시에도 처음 생성한 동일한 `eventId`를 사용한다.
+- Backend는 이벤트별 저장소에서 `eventId`를 조회해 이미 처리한 이벤트면 새 행을 만들지 않고 기존 결과를 반환한다.
+- `COMMAND_ACK`는 별도의 `eventId`를 생성하지 않고 Backend가 발급한 `commandId`로 명령과 ACK를 연결한다.
 
 ## 8. 오류 처리
 
@@ -547,8 +556,10 @@ L2와 현재 Backend DTO 사이의 값 변환 규칙:
 | 동일한 설비의 중복 연결                  | 새 연결 거부 및 오류 로그                            |
 | L1 연결 종료                             | `COMM_DISCONNECTED`와 설비 `ERROR` 전송 후 소켓 정리 |
 | 15초 동안 정상 메시지 미수신             | `COMM_TIMEOUT`과 설비 `ERROR` 전송 후 소켓 정리      |
-| Backend HTTP 4xx                         | 오류 로그, 재전송 없음                               |
-| Backend HTTP 5xx/연결 실패               | 실패 로그, 재전송 없음                               |
+| Backend HTTP 4xx/예상하지 못한 상태 코드 | Dead-letter 파일 저장, 자동 재전송 없음              |
+| Backend HTTP 5xx/연결·송수신 실패         | 최대 2회 재시도 후 디스크 큐 저장                    |
+| Backend 응답 형식 오류                    | 최대 2회 재시도 후 디스크 큐 저장                    |
+| Backend 복구                              | 디스크 큐의 요청을 3초 주기로 자동 재전송            |
 
 ## 9. 초안에서 확정이 필요한 항목
 
@@ -572,7 +583,7 @@ L2와 현재 Backend DTO 사이의 값 변환 규칙:
 - [x] Backend REST API 경로와 JSON 필드명 확정
 - [x] L2 REST Polling 1초 주기로 Backend 작업명령 조회
 - [x] L2→L1 `START`, `STOP`, `RESUME` 및 L1→L2 `COMMAND_ACK` 적용
-- [x] 정상 네트워크 가정, HTTP 자동 재시도와 `eventId` 제외
+- [x] HTTP 자동 재시도, 디스크 큐와 `eventId` 중복 방지 적용
 - [ ] Linux 기준으로 L1/L2를 실행할지 Windows 호환도 포함할지 확정
 
 ## 10. MVP 통합 테스트 예시

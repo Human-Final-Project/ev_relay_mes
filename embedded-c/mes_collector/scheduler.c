@@ -26,6 +26,22 @@ static volatile int scheduler_running;
 static volatile int scheduler_worker_active;
 static int scheduler_initialized;
 
+static void command_id_to_text(int64_t value, char output[21])
+{
+    char reversed[20];
+    size_t length = 0;
+    size_t index;
+
+    do {
+        reversed[length++] = (char)('0' + (value % 10));
+        value /= 10;
+    } while (value > 0);
+    for (index = 0; index < length; ++index) {
+        output[index] = reversed[length - index - 1U];
+    }
+    output[length] = '\0';
+}
+
 static void scheduler_sleep_milliseconds(unsigned int milliseconds)
 {
 #ifdef _WIN32
@@ -43,23 +59,26 @@ static void release_failed_command(const ProtocolCommand *command,
                                    CollectorSendResult send_result)
 {
     int http_status = 0;
+    char command_id_text[21];
     ApiClientResult release_result = api_client_release_command(
         command->command_id,
         command->machine_id,
         &http_status);
 
+    command_id_to_text(command->command_id, command_id_text);
+
     if (release_result == API_CLIENT_OK) {
         fprintf(stderr,
                 "[L2 Polling] L1 send failed; command returned to PENDING "
-                "id=%lld machine=%s send=%d\n",
-                (long long)command->command_id,
+                "id=%s machine=%s send=%d\n",
+                command_id_text,
                 command->machine_id,
                 (int)send_result);
     } else {
         fprintf(stderr,
                 "[L2 Polling] CRITICAL: L1 send failed and command release failed "
-                "id=%lld machine=%s send=%d release=%s http=%d\n",
-                (long long)command->command_id,
+                "id=%s machine=%s send=%d release=%s http=%d\n",
+                command_id_text,
                 command->machine_id,
                 (int)send_result,
                 api_client_result_name(release_result),
@@ -99,6 +118,9 @@ static void dispatch_commands_for_machine(const char *machine_id)
         ProtocolResult protocol_result = PROTOCOL_RESULT_OK;
         CollectorSendResult send_result;
         ProtocolCommand *command = &commands[index];
+        char command_id_text[21];
+
+        command_id_to_text(command->command_id, command_id_text);
 
         if (!collector_is_machine_connected(command->machine_id)) {
             release_failed_command(command, COLLECTOR_SEND_NOT_REGISTERED);
@@ -108,18 +130,18 @@ static void dispatch_commands_for_machine(const char *machine_id)
                                                         &protocol_result);
         if (send_result != COLLECTOR_SEND_OK) {
             fprintf(stderr,
-                    "[L2 Polling] command send failed id=%lld machine=%s "
+                    "[L2 Polling] command send failed id=%s machine=%s "
                     "send=%d protocol=%s\n",
-                    (long long)command->command_id,
+                    command_id_text,
                     command->machine_id,
                     (int)send_result,
                     protocol_result_name(protocol_result));
             release_failed_command(command, send_result);
             continue;
         }
-        printf("[L2 Polling] command sent id=%lld type=%s machine=%s "
+        printf("[L2 Polling] command sent id=%s type=%s machine=%s "
                "process=%s lot=%s inputQty=%d\n",
-               (long long)command->command_id,
+               command_id_text,
                protocol_command_type_name(command->type),
                command->machine_id,
                command->process_code,
