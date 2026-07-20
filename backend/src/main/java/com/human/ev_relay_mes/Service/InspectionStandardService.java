@@ -3,6 +3,7 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.InspectionStandardRequestDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionStandardResponseDto;
 import com.human.ev_relay_mes.Entity.*;
+import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.*;
@@ -17,7 +18,7 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class InspectionStandardService {
-    private static final String INSPECTION_PROCESS_CODE = "OP70";
+    public static final String INSPECTION_PROCESS_CODE = "OP70";
 
     private final InspectionStandardRepository standardRepository;
     private final LotInspectionStandardSnapshotRepository snapshotRepository;
