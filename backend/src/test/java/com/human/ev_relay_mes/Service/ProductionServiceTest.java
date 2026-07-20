@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.inOrder;
 
 @ExtendWith(MockitoExtension.class)
 class ProductionServiceTest {
@@ -62,13 +63,18 @@ class ProductionServiceTest {
                 .build();
         ProductionResultReceiveRequestDto request = request(10, 9, 1, "COMPLETED");
         request.setEventId(" production-001 ");
+        when(lotRepository.findByLotNoForUpdate("LOT-001"))
+                .thenReturn(Optional.of(fixture.lot));
         when(productionLogRepository.findByEventId("production-001"))
                 .thenReturn(Optional.of(existing));
 
         var response = productionService.saveResult(request);
 
         assertThat(response.getProductionLogId()).isEqualTo(10L);
-        verifyNoInteractions(lotRepository, machineRepository, processRepository, workCommandService);
+        var ordered = inOrder(lotRepository, productionLogRepository);
+        ordered.verify(lotRepository).findByLotNoForUpdate("LOT-001");
+        ordered.verify(productionLogRepository).findByEventId("production-001");
+        verifyNoInteractions(machineRepository, processRepository, workCommandService);
     }
 
     @Test
@@ -81,7 +87,7 @@ class ProductionServiceTest {
                 .thenReturn(List.of());
         when(productionLogRepository.save(any(ProductionLog.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(processRepository.findFirstByProcessOrderGreaterThanAndUseYnOrderByProcessOrderAsc(1, "Y"))
+        when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(1))
                 .thenReturn(Optional.empty());
         when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
                 .thenReturn(List.of(fixture.lot));
@@ -93,6 +99,56 @@ class ProductionServiceTest {
         assertThat(fixture.lot.getOkQty()).isEqualTo(9);
         assertThat(fixture.lot.getNgQty()).isEqualTo(1);
         assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.COMPLETED);
+    }
+
+    @Test
+    void includesEarlierProcessLossInFinalLotNgQuantity() {
+        Item item = Item.builder()
+                .itemCode("FG-001").itemName("EV Relay").itemType(Item.ItemType.FG).build();
+        Process inspection = Process.builder()
+                .processCode("OP70").processName("Inspection").processOrder(5).build();
+        Process packing = Process.builder()
+                .processCode("OP80").processName("Packing").processOrder(6).build();
+        Machine machine = Machine.builder()
+                .machineId("EQ-PACK-01").machineName("Packer").machineType("PACK")
+                .process(packing).status(Machine.Status.RUNNING).build();
+        WorkOrder order = WorkOrder.builder()
+                .workOrderId(1L).orderNo("WO-001").item(item).targetQty(10)
+                .status(WorkOrder.Status.RUNNING).build();
+        Lot lot = Lot.builder()
+                .lotId(1L).lotNo("LOT-001").workOrder(order).item(item)
+                .currentProcess(packing).inputQty(10).okQty(0).ngQty(0)
+                .status(Lot.Status.RUNNING).build();
+        ProductionLog inspectionResult = ProductionLog.builder()
+                .lot(lot).machine(machine).process(inspection)
+                .inputQty(10).okQty(5).ngQty(5).status("COMPLETED").build();
+        ProductionResultReceiveRequestDto request = request(5, 5, 0, "COMPLETED");
+        request.setMachineId("EQ-PACK-01");
+        request.setProcessCode("OP80");
+
+        when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
+        when(machineRepository.findById("EQ-PACK-01")).thenReturn(Optional.of(machine));
+        when(processRepository.findById("OP80")).thenReturn(Optional.of(packing));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP80"))
+                .thenReturn(List.of());
+        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(6))
+                .thenReturn(Optional.of(inspection));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP70"))
+                .thenReturn(List.of(inspectionResult));
+        when(productionLogRepository.save(any(ProductionLog.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(6))
+                .thenReturn(Optional.empty());
+        when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
+                .thenReturn(List.of(lot));
+
+        productionService.saveResult(request);
+
+        assertThat(lot.getOkQty()).isEqualTo(5);
+        assertThat(lot.getNgQty()).isEqualTo(5);
+        assertThat(lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
     }
 
     @Test
@@ -119,14 +175,14 @@ class ProductionServiceTest {
     @Test
     void advancesToAssemblyOnlyAfterBothParallelProcessesComplete() {
         Process op20 = Process.builder()
-                .processCode("OP20").processName("Winding").processOrder(1).useYn("Y").build();
+                .processCode("OP20").processName("Winding").processOrder(1).build();
         Process op30 = Process.builder()
-                .processCode("OP30").processName("Welding").processOrder(2).useYn("Y").build();
+                .processCode("OP30").processName("Welding").processOrder(2).build();
         Process assembly = Process.builder()
-                .processCode("OP40_OP50").processName("Assembly").processOrder(3).useYn("Y").build();
+                .processCode("OP40_OP50").processName("Assembly").processOrder(3).build();
         Machine machine = Machine.builder()
                 .machineId("EQ-WELD-01").machineName("Welder").machineType("WELD")
-                .process(op30).status(Machine.Status.RUNNING).useYn("Y").build();
+                .process(op30).status(Machine.Status.RUNNING).build();
         WorkOrder order = WorkOrder.builder()
                 .workOrderId(1L).orderNo("WO-001").targetQty(10)
                 .status(WorkOrder.Status.RUNNING).build();
@@ -193,7 +249,6 @@ class ProductionServiceTest {
                 .processCode("OP10")
                 .processName("Assembly")
                 .processOrder(1)
-                .useYn("Y")
                 .build();
         Machine machine = Machine.builder()
                 .machineId("MC-001")
@@ -201,7 +256,6 @@ class ProductionServiceTest {
                 .machineType("ASSEMBLY")
                 .process(process)
                 .status(Machine.Status.RUNNING)
-                .useYn("Y")
                 .build();
         WorkOrder workOrder = WorkOrder.builder()
                 .workOrderId(1L)

@@ -29,14 +29,14 @@ class MasterDataRepositoryTest extends RepositoryTestSupport {
     @Test
     void 알람코드를_설비유형과_사용여부로_조회한다() {
         alarmCodeRepository.saveAllAndFlush(java.util.List.of(
-                alarm("B_ERROR", "TESTER", "Y"),
-                alarm("A_ERROR", "TESTER", "Y"),
-                alarm("C_ERROR", "WINDER", "Y"),
-                alarm("D_ERROR", "TESTER", "N")));
+                alarm("B_ERROR", "TESTER"),
+                alarm("A_ERROR", "TESTER"),
+                alarm("C_ERROR", "WINDER"),
+                alarm("D_ERROR", "TESTER")));
 
-        assertThat(alarmCodeRepository.findByMachineTypeAndUseYnOrderByAlarmCodeAsc("TESTER", "Y"))
+        assertThat(alarmCodeRepository.findAllById(java.util.List.of("A_ERROR", "B_ERROR")))
                 .extracting(AlarmCode::getAlarmCode)
-                .containsExactly("A_ERROR", "B_ERROR");
+                .containsExactlyInAnyOrder("A_ERROR", "B_ERROR");
         assertThat(alarmCodeRepository.existsByAlarmCode("A_ERROR")).isTrue();
     }
 
@@ -46,18 +46,17 @@ class MasterDataRepositoryTest extends RepositoryTestSupport {
         process("OP20", 20);
         processRepository.saveAndFlush(Process.builder()
                 .processCode("OP30")
-                .processName("disabled")
+                .processName("third process")
                 .processOrder(30)
-                .useYn("N")
                 .build());
 
         assertThat(processRepository.existsByProcessOrder(20)).isTrue();
         assertThat(processRepository.existsByProcessOrderAndProcessCodeNot(20, "OP10")).isTrue();
-        assertThat(processRepository.findFirstByUseYnOrderByProcessOrderAsc("Y"))
+        assertThat(processRepository.findFirstByOrderByProcessOrderAsc())
                 .get().extracting(Process::getProcessCode).isEqualTo("OP10");
-        assertThat(processRepository.findFirstByProcessOrderGreaterThanAndUseYnOrderByProcessOrderAsc(10, "Y"))
+        assertThat(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(10))
                 .get().extracting(Process::getProcessCode).isEqualTo("OP20");
-        assertThat(processRepository.findFirstByProcessOrderLessThanAndUseYnOrderByProcessOrderDesc(20, "Y"))
+        assertThat(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(20))
                 .get().extracting(Process::getProcessCode).isEqualTo("OP10");
     }
 
@@ -66,20 +65,20 @@ class MasterDataRepositoryTest extends RepositoryTestSupport {
         Process op20 = process("OP20", 20);
         Process op30 = process("OP30", 30);
         defectCodeRepository.saveAllAndFlush(java.util.List.of(
-                defect("B_NG", op20, "Y"),
-                defect("A_NG", op20, "Y"),
-                defect("C_NG", op30, "Y"),
-                defect("D_NG", op20, "N")));
-        machine("EQ-02", op20, Machine.Status.IDLE, "Y");
-        machine("EQ-01", op20, Machine.Status.RUNNING, "Y");
-        machine("EQ-03", op20, Machine.Status.ERROR, "N");
+                defect("B_NG", op20),
+                defect("A_NG", op20),
+                defect("C_NG", op30),
+                defect("D_NG", op20)));
+        machine("EQ-02", op20, Machine.Status.IDLE);
+        machine("EQ-01", op20, Machine.Status.RUNNING);
+        machine("EQ-03", op20, Machine.Status.ERROR);
 
-        assertThat(defectCodeRepository.findByProcess_ProcessCodeAndUseYnOrderByDefectCodeAsc("OP20", "Y"))
+        assertThat(defectCodeRepository.findAllById(java.util.List.of("A_NG", "B_NG", "D_NG")))
                 .extracting(DefectCode::getDefectCode)
-                .containsExactly("A_NG", "B_NG");
+                .containsExactlyInAnyOrder("A_NG", "B_NG", "D_NG");
         assertThat(machineRepository.findUsableByProcessForUpdate("OP20"))
                 .extracting(Machine::getMachineId)
-                .containsExactly("EQ-01", "EQ-02");
+                .containsExactly("EQ-01", "EQ-02", "EQ-03");
         assertThat(machineRepository.findByStatusOrderByMachineIdAsc(Machine.Status.RUNNING))
                 .extracting(Machine::getMachineId)
                 .containsExactly("EQ-01");
@@ -105,21 +104,19 @@ class MasterDataRepositoryTest extends RepositoryTestSupport {
                 "FG-001", "RM-002", "OP40", activeB.getBomId())).isFalse();
     }
 
-    private AlarmCode alarm(String code, String machineType, String useYn) {
+    private AlarmCode alarm(String code, String machineType) {
         return AlarmCode.builder()
                 .alarmCode(code)
                 .alarmName(code + " alarm")
                 .machineType(machineType)
-                .useYn(useYn)
                 .build();
     }
 
-    private DefectCode defect(String code, Process process, String useYn) {
+    private DefectCode defect(String code, Process process) {
         return DefectCode.builder()
                 .defectCode(code)
                 .defectName(code + " defect")
                 .process(process)
-                .useYn(useYn)
                 .build();
     }
 

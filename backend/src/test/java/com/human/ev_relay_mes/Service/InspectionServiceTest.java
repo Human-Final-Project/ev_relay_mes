@@ -48,12 +48,23 @@ class InspectionServiceTest {
                 .machineId("EQ-TEST-01").machineName("tester")
                 .machineType("TESTER").process(process).build();
         Lot lot = Lot.builder().lotNo("LOT-001").build();
+        LotInspectionStandardSnapshot snapshot = LotInspectionStandardSnapshot.builder()
+                .lot(lot)
+                .process(process)
+                .inspectionItem("resistance")
+                .itemName("resistance")
+                .unit("OHM")
+                .lowerLimit(BigDecimal.ZERO)
+                .upperLimit(BigDecimal.TEN)
+                .standardVersion(1)
+                .build();
         Inspection existing = Inspection.builder()
                 .inspectionId(13L)
                 .eventId("inspection-001")
                 .lot(lot)
                 .machine(machine)
                 .process(process)
+                .standardSnapshot(snapshot)
                 .inspectionItem("resistance")
                 .result(Inspection.Result.OK)
                 .build();
@@ -71,10 +82,10 @@ class InspectionServiceTest {
     @Test
     void aggregatesOp70ResultAfterAllMeasurementsForAllUnitsArrive() {
         Process process = Process.builder()
-                .processCode("OP70").processName("검사").processOrder(70).useYn("Y").build();
+                .processCode("OP70").processName("검사").processOrder(70).build();
         Machine machine = Machine.builder()
                 .machineId("EQ-TEST-01").machineName("검사기")
-                .machineType("TESTER").process(process).useYn("Y").build();
+                .machineType("TESTER").process(process).build();
         Lot lot = Lot.builder()
                 .lotNo("LOT-070").status(Lot.Status.RUNNING).currentProcess(process).build();
         LotInspectionStandardSnapshot snapshot = LotInspectionStandardSnapshot.builder()
@@ -151,8 +162,7 @@ class InspectionServiceTest {
         return Inspection.builder()
                 .lot(lot).machine(machine).process(process).standardSnapshot(snapshot)
                 .unitSeq(1).inspectionItem(item).measuredValue(BigDecimal.ONE)
-                .unit(snapshot.getUnit()).lowerLimit(snapshot.getLowerLimit())
-                .upperLimit(snapshot.getUpperLimit()).standardVersion(1).result(result)
+                .unit(snapshot.getUnit()).result(result)
                 .build();
     }
 }

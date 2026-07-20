@@ -40,14 +40,13 @@ abstract class RepositoryTestSupport {
                 .build());
     }
 
-    protected Machine machine(String id, Process process, Machine.Status status, String useYn) {
+    protected Machine machine(String id, Process process, Machine.Status status) {
         return entityManager.persistAndFlush(Machine.builder()
                 .machineId(id)
                 .machineName(id + " machine")
                 .machineType("TESTER")
                 .process(process)
                 .status(status)
-                .useYn(useYn)
                 .build());
     }
 

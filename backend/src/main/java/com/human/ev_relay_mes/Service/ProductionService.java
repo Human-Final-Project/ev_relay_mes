@@ -42,12 +42,6 @@ public class ProductionService {
     @Transactional
     public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
         String eventId = normalizeEventId(dto.getEventId());
-        if (eventId != null) {
-            Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
-            if (existing.isPresent()) {
-                return toResponse(existing.get());
-            }
-        }
         validateRequest(dto);
         if (INSPECTION_PROCESS.equals(dto.getProcessCode())) {
             throw new CustomException(ErrorCode.INVALID_PRODUCTION_STATUS,
@@ -55,6 +49,12 @@ public class ProductionService {
         }
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        if (eventId != null) {
+            Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
         validateLot(lot, dto.getProcessCode());
 
         Machine machine = machineRepository.findById(dto.getMachineId())
@@ -68,7 +68,6 @@ public class ProductionService {
                         dto.getLotNo(), dto.getProcessCode());
         int totalInputQty = sumInput(previousLogs) + dto.getInputQty();
         int totalOkQty = sumOk(previousLogs) + dto.getOkQty();
-        int totalNgQty = sumNg(previousLogs) + dto.getNgQty();
         int expectedInputQty = expectedInputQty(lot, process);
         validateCumulativeQuantity(expectedInputQty, dto.getStatus(), totalInputQty);
         String logStatus = totalInputQty == expectedInputQty ? "COMPLETED" : "RUNNING";
@@ -88,7 +87,7 @@ public class ProductionService {
         ProductionLog savedLog = productionLogRepository.save(log);
 
         if (totalInputQty == expectedInputQty) {
-            completeCurrentProcess(lot, machine, process, totalOkQty, totalNgQty, dto.getEndedAt());
+            completeCurrentProcess(lot, machine, process, totalOkQty, dto.getEndedAt());
         }
         return toResponse(savedLog);
     }
@@ -130,7 +129,7 @@ public class ProductionService {
                 .endedAt(LocalDateTime.now())
                 .build();
         ProductionLog saved = productionLogRepository.save(log);
-        completeCurrentProcess(lot, machine, process, okQty, ngQty, saved.getEndedAt());
+        completeCurrentProcess(lot, machine, process, okQty, saved.getEndedAt());
         return toResponse(saved);
     }
 
@@ -211,7 +210,7 @@ public class ProductionService {
 
     private void completeCurrentProcess(
             Lot lot, Machine machine, Process process,
-            int totalOkQty, int totalNgQty, LocalDateTime endedAt) {
+            int totalOkQty, LocalDateTime endedAt) {
         workCommandService.completeStartCommand(lot, process, machine);
 
         if (isParallelProcess(process.getProcessCode())) {
@@ -233,7 +232,7 @@ public class ProductionService {
         }
 
         lot.setOkQty(totalOkQty);
-        lot.setNgQty(totalNgQty);
+        lot.setNgQty(lot.getInputQty() - totalOkQty);
         lot.setStatus(Lot.Status.COMPLETED);
         lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
         completeWorkOrderIfReady(lot);
@@ -314,10 +313,6 @@ public class ProductionService {
 
     private int sumOk(List<ProductionLog> logs) {
         return logs.stream().mapToInt(ProductionLog::getOkQty).sum();
-    }
-
-    private int sumNg(List<ProductionLog> logs) {
-        return logs.stream().mapToInt(ProductionLog::getNgQty).sum();
     }
 
     private void validateSearchPeriod(ProductionLogSearchRequestDto condition) {

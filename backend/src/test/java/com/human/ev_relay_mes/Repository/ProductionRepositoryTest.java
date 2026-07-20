@@ -109,7 +109,7 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
     private Fixture fixture() {
         Item product = item("FG-" + System.nanoTime(), Item.ItemType.FG);
         Process process = process("OP-" + System.nanoTime(), Math.abs((int) (System.nanoTime() % 100000)));
-        Machine machine = machine("EQ-" + System.nanoTime(), process, Machine.Status.IDLE, "Y");
+        Machine machine = machine("EQ-" + System.nanoTime(), process, Machine.Status.IDLE);
         WorkOrder order = workOrder("WO-" + System.nanoTime(), product, WorkOrder.Status.RELEASED, 100);
         Lot lot = lot("LOT-" + System.nanoTime(), order, product, process, Lot.Status.WAITING, 100);
         return new Fixture(process, machine, lot);

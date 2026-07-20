@@ -128,7 +128,6 @@ class MachineAlarmServiceTest {
                 .machineType("WINDER")
                 .process(process)
                 .status(status)
-                .useYn("Y")
                 .build();
     }
 
@@ -137,7 +136,6 @@ class MachineAlarmServiceTest {
                 .alarmCode("MOTOR_OVERLOAD")
                 .alarmName("motor overload")
                 .machineType("WINDER")
-                .useYn("Y")
                 .build();
     }
 }

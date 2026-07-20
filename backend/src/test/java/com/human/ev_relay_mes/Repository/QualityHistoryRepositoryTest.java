@@ -55,17 +55,16 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
                 .defectName("test defect")
                 .process(fixture.process)
                 .build());
-        DefectHistory unconfirmed = defectHistoryRepository.saveAndFlush(defect(fixture, code, null));
-        defectHistoryRepository.saveAndFlush(defect(
-                fixture, code, member("inspector", Member.Role.OPERATOR, Member.Status.ACTIVE)));
+        DefectHistory first = defectHistoryRepository.saveAndFlush(defect(fixture, code));
+        defectHistoryRepository.saveAndFlush(defect(fixture, code));
 
         assertThat(defectHistoryRepository.findByLot_LotNoOrderByOccurredAtDesc(fixture.lot.getLotNo())).hasSize(2);
         assertThat(defectHistoryRepository.findByMachine_MachineIdOrderByOccurredAtDesc(fixture.machine.getMachineId())).hasSize(2);
         assertThat(defectHistoryRepository.findByProcess_ProcessCodeOrderByOccurredAtDesc(fixture.process.getProcessCode())).hasSize(2);
         assertThat(defectHistoryRepository.findByDefectCode_DefectCodeOrderByOccurredAtDesc("DEFECT-01")).hasSize(2);
-        assertThat(defectHistoryRepository.findByConfirmedByIsNullOrderByOccurredAtDesc())
+        assertThat(defectHistoryRepository.findByDefectCode_DefectCodeOrderByOccurredAtDesc("DEFECT-01"))
                 .extracting(DefectHistory::getDefectHistoryId)
-                .containsExactly(unconfirmed.getDefectHistoryId());
+                .contains(first.getDefectHistoryId());
     }
 
     @Test
@@ -114,7 +113,7 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
         long suffix = System.nanoTime();
         Item product = item("FG-" + suffix, Item.ItemType.FG);
         Process process = process("OP-" + suffix, Math.abs((int) (suffix % 100000)));
-        Machine machine = machine("EQ-" + suffix, process, Machine.Status.IDLE, "Y");
+        Machine machine = machine("EQ-" + suffix, process, Machine.Status.IDLE);
         WorkOrder order = workOrder("WO-" + suffix, product, WorkOrder.Status.RELEASED, 100);
         Lot lot = lot("LOT-" + suffix, order, product, process, Lot.Status.RUNNING, 100);
         LotInspectionStandardSnapshot snapshot = entityManager.persistAndFlush(
@@ -141,21 +140,17 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
                 .inspectionItem("resistance")
                 .measuredValue(BigDecimal.ONE)
                 .unit("OHM")
-                .lowerLimit(BigDecimal.ZERO)
-                .upperLimit(BigDecimal.TEN)
-                .standardVersion(1)
                 .result(result)
                 .build();
     }
 
-    private DefectHistory defect(Fixture fixture, DefectCode code, Member confirmedBy) {
+    private DefectHistory defect(Fixture fixture, DefectCode code) {
         return DefectHistory.builder()
                 .lot(fixture.lot)
                 .machine(fixture.machine)
                 .process(fixture.process)
                 .defectCode(code)
                 .defectQty(1)
-                .confirmedBy(confirmedBy)
                 .build();
     }
 
