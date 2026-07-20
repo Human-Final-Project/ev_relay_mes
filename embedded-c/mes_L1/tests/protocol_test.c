@@ -144,14 +144,10 @@ static void test_inspection_message(void)
         "EQ-TEST-01",
         "OP70",
         "EVR-LOT-001",
-        "operationVoltage",
+        1,
+        "OPERATION_VOLTAGE",
         12.0,
-        "V",
-        1,
-        10.0,
-        1,
-        14.0,
-        L1_INSPECTION_OK
+        "V"
     };
 
     CHECK(l1_protocol_build_inspection(output,
@@ -159,27 +155,22 @@ static void test_inspection_message(void)
                                        &event,
                                        &length) == L1_PROTOCOL_OK);
     CHECK(strcmp(output,
-                 "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,operationVoltage,12.000,V,10.000,14.000,OK\n")
+                 "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,1,OPERATION_VOLTAGE,12.000,V\n")
           == 0);
 
-    event.has_lower_limit = 0;
-    event.has_upper_limit = 0;
+    event.unit_seq = 0;
+    CHECK(l1_protocol_build_inspection(output,
+                                       sizeof(output),
+                                       &event,
+                                       &length) == L1_PROTOCOL_OUT_OF_RANGE);
+
+    event.unit_seq = 1;
     event.unit[0] = '\0';
-    event.result = L1_INSPECTION_NG;
     CHECK(l1_protocol_build_inspection(output,
                                        sizeof(output),
                                        &event,
                                        &length) == L1_PROTOCOL_OK);
-    CHECK(strstr(output, ",12.000,-,-,-,NG\n") != NULL);
-
-    event.has_lower_limit = 1;
-    event.has_upper_limit = 1;
-    event.lower_limit = 15.0;
-    event.upper_limit = 14.0;
-    CHECK(l1_protocol_build_inspection(output,
-                                       sizeof(output),
-                                       &event,
-                                       &length) == L1_PROTOCOL_INVALID_VALUE);
+    CHECK(strstr(output, ",12.000,-\n") != NULL);
 }
 
 static void test_defect_alarm_and_status_messages(void)

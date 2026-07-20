@@ -245,6 +245,30 @@ size_t connection_registry_registered_count(
     return count;
 }
 
+int connection_registry_is_machine_registered(
+    CollectorConnectionRegistry *registry,
+    const char *machine_id)
+{
+    size_t index;
+    int found = 0;
+
+    if (registry == NULL || !registry->initialized
+        || machine_id == NULL || machine_id[0] == '\0') {
+        return 0;
+    }
+    collector_mutex_lock(&registry->mutex);
+    for (index = 0; index < COLLECTOR_MAX_L1_CONNECTIONS; ++index) {
+        CollectorConnection *connection = &registry->connections[index];
+        if (connection->active && connection->registered
+            && strcmp(connection->machine_id, machine_id) == 0) {
+            found = 1;
+            break;
+        }
+    }
+    collector_mutex_unlock(&registry->mutex);
+    return found;
+}
+
 NetSocket collector_connection_socket(const CollectorConnection *connection)
 {
     return connection != NULL ? connection->socket : NET_INVALID_SOCKET;

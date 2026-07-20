@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Getter
 @Builder
@@ -29,8 +30,15 @@ public class LotResponseDto {
     private Long createdById;
     private String createdByName;
     private LocalDateTime createdAt;
+    private List<LotProcessResponsibleResponseDto> responsibles;
 
     public static LotResponseDto fromEntity(Lot lot) {
+        return fromEntity(lot, List.of());
+    }
+
+    public static LotResponseDto fromEntity(
+            Lot lot,
+            List<LotProcessResponsibleResponseDto> responsibles) {
         Member creator = lot.getCreatedBy();
         return LotResponseDto.builder()
                 .lotId(lot.getLotId())
@@ -51,6 +59,7 @@ public class LotResponseDto {
                 .createdById(creator == null ? null : creator.getMemberId())
                 .createdByName(creator == null ? null : creator.getMemberName())
                 .createdAt(lot.getCreatedAt())
+                .responsibles(responsibles == null ? List.of() : List.copyOf(responsibles))
                 .build();
     }
 }

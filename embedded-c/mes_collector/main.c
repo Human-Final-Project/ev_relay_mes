@@ -15,21 +15,21 @@ int main(void)
         return EXIT_FAILURE;
     }
 
-    if (scheduler_init() != 0) {
-        fprintf(stderr, "Failed to initialize scheduler.\n");
+    if (api_client_init() != 0) {
+        fprintf(stderr, "Failed to initialize API client.\n");
         goto cleanup_network;
     }
 
-    if (api_client_init() != 0) {
-        fprintf(stderr, "Failed to initialize API client.\n");
-        goto cleanup_scheduler;
+    if (scheduler_init() != 0) {
+        fprintf(stderr, "Failed to initialize scheduler.\n");
+        goto cleanup_api_client;
     }
 
     exit_code = collector_run() == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 
-    api_client_cleanup();
-cleanup_scheduler:
     scheduler_cleanup();
+cleanup_api_client:
+    api_client_cleanup();
 cleanup_network:
     net_runtime_cleanup();
 

@@ -2,14 +2,20 @@ package com.human.ev_relay_mes.Entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.CreationTimestamp;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-import org.hibernate.annotations.CreationTimestamp;
-
 @Entity
-@Table(name = "inspections")
+@Table(
+        name = "inspections",
+        uniqueConstraints = {
+                @UniqueConstraint(name = "uk_inspection_event_id", columnNames = "event_id"),
+                @UniqueConstraint(
+                        name = "uk_inspection_unit_item",
+                        columnNames = {"lot_no", "process_code", "unit_seq", "inspection_item"})
+        })
 @Getter
 @Setter
 @NoArgsConstructor
@@ -17,7 +23,7 @@ import org.hibernate.annotations.CreationTimestamp;
 @Builder
 public class Inspection {
 
-    @Column(name = "event_id", unique = true, length = 100)
+    @Column(name = "event_id", length = 100)
     private String eventId;
 
     @Id
@@ -33,19 +39,24 @@ public class Inspection {
     @JoinColumn(name = "machine_id", nullable = false)
     private Machine machine;
 
-    // processes 테이블이 엔티티로 추가되어 실제 연관관계로 매핑한다.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "process_code", referencedColumnName = "process_code", nullable = false)
     private Process process;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "snapshot_id", nullable = false)
+    private LotInspectionStandardSnapshot standardSnapshot;
+
+    @Column(name = "unit_seq", nullable = false)
+    private Integer unitSeq;
+
     @Column(name = "inspection_item", nullable = false, length = 100)
     private String inspectionItem;
 
-    @Column(name = "measured_value", precision = 12, scale = 3)
+    @Column(name = "measured_value", nullable = false, precision = 12, scale = 3)
     private BigDecimal measuredValue;
 
-    // 공정마다 측정 단위가 달라서(Ω, MPa, V 등) unit은 유지한다.
-    @Column(name = "unit", length = 20)
+    @Column(name = "unit", nullable = false, length = 20)
     private String unit;
 
     @Column(name = "lower_limit", precision = 12, scale = 3)
@@ -53,6 +64,9 @@ public class Inspection {
 
     @Column(name = "upper_limit", precision = 12, scale = 3)
     private BigDecimal upperLimit;
+
+    @Column(name = "standard_version", nullable = false)
+    private Integer standardVersion;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "result", nullable = false, length = 10)

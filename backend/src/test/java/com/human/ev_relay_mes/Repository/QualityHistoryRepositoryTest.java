@@ -6,6 +6,7 @@ import com.human.ev_relay_mes.Entity.DefectHistory;
 import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
@@ -116,7 +117,18 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
         Machine machine = machine("EQ-" + suffix, process, Machine.Status.IDLE, "Y");
         WorkOrder order = workOrder("WO-" + suffix, product, WorkOrder.Status.RELEASED, 100);
         Lot lot = lot("LOT-" + suffix, order, product, process, Lot.Status.RUNNING, 100);
-        return new Fixture(process, machine, lot);
+        LotInspectionStandardSnapshot snapshot = entityManager.persistAndFlush(
+                LotInspectionStandardSnapshot.builder()
+                        .lot(lot)
+                        .process(process)
+                        .inspectionItem("resistance")
+                        .itemName("resistance")
+                        .unit("OHM")
+                        .lowerLimit(BigDecimal.ZERO)
+                        .upperLimit(BigDecimal.TEN)
+                        .standardVersion(1)
+                        .build());
+        return new Fixture(process, machine, lot, snapshot);
     }
 
     private Inspection inspection(Fixture fixture, Inspection.Result result) {
@@ -124,8 +136,14 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
                 .lot(fixture.lot)
                 .machine(fixture.machine)
                 .process(fixture.process)
+                .standardSnapshot(fixture.snapshot)
+                .unitSeq(result == Inspection.Result.OK ? 1 : 2)
                 .inspectionItem("resistance")
                 .measuredValue(BigDecimal.ONE)
+                .unit("OHM")
+                .lowerLimit(BigDecimal.ZERO)
+                .upperLimit(BigDecimal.TEN)
+                .standardVersion(1)
                 .result(result)
                 .build();
     }
@@ -160,5 +178,5 @@ class QualityHistoryRepositoryTest extends RepositoryTestSupport {
                 .build();
     }
 
-    private record Fixture(Process process, Machine machine, Lot lot) {}
+    private record Fixture(Process process, Machine machine, Lot lot, LotInspectionStandardSnapshot snapshot) {}
 }

@@ -37,6 +37,7 @@ public class LotService {
     private final ProcessRepository processRepository;
     private final MaterialLotService materialLotService;
     private final WorkCommandService workCommandService;
+    private final LotProcessResponsibleService lotProcessResponsibleService;
 
     @Transactional
     public LotResponseDto createLot(Long workOrderId, LotCreateRequestDto dto, Long memberId) {
@@ -64,7 +65,7 @@ public class LotService {
                 .inputQty(dto.getInputQty())
                 .createdBy(creator)
                 .build();
-        return LotResponseDto.fromEntity(lotRepository.save(lot));
+        return toResponse(lotRepository.save(lot));
     }
 
     public List<LotResponseDto> getLots(String status, Long workOrderId) {
@@ -81,15 +82,15 @@ public class LotService {
                     ? lotRepository.findAllByOrderByCreatedAtDesc()
                     : lotRepository.findByStatusOrderByCreatedAtDesc(parseStatus(status));
         }
-        return lots.stream().map(LotResponseDto::fromEntity).toList();
+        return lots.stream().map(this::toResponse).toList();
     }
 
     public LotResponseDto getLot(Long id) {
-        return LotResponseDto.fromEntity(findLot(id));
+        return toResponse(findLot(id));
     }
 
     public LotResponseDto getLotByNo(String lotNo) {
-        return LotResponseDto.fromEntity(findLotByNo(lotNo));
+        return toResponse(findLotByNo(lotNo));
     }
 
     @Transactional
@@ -97,11 +98,11 @@ public class LotService {
         Lot lot = findLotForUpdate(id);
         Lot.Status targetStatus = parseStatus(dto.getStatus());
         if (lot.getStatus() == targetStatus) {
-            return LotResponseDto.fromEntity(lot);
+            return toResponse(lot);
         }
         validateTransition(lot, targetStatus);
         applyStatus(lot, targetStatus);
-        return LotResponseDto.fromEntity(lot);
+        return toResponse(lot);
     }
 
     @Transactional
@@ -241,4 +242,11 @@ public class LotService {
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
+
+    private LotResponseDto toResponse(Lot lot) {
+        return LotResponseDto.fromEntity(
+                lot,
+                lotProcessResponsibleService.getByLotNo(lot.getLotNo()));
+    }
+
 }

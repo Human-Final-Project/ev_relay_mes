@@ -255,6 +255,15 @@ CollectorSendResult collector_send_command_to_machine(
     return COLLECTOR_SEND_OK;
 }
 
+int collector_is_machine_connected(const char *machine_id)
+{
+    if (!connection_registry_ready) {
+        return 0;
+    }
+    return connection_registry_is_machine_registered(
+        &connection_registry, machine_id);
+}
+
 int collector_build_communication_failure_events(
     const char *machine_id,
     CollectorCommunicationFailure failure,
@@ -327,6 +336,10 @@ static void send_backend_event(const ProtocolMessage *message)
         printf("[L2 -> Backend] event=%s status=%d\n",
                protocol_event_type_name(message->type),
                http_status);
+    } else if (api_result == API_CLIENT_QUEUED) {
+        printf("[L2 -> Backend] event=%s queued-after-retry=%d\n",
+               protocol_event_type_name(message->type),
+               MES_HTTP_MAX_RETRIES);
     } else if (api_result != API_CLIENT_SKIPPED) {
         fprintf(stderr,
                 "[L2 -> Backend] event=%s failed=%s status=%d retry=%d\n",

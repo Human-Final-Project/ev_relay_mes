@@ -87,16 +87,24 @@ static void test_duplicate_machine_is_rejected(void)
                                          20002);
     CHECK(first != NULL);
     CHECK(second != NULL);
+    CHECK(connection_registry_is_machine_registered(&registry,
+                                                    "EQ-WIND-01") == 0);
     CHECK(connection_registry_register_machine(&registry,
                                                first,
                                                "EQ-WIND-01")
           == CONNECTION_REGISTER_OK);
+    CHECK(connection_registry_is_machine_registered(&registry,
+                                                    "EQ-WIND-01") == 1);
+    CHECK(connection_registry_is_machine_registered(&registry,
+                                                    "EQ-WELD-01") == 0);
     CHECK(connection_registry_register_machine(&registry,
                                                second,
                                                "EQ-WIND-01")
           == CONNECTION_REGISTER_DUPLICATE_MACHINE);
     CHECK(connection_registry_registered_count(&registry) == 1);
     CHECK(connection_registry_detach(&registry, first) == (NetSocket)200);
+    CHECK(connection_registry_is_machine_registered(&registry,
+                                                    "EQ-WIND-01") == 0);
     CHECK(connection_registry_register_machine(&registry,
                                                second,
                                                "EQ-WIND-01")

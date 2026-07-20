@@ -69,8 +69,16 @@ public class CollectorController {
     }
 
     @GetMapping("/commands/pending")
-    public List<WorkCommandResponseDto> claimPendingCommands() {
-        return workCommandService.claimPendingCommands();
+    public List<WorkCommandResponseDto> claimPendingCommands(
+            @RequestParam(required = false) String machineId) {
+        return workCommandService.claimPendingCommands(machineId);
+    }
+
+    @PostMapping("/commands/{commandId}/release")
+    public WorkCommandResponseDto releaseCommand(
+            @PathVariable Long commandId,
+            @RequestParam String machineId) {
+        return workCommandService.releaseDispatchedCommand(commandId, machineId);
     }
 
     @PostMapping("/command-acks")

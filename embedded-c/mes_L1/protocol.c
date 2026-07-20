@@ -369,19 +369,6 @@ static const char *production_status_name(L1ProductionStatus status)
     }
 }
 
-static const char *inspection_result_name(L1InspectionResult result)
-{
-    switch (result) {
-    case L1_INSPECTION_OK:
-        return "OK";
-    case L1_INSPECTION_NG:
-        return "NG";
-    case L1_INSPECTION_RESULT_UNKNOWN:
-    default:
-        return NULL;
-    }
-}
-
 static const char *alarm_level_name(L1AlarmLevel level)
 {
     switch (level) {
@@ -676,10 +663,7 @@ L1ProtocolResult l1_protocol_build_inspection(
     const L1InspectionEvent *event,
     size_t *out_length)
 {
-    char lower_limit[64];
-    char upper_limit[64];
     const char *unit;
-    const char *result_name;
     L1ProtocolResult result =
         prepare_output(out_buffer, buffer_size, out_length);
     int written;
@@ -704,62 +688,23 @@ L1ProtocolResult l1_protocol_build_inspection(
             != L1_PROTOCOL_OK) {
         return result;
     }
-    if (!isfinite(event->value)
-        || (event->has_lower_limit && !isfinite(event->lower_limit))
-        || (event->has_upper_limit && !isfinite(event->upper_limit))) {
+    if (event->unit_seq <= 0) {
         return L1_PROTOCOL_OUT_OF_RANGE;
     }
-    if ((event->has_lower_limit != 0 && event->has_lower_limit != 1)
-        || (event->has_upper_limit != 0 && event->has_upper_limit != 1)) {
-        return L1_PROTOCOL_INVALID_VALUE;
-    }
-    if (event->has_lower_limit && event->has_upper_limit
-        && event->lower_limit > event->upper_limit) {
-        return L1_PROTOCOL_INVALID_VALUE;
-    }
-    result_name = inspection_result_name(event->result);
-    if (result_name == NULL) {
-        return L1_PROTOCOL_INVALID_VALUE;
-    }
-    if (event->has_lower_limit) {
-        int limit_length = snprintf(lower_limit,
-                                    sizeof(lower_limit),
-                                    "%.3f",
-                                    event->lower_limit);
-
-        if (limit_length < 0
-            || (size_t)limit_length >= sizeof(lower_limit)) {
-            return L1_PROTOCOL_OUT_OF_RANGE;
-        }
-    } else {
-        strcpy(lower_limit, "-");
-    }
-    if (event->has_upper_limit) {
-        int limit_length = snprintf(upper_limit,
-                                    sizeof(upper_limit),
-                                    "%.3f",
-                                    event->upper_limit);
-
-        if (limit_length < 0
-            || (size_t)limit_length >= sizeof(upper_limit)) {
-            return L1_PROTOCOL_OUT_OF_RANGE;
-        }
-    } else {
-        strcpy(upper_limit, "-");
+    if (!isfinite(event->value)) {
+        return L1_PROTOCOL_OUT_OF_RANGE;
     }
     written = snprintf(out_buffer,
                        buffer_size,
-                       "%s,INSPECTION,%s,%s,%s,%s,%.3f,%s,%s,%s,%s\n",
+                       "%s,INSPECTION,%s,%s,%s,%d,%s,%.3f,%s\n",
                        L1_PROTOCOL_VERSION,
                        event->machine_id,
                        event->process_code,
                        event->lot_no,
+                       event->unit_seq,
                        event->item,
                        event->value,
-                       unit,
-                       lower_limit,
-                       upper_limit,
-                       result_name);
+                       unit);
     return finish_output(out_buffer, buffer_size, written, out_length);
 }
 

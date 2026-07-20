@@ -6,7 +6,7 @@
 #include "device_config.h"
 #include "protocol.h"
 
-#define L1_RUNTIME_MAX_ACTIONS 4
+#define L1_RUNTIME_MAX_ACTIONS 6
 
 typedef enum {
     L1_RUNTIME_IDLE = 0,
@@ -18,15 +18,18 @@ typedef enum {
 typedef enum {
     L1_RUNTIME_ACTION_COMMAND_ACK = 0,
     L1_RUNTIME_ACTION_PRODUCTION,
+    L1_RUNTIME_ACTION_INSPECTION,
     L1_RUNTIME_ACTION_ALARM,
     L1_RUNTIME_ACTION_MACHINE_STATUS
 } L1RuntimeActionType;
 
 typedef struct {
     L1RuntimeActionType type;
+    int completes_unit;
     union {
         L1CommandAckEvent command_ack;
         L1ProductionEvent production;
+        L1InspectionEvent inspection;
         L1AlarmEvent alarm;
         L1MachineStatusEvent machine_status;
     } data;
@@ -46,25 +49,21 @@ typedef struct {
     int reported_qty;
     int error_after_qty;
     int error_triggered;
+    int64_t last_command_id;
+    L1CommandAckStatus last_ack_status;
+    char last_ack_message[L1_MESSAGE_CAPACITY];
 } L1MachineRuntime;
 
 void l1_machine_runtime_init(L1MachineRuntime *runtime,
                              const L1DeviceConfig *device,
                              int error_after_qty);
-
-/* Handles START, STOP or RESUME and returns ordered outbound actions. */
 int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
                                       const L1Command *command,
                                       L1RuntimeActions *out_actions);
-
-/* Processes one product while RUNNING and returns ordered outbound actions. */
 int l1_machine_runtime_tick(L1MachineRuntime *runtime,
                             L1RuntimeActions *out_actions);
-
-/* Called only after a PRODUCTION action was successfully sent to L2. */
 int l1_machine_runtime_mark_reported(L1MachineRuntime *runtime,
                                      int quantity);
-
 int l1_machine_runtime_remaining_qty(const L1MachineRuntime *runtime);
 int l1_machine_runtime_unreported_qty(const L1MachineRuntime *runtime);
 const char *l1_machine_runtime_state_name(L1RuntimeState state);

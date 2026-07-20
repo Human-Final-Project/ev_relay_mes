@@ -78,25 +78,22 @@ static void test_inspection(void)
     const ProtocolInspectionEvent *event;
 
     CHECK(protocol_parse_message(
-              "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,operationVoltage,12.000,V,10.000,14.000,OK\n",
+              "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,1,OPERATION_VOLTAGE,12.000,V\n",
               &message)
           == PROTOCOL_RESULT_OK);
     CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
     event = &message.data.inspection;
-    CHECK(strcmp(event->item, "operationVoltage") == 0);
+    CHECK(event->unit_seq == 1);
+    CHECK(strcmp(event->item, "OPERATION_VOLTAGE") == 0);
     CHECK(event->value == 12.0);
-    CHECK(event->has_lower_limit == 1);
-    CHECK(event->lower_limit == 10.0);
-    CHECK(event->has_upper_limit == 1);
-    CHECK(event->upper_limit == 14.0);
-    CHECK(strcmp(event->result, "OK") == 0);
+    CHECK(strcmp(event->unit, "V") == 0);
 
     CHECK(protocol_parse_message(
-              "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,visualCheck,1,EA,-,-,NG\n",
+              "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,2,COIL_RESISTANCE,101.000,OHM\n",
               &message)
           == PROTOCOL_RESULT_OK);
-    CHECK(message.data.inspection.has_lower_limit == 0);
-    CHECK(message.data.inspection.has_upper_limit == 0);
+    CHECK(message.data.inspection.unit_seq == 2);
+    CHECK(strcmp(message.data.inspection.item, "COIL_RESISTANCE") == 0);
 }
 
 static void test_error_and_status_events(void)
@@ -185,11 +182,11 @@ static void test_invalid_messages(void)
         "V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-001,1x,1,0,COMPLETED\n",
         PROTOCOL_RESULT_INVALID_NUMBER);
     expect_parse_result(
-        "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,item,abc,V,10,14,OK\n",
+        "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,1,item,abc,V\n",
         PROTOCOL_RESULT_INVALID_NUMBER);
     expect_parse_result(
-        "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,item,12,V,14,10,OK\n",
-        PROTOCOL_RESULT_INVALID_VALUE);
+        "V1,INSPECTION,EQ-TEST-01,OP70,EVR-LOT-001,0,item,12,V\n",
+        PROTOCOL_RESULT_OUT_OF_RANGE);
     expect_parse_result(
         "V1,DEFECT,EQ-WELD-01,OP30,EVR-LOT-001,WELD_STRENGTH_NG,0,-\n",
         PROTOCOL_RESULT_OUT_OF_RANGE);

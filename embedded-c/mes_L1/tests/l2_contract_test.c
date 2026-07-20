@@ -42,8 +42,7 @@ static void test_l1_messages_are_accepted_by_l2(void)
     };
     L1InspectionEvent inspection = {
         "EQ-TEST-01", "OP70", "EVR-LOT-001",
-        "operationVoltage", 12.0, "V",
-        1, 10.0, 1, 14.0, L1_INSPECTION_OK
+        1, "OPERATION_VOLTAGE", 12.0, "V"
     };
     L1DefectEvent defect = {
         "EQ-WELD-01", "OP30", "EVR-LOT-001",
