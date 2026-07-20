@@ -10,8 +10,11 @@ import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlarmHistory, Long> {
+
+    Optional<MachineAlarmHistory> findByEventId(String eventId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select h from MachineAlarmHistory h where h.machineAlarmHistoryId = :id")

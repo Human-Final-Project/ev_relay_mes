@@ -27,6 +27,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class ProductionServiceTest {
@@ -44,6 +45,31 @@ class ProductionServiceTest {
 
     @InjectMocks
     private ProductionService productionService;
+
+    @Test
+    void returnsExistingProductionResultForDuplicateEventId() {
+        Fixture fixture = fixture();
+        ProductionLog existing = ProductionLog.builder()
+                .productionLogId(10L)
+                .eventId("production-001")
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(10)
+                .okQty(9)
+                .ngQty(1)
+                .status("COMPLETED")
+                .build();
+        ProductionResultReceiveRequestDto request = request(10, 9, 1, "COMPLETED");
+        request.setEventId(" production-001 ");
+        when(productionLogRepository.findByEventId("production-001"))
+                .thenReturn(Optional.of(existing));
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getProductionLogId()).isEqualTo(10L);
+        verifyNoInteractions(lotRepository, machineRepository, processRepository, workCommandService);
+    }
 
     @Test
     void completesFinalProcessLotAndWorkOrder() {

@@ -6,8 +6,11 @@ import com.human.ev_relay_mes.Entity.DefectHistory;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface DefectHistoryRepository extends JpaRepository<DefectHistory, Long> {
+
+    Optional<DefectHistory> findByEventId(String eventId);
 
     // LOT 상세 화면에서 해당 생산 LOT에 발생한 불량 이력을 표시할 때 사용한다.
     List<DefectHistory> findByLot_LotNoOrderByOccurredAtDesc(String lotNo);

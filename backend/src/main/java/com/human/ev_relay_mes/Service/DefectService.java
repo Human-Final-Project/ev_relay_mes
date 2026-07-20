@@ -40,6 +40,13 @@ public class DefectService {
     // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
     @Transactional
     public DefectHistoryResponseDto createDefect(DefectHistoryCreateRequestDto dto) {
+        String eventId = normalizeEventId(dto.getEventId());
+        if (eventId != null) {
+            var existing = defectHistoryRepository.findByEventId(eventId);
+            if (existing.isPresent()) {
+                return toResponse(existing.get());
+            }
+        }
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         if (lot.getStatus() == Lot.Status.SCRAPPED) {
@@ -59,6 +66,7 @@ public class DefectService {
         validateDefectQuantity(lot, dto.getDefectQty());
 
         DefectHistory history = DefectHistory.builder()
+                .eventId(eventId)
                 .lot(lot)
                 .machine(machine)
                 .process(process)
@@ -141,6 +149,10 @@ public class DefectService {
     // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
+    }
+
+    private String normalizeEventId(String eventId) {
+        return isBlank(eventId) ? null : eventId.trim();
     }
 
     // 불량 발생 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.

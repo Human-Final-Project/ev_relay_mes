@@ -1,6 +1,7 @@
 package com.human.ev_relay_mes.Dto.Request;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -9,6 +10,9 @@ import lombok.Setter;
 @Setter
 @NoArgsConstructor
 public class MachineStatusReceiveRequestDto {
+
+    @Size(max = 100)
+    private String eventId;
 
     @NotBlank
     private String machineId;

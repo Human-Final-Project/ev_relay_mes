@@ -16,6 +16,9 @@ import org.hibernate.annotations.CreationTimestamp;
 @Builder
 public class MachineAlarmHistory {
 
+    @Column(name = "event_id", unique = true, length = 100)
+    private String eventId;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "machine_alarm_history_id")

@@ -16,6 +16,9 @@ import org.hibernate.annotations.CreationTimestamp;
 @Builder
 public class ProductionLog {
 
+    @Column(name = "event_id", unique = true, length = 100)
+    private String eventId;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "production_log_id")

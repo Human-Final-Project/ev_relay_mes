@@ -5,6 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -15,6 +16,9 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 public class ProductionResultReceiveRequestDto {
+
+    @Size(max = 100)
+    private String eventId;
 
     @NotBlank
     private String lotNo;
