@@ -42,7 +42,7 @@ class MachineServiceTest {
                 .processCode("OP20").processName("winding").processOrder(20).build();
         Machine machine = Machine.builder()
                 .machineId("EQ-WIND-01").machineName("winder").machineType("WINDER")
-                .process(process).status(Machine.Status.RUNNING).useYn("Y").build();
+                .process(process).status(Machine.Status.RUNNING).build();
         MachineStatusHistory existing = MachineStatusHistory.builder()
                 .machineStatusHistoryId(11L)
                 .eventId("status-001")
@@ -69,7 +69,7 @@ class MachineServiceTest {
                 .processCode("OP20").processName("winding").processOrder(20).build();
         Machine machine = Machine.builder()
                 .machineId("EQ-WIND-01").machineName("winder").machineType("WINDER")
-                .process(process).status(Machine.Status.ERROR).useYn("Y").build();
+                .process(process).status(Machine.Status.ERROR).build();
         Item item = Item.builder().itemCode("FG-001").itemName("relay").itemType(Item.ItemType.FG).build();
         WorkOrder order = WorkOrder.builder().workOrderId(1L).orderNo("WO-001")
                 .item(item).targetQty(10).build();

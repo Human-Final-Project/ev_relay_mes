@@ -81,7 +81,7 @@ class ProductionServiceTest {
                 .thenReturn(List.of());
         when(productionLogRepository.save(any(ProductionLog.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(processRepository.findFirstByProcessOrderGreaterThanAndUseYnOrderByProcessOrderAsc(1, "Y"))
+        when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(1))
                 .thenReturn(Optional.empty());
         when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
                 .thenReturn(List.of(fixture.lot));
@@ -119,14 +119,14 @@ class ProductionServiceTest {
     @Test
     void advancesToAssemblyOnlyAfterBothParallelProcessesComplete() {
         Process op20 = Process.builder()
-                .processCode("OP20").processName("Winding").processOrder(1).useYn("Y").build();
+                .processCode("OP20").processName("Winding").processOrder(1).build();
         Process op30 = Process.builder()
-                .processCode("OP30").processName("Welding").processOrder(2).useYn("Y").build();
+                .processCode("OP30").processName("Welding").processOrder(2).build();
         Process assembly = Process.builder()
-                .processCode("OP40_OP50").processName("Assembly").processOrder(3).useYn("Y").build();
+                .processCode("OP40_OP50").processName("Assembly").processOrder(3).build();
         Machine machine = Machine.builder()
                 .machineId("EQ-WELD-01").machineName("Welder").machineType("WELD")
-                .process(op30).status(Machine.Status.RUNNING).useYn("Y").build();
+                .process(op30).status(Machine.Status.RUNNING).build();
         WorkOrder order = WorkOrder.builder()
                 .workOrderId(1L).orderNo("WO-001").targetQty(10)
                 .status(WorkOrder.Status.RUNNING).build();
@@ -193,7 +193,6 @@ class ProductionServiceTest {
                 .processCode("OP10")
                 .processName("Assembly")
                 .processOrder(1)
-                .useYn("Y")
                 .build();
         Machine machine = Machine.builder()
                 .machineId("MC-001")
@@ -201,7 +200,6 @@ class ProductionServiceTest {
                 .machineType("ASSEMBLY")
                 .process(process)
                 .status(Machine.Status.RUNNING)
-                .useYn("Y")
                 .build();
         WorkOrder workOrder = WorkOrder.builder()
                 .workOrderId(1L)

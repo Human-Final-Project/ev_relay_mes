@@ -322,13 +322,13 @@ class WorkCommandServiceTest {
 
     private Process process(String code, int order) {
         return Process.builder()
-                .processCode(code).processName(code).processOrder(order).useYn("Y").build();
+                .processCode(code).processName(code).processOrder(order).build();
     }
 
     private Machine machine(String id, Process process) {
         return Machine.builder()
                 .machineId(id).machineName(id).machineType("TEST")
-                .process(process).status(Machine.Status.IDLE).useYn("Y").build();
+                .process(process).status(Machine.Status.IDLE).build();
     }
 
     private WorkCommand command(Long id, Lot lot, Machine machine, Process process) {
