@@ -2,8 +2,10 @@ package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.LotStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LotResponseDto;
+import com.human.ev_relay_mes.Dto.Response.LotProcessResponsibleResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Service.LotService;
+import com.human.ev_relay_mes.Service.LotProcessResponsibleService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +21,7 @@ public class LotController {
 
     private final LotService lotService;
     private final WorkCommandService workCommandService;
+    private final LotProcessResponsibleService lotProcessResponsibleService;
 
     @GetMapping
     public List<LotResponseDto> getLots(
@@ -41,6 +44,13 @@ public class LotController {
     public List<WorkCommandResponseDto> getCommands(@PathVariable String lotNo) {
         lotService.getLotByNo(lotNo);
         return workCommandService.getCommands(lotNo);
+    }
+
+    @GetMapping("/by-no/{lotNo}/responsibles")
+    public List<LotProcessResponsibleResponseDto> getResponsibles(
+            @PathVariable String lotNo) {
+        lotService.getLotByNo(lotNo);
+        return lotProcessResponsibleService.getByLotNo(lotNo);
     }
 
     @PatchMapping("/{id}/status")

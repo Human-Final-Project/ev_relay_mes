@@ -1,7 +1,8 @@
 package com.human.ev_relay_mes.Dto.Request;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -26,15 +27,15 @@ public class InspectionResultReceiveRequestDto {
     @NotBlank
     private String processCode;
 
+    @NotNull
+    @Positive
+    private Integer unitSeq;
+
     @NotBlank
     private String inspectionItem;
 
+    @NotNull
     private BigDecimal measuredValue;
-    private String unit;
-    private BigDecimal lowerLimit;
-    private BigDecimal upperLimit;
 
-    @NotBlank
-    @Pattern(regexp = "(?i)OK|NG")
-    private String result;
+    private String unit;
 }

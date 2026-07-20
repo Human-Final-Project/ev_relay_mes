@@ -16,11 +16,13 @@ public class InspectionResponseDto {
     private String machineName;
     private String processCode;
     private String processName;
+    private Integer unitSeq;
     private String inspectionItem;
     private BigDecimal measuredValue;
     private String unit;
     private BigDecimal lowerLimit;
     private BigDecimal upperLimit;
+    private Integer standardVersion;
     private String result;
     private LocalDateTime inspectedAt;
 }

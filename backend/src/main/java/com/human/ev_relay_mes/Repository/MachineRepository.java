@@ -9,6 +9,7 @@ import jakarta.persistence.LockModeType;
 import com.human.ev_relay_mes.Entity.Machine;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface MachineRepository extends JpaRepository<Machine, String> {
 
@@ -25,6 +26,10 @@ public interface MachineRepository extends JpaRepository<Machine, String> {
     @Query("select m from Machine m where m.process.processCode = :processCode "
             + "and upper(m.useYn) = 'Y' order by m.machineId asc")
     List<Machine> findUsableByProcessForUpdate(@Param("processCode") String processCode);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select m from Machine m where m.machineId = :machineId")
+    Optional<Machine> findByIdForUpdate(@Param("machineId") String machineId);
 
     // 설비 유형별 현황 조회와 동일 유형 설비 비교 화면에서 사용한다.
     List<Machine> findByMachineTypeOrderByMachineIdAsc(String machineType);

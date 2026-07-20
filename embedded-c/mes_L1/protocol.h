@@ -51,12 +51,6 @@ typedef enum {
 } L1ProductionStatus;
 
 typedef enum {
-    L1_INSPECTION_RESULT_UNKNOWN = 0,
-    L1_INSPECTION_OK,
-    L1_INSPECTION_NG
-} L1InspectionResult;
-
-typedef enum {
     L1_ALARM_LEVEL_UNKNOWN = 0,
     L1_ALARM_WARNING,
     L1_ALARM_ERROR
@@ -90,14 +84,10 @@ typedef struct {
     char machine_id[L1_MACHINE_ID_CAPACITY];
     char process_code[L1_PROCESS_CODE_CAPACITY];
     char lot_no[L1_LOT_NO_CAPACITY];
+    int unit_seq;
     char item[L1_INSPECTION_ITEM_CAPACITY];
     double value;
     char unit[L1_UNIT_CAPACITY];
-    int has_lower_limit;
-    double lower_limit;
-    int has_upper_limit;
-    double upper_limit;
-    L1InspectionResult result;
 } L1InspectionEvent;
 
 typedef struct {

@@ -31,6 +31,7 @@ public class ProductionService {
     private static final String PARALLEL_PROCESS_1 = "OP20";
     private static final String PARALLEL_PROCESS_2 = "OP30";
     private static final String ASSEMBLY_PROCESS = "OP40_OP50";
+    private static final String INSPECTION_PROCESS = "OP70";
 
     private final ProductionLogRepository productionLogRepository;
     private final MachineRepository machineRepository;
@@ -48,6 +49,10 @@ public class ProductionService {
             }
         }
         validateRequest(dto);
+        if (INSPECTION_PROCESS.equals(dto.getProcessCode())) {
+            throw new CustomException(ErrorCode.INVALID_PRODUCTION_STATUS,
+                    "OP70 실적은 검사 측정값을 집계해 Backend가 생성합니다.");
+        }
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         validateLot(lot, dto.getProcessCode());
@@ -86,6 +91,51 @@ public class ProductionService {
             completeCurrentProcess(lot, machine, process, totalOkQty, totalNgQty, dto.getEndedAt());
         }
         return toResponse(savedLog);
+    }
+
+
+    @Transactional
+    public ProductionLogResponseDto completeInspectionProcess(
+            Lot lot, Machine machine, Process process,
+            int inputQty, int okQty, int ngQty) {
+        if (!INSPECTION_PROCESS.equals(process.getProcessCode())) {
+            throw new CustomException(ErrorCode.INVALID_PROCESS_ORDER,
+                    "검사 집계 실적은 OP70에서만 생성할 수 있습니다.");
+        }
+        if (inputQty != okQty + ngQty) {
+            throw new CustomException(ErrorCode.PRODUCTION_QUANTITY_MISMATCH);
+        }
+        String eventId = "INSPECTION-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
+        Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
+        if (existing.isPresent()) {
+            return toResponse(existing.get());
+        }
+        if (!productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        lot.getLotNo(), process.getProcessCode())
+                .isEmpty()) {
+            throw new CustomException(ErrorCode.DUPLICATE_RESOURCE,
+                    "OP70 검사 집계 실적이 이미 존재합니다.");
+        }
+
+        ProductionLog log = ProductionLog.builder()
+                .eventId(eventId)
+                .lot(lot)
+                .machine(machine)
+                .process(process)
+                .inputQty(inputQty)
+                .okQty(okQty)
+                .ngQty(ngQty)
+                .status("COMPLETED")
+                .endedAt(LocalDateTime.now())
+                .build();
+        ProductionLog saved = productionLogRepository.save(log);
+        completeCurrentProcess(lot, machine, process, okQty, ngQty, saved.getEndedAt());
+        return toResponse(saved);
+    }
+
+    public int expectedInputQtyFor(Lot lot, Process process) {
+        return expectedInputQty(lot, process);
     }
 
     public List<ProductionLogResponseDto> search(ProductionLogSearchRequestDto condition) {

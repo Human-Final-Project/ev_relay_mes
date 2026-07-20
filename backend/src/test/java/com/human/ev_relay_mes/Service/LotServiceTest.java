@@ -39,6 +39,8 @@ class LotServiceTest {
     private MaterialLotService materialLotService;
     @Mock
     private WorkCommandService workCommandService;
+    @Mock
+    private LotProcessResponsibleService lotProcessResponsibleService;
 
     @InjectMocks
     private LotService lotService;

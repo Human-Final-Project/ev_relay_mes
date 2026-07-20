@@ -203,7 +203,7 @@ static size_t expected_field_count(ProtocolEventType type)
     case PROTOCOL_EVENT_PRODUCTION:
         return 9;
     case PROTOCOL_EVENT_INSPECTION:
-        return 11;
+        return 9;
     case PROTOCOL_EVENT_DEFECT:
         return 8;
     case PROTOCOL_EVENT_ALARM:
@@ -346,19 +346,6 @@ static ProtocolResult parse_decimal(const char *text, double *out_value)
     return PROTOCOL_RESULT_OK;
 }
 
-static ProtocolResult parse_optional_decimal(const char *text,
-                                             int *out_present,
-                                             double *out_value)
-{
-    if (strcmp(text, "-") == 0) {
-        *out_present = 0;
-        *out_value = 0.0;
-        return PROTOCOL_RESULT_OK;
-    }
-    *out_present = 1;
-    return parse_decimal(text, out_value);
-}
-
 static int string_is_one_of(const char *value,
                             const char *first,
                             const char *second,
@@ -438,26 +425,18 @@ static ProtocolResult parse_inspection(char **fields, ProtocolMessage *message)
         return result;
     }
     if ((result = validate_required_lot(fields[4])) != PROTOCOL_RESULT_OK
-        || (result = parse_decimal(fields[6], &event->value)) != PROTOCOL_RESULT_OK
-        || (result = parse_optional_decimal(fields[8], &event->has_lower_limit,
-                                             &event->lower_limit)) != PROTOCOL_RESULT_OK
-        || (result = parse_optional_decimal(fields[9], &event->has_upper_limit,
-                                             &event->upper_limit)) != PROTOCOL_RESULT_OK) {
+        || (result = parse_nonnegative_int(fields[5], &event->unit_seq)) != PROTOCOL_RESULT_OK
+        || (result = parse_decimal(fields[7], &event->value)) != PROTOCOL_RESULT_OK) {
         return result;
     }
-    if (event->has_lower_limit && event->has_upper_limit
-        && event->lower_limit > event->upper_limit) {
-        return PROTOCOL_RESULT_INVALID_VALUE;
-    }
-    if (!string_is_one_of(fields[10], "OK", "NG", NULL, NULL)) {
-        return PROTOCOL_RESULT_INVALID_VALUE;
+    if (event->unit_seq <= 0) {
+        return PROTOCOL_RESULT_OUT_OF_RANGE;
     }
     if ((result = copy_field(event->machine_id, sizeof(event->machine_id), fields[2])) != PROTOCOL_RESULT_OK
         || (result = copy_field(event->process_code, sizeof(event->process_code), fields[3])) != PROTOCOL_RESULT_OK
         || (result = copy_field(event->lot_no, sizeof(event->lot_no), fields[4])) != PROTOCOL_RESULT_OK
-        || (result = copy_field(event->item, sizeof(event->item), fields[5])) != PROTOCOL_RESULT_OK
-        || (result = copy_field(event->unit, sizeof(event->unit), fields[7])) != PROTOCOL_RESULT_OK
-        || (result = copy_field(event->result, sizeof(event->result), fields[10])) != PROTOCOL_RESULT_OK) {
+        || (result = copy_field(event->item, sizeof(event->item), fields[6])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->unit, sizeof(event->unit), fields[8])) != PROTOCOL_RESULT_OK) {
         return result;
     }
     return PROTOCOL_RESULT_OK;

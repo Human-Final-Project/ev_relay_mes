@@ -17,6 +17,14 @@ typedef struct {
     size_t request_length;
 } MockHttpServer;
 
+typedef struct {
+    NetSocket server_socket;
+    CollectorMutex mutex;
+    char request[8192];
+    size_t request_length;
+    const char *response_body;
+} MockCommandServer;
+
 #define CHECK(condition)                                                     \
     do {                                                                     \
         ++checks_run;                                                        \
@@ -103,6 +111,64 @@ static void run_mock_http_server(void *context)
     net_socket_close(client_socket);
 }
 
+static void run_mock_command_server(void *context)
+{
+    MockCommandServer *server = (MockCommandServer *)context;
+    NetSocket client_socket = net_accept_client(server->server_socket,
+                                                NULL,
+                                                0,
+                                                NULL);
+    char request[8192];
+    char response_header[512];
+    size_t received_total = 0;
+    int header_length;
+    size_t body_length;
+
+    if (client_socket == NET_INVALID_SOCKET) {
+        net_socket_close(server->server_socket);
+        return;
+    }
+    net_socket_close(server->server_socket);
+    while (received_total + 1 < sizeof(request)) {
+        int received = net_receive(client_socket,
+                                   request + received_total,
+                                   sizeof(request) - received_total - 1);
+        if (received <= 0) {
+            break;
+        }
+        received_total += (size_t)received;
+        request[received_total] = '\0';
+        if (strstr(request, "\r\n\r\n") != NULL) {
+            break;
+        }
+    }
+
+    collector_mutex_lock(&server->mutex);
+    if (received_total >= sizeof(server->request)) {
+        received_total = sizeof(server->request) - 1;
+    }
+    memcpy(server->request, request, received_total);
+    server->request[received_total] = '\0';
+    server->request_length = received_total;
+    collector_mutex_unlock(&server->mutex);
+
+    body_length = strlen(server->response_body);
+    header_length = snprintf(response_header,
+                             sizeof(response_header),
+                             "HTTP/1.1 200 OK\r\n"
+                             "Content-Type: application/json\r\n"
+                             "Transfer-Encoding: chunked\r\n"
+                             "Connection: close\r\n\r\n"
+                             "%lX\r\n",
+                             (unsigned long)body_length);
+    if (header_length > 0 && (size_t)header_length < sizeof(response_header)) {
+        net_send_all(client_socket, response_header, (size_t)header_length);
+        net_send_all(client_socket, server->response_body, body_length);
+        net_send_all(client_socket, "\r\n0\r\n\r\n", 7);
+    }
+    net_socket_close(client_socket);
+}
+
 static void test_production_json(void)
 {
     ProtocolMessage message;
@@ -129,7 +195,7 @@ static void test_production_json(void)
                  "\"status\":\"COMPLETED\"}") == 0);
 }
 
-static void test_inspection_json_with_null_limit(void)
+static void test_inspection_measurement_json(void)
 {
     ProtocolMessage message;
     char path[API_CLIENT_PATH_CAPACITY];
@@ -140,20 +206,18 @@ static void test_inspection_json_with_null_limit(void)
     strcpy(message.data.inspection.lot_no, "EVR-LOT-001");
     strcpy(message.data.inspection.machine_id, "EQ-TEST-01");
     strcpy(message.data.inspection.process_code, "OP70");
-    strcpy(message.data.inspection.item, "operationVoltage");
+    message.data.inspection.unit_seq = 1;
+    strcpy(message.data.inspection.item, "OPERATION_VOLTAGE");
     message.data.inspection.value = 12.0;
     strcpy(message.data.inspection.unit, "V");
-    message.data.inspection.has_lower_limit = 0;
-    message.data.inspection.has_upper_limit = 1;
-    message.data.inspection.upper_limit = 14.0;
-    strcpy(message.data.inspection.result, "OK");
 
     CHECK(build(&message, path, json) == API_CLIENT_OK);
     CHECK(strcmp(path, "/api/collector/inspections") == 0);
-    CHECK(strstr(json, "\"inspectionItem\":\"operationVoltage\"") != NULL);
+    CHECK(strstr(json, "\"unitSeq\":1") != NULL);
+    CHECK(strstr(json, "\"inspectionItem\":\"OPERATION_VOLTAGE\"") != NULL);
     CHECK(strstr(json, "\"measuredValue\":12") != NULL);
-    CHECK(strstr(json, "\"lowerLimit\":null") != NULL);
-    CHECK(strstr(json, "\"upperLimit\":14") != NULL);
+    CHECK(strstr(json, "lowerLimit") == NULL);
+    CHECK(strstr(json, "result") == NULL);
 }
 
 static void test_defect_json_escapes_message(void)
@@ -267,6 +331,137 @@ static void test_small_buffer_is_rejected(void)
           == API_CLIENT_BUFFER_TOO_SMALL);
 }
 
+static void test_command_response_parser(void)
+{
+    ProtocolCommand commands[API_CLIENT_MAX_COMMANDS];
+    size_t count = 99;
+    const char *one_command =
+        "[{\"commandId\":501,\"commandType\":\"START\","
+        "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP70\","
+        "\"lotNo\":\"LOT-501\",\"inputQty\":4,"
+        "\"status\":\"DISPATCHED\",\"ackMessage\":null}]";
+    const char *two_commands =
+        "[{\"commandId\":601,\"commandType\":\"STOP\","
+        "\"machineId\":\"EQ-WIND-01\",\"processCode\":\"OP20\","
+        "\"lotNo\":\"LOT-601\",\"inputQty\":0},"
+        "{\"commandId\":602,\"commandType\":\"RESUME\","
+        "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP70\","
+        "\"lotNo\":\"LOT-602\",\"inputQty\":7}]";
+
+    CHECK(api_client_parse_command_response("[]",
+                                            commands,
+                                            API_CLIENT_MAX_COMMANDS,
+                                            &count) == API_CLIENT_OK);
+    CHECK(count == 0);
+
+    CHECK(api_client_parse_command_response(one_command,
+                                            commands,
+                                            API_CLIENT_MAX_COMMANDS,
+                                            &count) == API_CLIENT_OK);
+    CHECK(count == 1);
+    CHECK(commands[0].command_id == 501);
+    CHECK(commands[0].type == PROTOCOL_COMMAND_START);
+    CHECK(strcmp(commands[0].machine_id, "EQ-TEST-01") == 0);
+    CHECK(strcmp(commands[0].process_code, "OP70") == 0);
+    CHECK(strcmp(commands[0].lot_no, "LOT-501") == 0);
+    CHECK(commands[0].input_qty == 4);
+
+    CHECK(api_client_parse_command_response(two_commands,
+                                            commands,
+                                            API_CLIENT_MAX_COMMANDS,
+                                            &count) == API_CLIENT_OK);
+    CHECK(count == 2);
+    CHECK(commands[0].type == PROTOCOL_COMMAND_STOP);
+    CHECK(commands[0].input_qty == 0);
+    CHECK(commands[1].type == PROTOCOL_COMMAND_RESUME);
+    CHECK(commands[1].input_qty == 7);
+
+    CHECK(api_client_parse_command_response(two_commands,
+                                            commands,
+                                            1,
+                                            &count) == API_CLIENT_BUFFER_TOO_SMALL);
+    CHECK(api_client_parse_command_response(
+              "[{\"commandId\":1,\"commandType\":\"START\","
+              "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP20\","
+              "\"lotNo\":\"LOT-X\",\"inputQty\":1}]",
+              commands,
+              API_CLIENT_MAX_COMMANDS,
+              &count) == API_CLIENT_INVALID_RESPONSE);
+}
+
+static void test_http_release_command_request(void)
+{
+    MockHttpServer server;
+    int http_status = 0;
+    ApiClientResult result;
+
+    memset(&server, 0, sizeof(server));
+    CHECK(collector_mutex_init(&server.mutex) == 0);
+    server.server_socket = net_tcp_server_create(MES_BACKEND_ADDRESS,
+                                                 MES_BACKEND_PORT,
+                                                 1);
+    CHECK(server.server_socket != NET_INVALID_SOCKET);
+    if (server.server_socket == NET_INVALID_SOCKET) {
+        collector_mutex_destroy(&server.mutex);
+        return;
+    }
+    CHECK(collector_thread_start_detached(run_mock_http_server, &server) == 0);
+    result = api_client_release_command(801, "EQ-TEST-01", &http_status);
+    CHECK(result == API_CLIENT_OK);
+    CHECK(http_status == 201);
+
+    collector_mutex_lock(&server.mutex);
+    CHECK(strstr(server.request,
+                 "POST /api/collector/commands/801/release?machineId=EQ-TEST-01 HTTP/1.1\r\n")
+          == server.request);
+    CHECK(strstr(server.request, "\r\n\r\n{}") != NULL);
+    collector_mutex_unlock(&server.mutex);
+    collector_mutex_destroy(&server.mutex);
+}
+
+static void test_http_get_fetches_chunked_commands(void)
+{
+    MockCommandServer server;
+    ProtocolCommand commands[API_CLIENT_MAX_COMMANDS];
+    size_t count = 0;
+    int http_status = 0;
+    ApiClientResult result;
+
+    memset(&server, 0, sizeof(server));
+    server.response_body =
+        "[{\"commandId\":701,\"commandType\":\"START\","
+        "\"machineId\":\"EQ-TEST-01\",\"processCode\":\"OP70\","
+        "\"lotNo\":\"LOT-701\",\"inputQty\":3,"
+        "\"status\":\"DISPATCHED\"}]";
+    CHECK(collector_mutex_init(&server.mutex) == 0);
+    server.server_socket = net_tcp_server_create(MES_BACKEND_ADDRESS,
+                                                 MES_BACKEND_PORT,
+                                                 1);
+    CHECK(server.server_socket != NET_INVALID_SOCKET);
+    if (server.server_socket == NET_INVALID_SOCKET) {
+        collector_mutex_destroy(&server.mutex);
+        return;
+    }
+    CHECK(collector_thread_start_detached(run_mock_command_server, &server) == 0);
+    result = api_client_fetch_pending_commands("EQ-TEST-01",
+                                               commands,
+                                               API_CLIENT_MAX_COMMANDS,
+                                               &count,
+                                               &http_status);
+    CHECK(result == API_CLIENT_OK);
+    CHECK(http_status == 200);
+    CHECK(count == 1);
+    CHECK(commands[0].command_id == 701);
+    CHECK(commands[0].type == PROTOCOL_COMMAND_START);
+
+    collector_mutex_lock(&server.mutex);
+    CHECK(strstr(server.request,
+                 "GET /api/collector/commands/pending?machineId=EQ-TEST-01 HTTP/1.0\r\n")
+          == server.request);
+    collector_mutex_unlock(&server.mutex);
+    collector_mutex_destroy(&server.mutex);
+}
+
 static void test_http_post_receives_created_response(void)
 {
     ProtocolMessage message;
@@ -301,9 +496,8 @@ static void test_http_post_receives_created_response(void)
     CHECK(strstr(server.request,
                  "Content-Type: application/json; charset=UTF-8\r\n")
           != NULL);
-    CHECK(strstr(server.request,
-                 "\r\n\r\n{\"lotNo\":\"EVR-LOT-001\"")
-          != NULL);
+    CHECK(strstr(server.request, "\r\n\r\n{\"eventId\":\"L2-") != NULL);
+    CHECK(strstr(server.request, "\"lotNo\":\"EVR-LOT-001\"") != NULL);
     collector_mutex_unlock(&server.mutex);
     collector_mutex_destroy(&server.mutex);
 }
@@ -314,16 +508,21 @@ int main(void)
         fprintf(stderr, "Failed to initialize network runtime.\n");
         return EXIT_FAILURE;
     }
+    CHECK(api_client_init() == 0);
     test_production_json();
-    test_inspection_json_with_null_limit();
+    test_inspection_measurement_json();
     test_defect_json_escapes_message();
     test_alarm_warning_maps_to_backend_warn();
     test_machine_status_hyphen_becomes_null();
     test_command_ack_json();
     test_connection_events_are_skipped();
     test_small_buffer_is_rejected();
+    test_command_response_parser();
     test_http_post_receives_created_response();
+    test_http_release_command_request();
+    test_http_get_fetches_chunked_commands();
 
+    api_client_cleanup();
     net_runtime_cleanup();
 
     if (checks_failed != 0) {

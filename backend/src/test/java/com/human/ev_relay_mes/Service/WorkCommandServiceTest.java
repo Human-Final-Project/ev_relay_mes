@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
+import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
@@ -40,6 +41,12 @@ class WorkCommandServiceTest {
     private ProcessRepository processRepository;
     @Mock
     private ProductionLogRepository productionLogRepository;
+    @Mock
+    private InspectionUnitResultRepository inspectionUnitResultRepository;
+    @Mock
+    private LotProcessResponsibleService lotProcessResponsibleService;
+    @Mock
+    private InspectionStandardService inspectionStandardService;
 
     @InjectMocks
     private WorkCommandService workCommandService;
@@ -90,6 +97,85 @@ class WorkCommandServiceTest {
     }
 
     @Test
+    void claimsPendingCommandsOnlyForRequestedMachine() {
+        Process process = process("OP70", 70);
+        Machine machine = machine("EQ-TEST-01", process);
+        WorkCommand command = command(
+                70L,
+                Lot.builder().lotNo("LOT-070").build(),
+                machine,
+                process);
+
+        when(workCommandRepository.findByMachineAndStatusForDispatch(
+                "EQ-TEST-01", WorkCommand.Status.PENDING))
+                .thenReturn(List.of(command));
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                eq("EQ-TEST-01"), anyCollection())).thenReturn(false);
+
+        var claimed = workCommandService.claimPendingCommands(" EQ-TEST-01 ");
+
+        assertThat(claimed).hasSize(1);
+        assertThat(claimed.get(0).getMachineId()).isEqualTo("EQ-TEST-01");
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
+        org.mockito.Mockito.verify(workCommandRepository)
+                .findByMachineAndStatusForDispatch(
+                        "EQ-TEST-01", WorkCommand.Status.PENDING);
+    }
+
+    @Test
+    void releasesUnsentDispatchedCommandBackToPending() {
+        Process process = process("OP70", 70);
+        Machine machine = machine("EQ-TEST-01", process);
+        WorkCommand command = command(
+                71L,
+                Lot.builder().lotNo("LOT-071").build(),
+                machine,
+                process);
+        command.setStatus(WorkCommand.Status.DISPATCHED);
+        command.setDispatchedAt(java.time.LocalDateTime.now());
+        when(workCommandRepository.findByIdForUpdate(71L))
+                .thenReturn(Optional.of(command));
+
+        var released = workCommandService.releaseDispatchedCommand(
+                71L, "EQ-TEST-01");
+
+        assertThat(released.getStatus()).isEqualTo("PENDING");
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.PENDING);
+        assertThat(command.getDispatchedAt()).isNull();
+    }
+
+    @Test
+    void requeuesStaleDispatchedCommandBeforeMachinePolling() {
+        Process process = process("OP70", 70);
+        Machine machine = machine("EQ-TEST-01", process);
+        WorkCommand stale = command(
+                72L,
+                Lot.builder().lotNo("LOT-072").build(),
+                machine,
+                process);
+        stale.setStatus(WorkCommand.Status.DISPATCHED);
+        stale.setDispatchedAt(java.time.LocalDateTime.now().minusSeconds(30));
+
+        when(workCommandRepository.findStaleDispatchedByMachineForUpdate(
+                eq("EQ-TEST-01"),
+                eq(WorkCommand.Status.DISPATCHED),
+                any(java.time.LocalDateTime.class)))
+                .thenReturn(List.of(stale));
+        when(workCommandRepository.findByMachineAndStatusForDispatch(
+                "EQ-TEST-01", WorkCommand.Status.PENDING))
+                .thenReturn(List.of(stale));
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                eq("EQ-TEST-01"), anyCollection())).thenReturn(false);
+
+        var claimed = workCommandService.claimPendingCommands("EQ-TEST-01");
+
+        assertThat(claimed).hasSize(1);
+        assertThat(stale.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
+        assertThat(stale.getDispatchedAt()).isAfter(
+                java.time.LocalDateTime.now().minusSeconds(5));
+    }
+
+    @Test
     void acknowledgesCommandWhenMachineMatches() {
         Process process = process("OP20", 1);
         Machine machine = machine("EQ-WIND-01", process);
@@ -104,6 +190,23 @@ class WorkCommandServiceTest {
         assertThat(result.getCommandId()).isEqualTo(101L);
         assertThat(result.getMachineId()).isEqualTo("EQ-WIND-01");
         assertThat(result.getStatus()).isEqualTo("ACCEPTED");
+    }
+
+
+    @Test
+    void acceptsDuplicateAcceptedAckAfterCommandCompleted() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        WorkCommand command = command(101L, Lot.builder().lotNo("LOT-001").build(), machine, process);
+        command.setStatus(WorkCommand.Status.COMPLETED);
+        command.setAcknowledgedAt(java.time.LocalDateTime.now().minusSeconds(1));
+        WorkCommandAckRequestDto dto = ack(101L, "EQ-WIND-01", "ACCEPTED");
+
+        when(workCommandRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(command));
+
+        var result = workCommandService.acknowledge(dto);
+
+        assertThat(result.getStatus()).isEqualTo("COMPLETED");
     }
 
     @Test
@@ -168,6 +271,37 @@ class WorkCommandServiceTest {
         assertThat(captor.getValue().getCommandType()).isEqualTo(WorkCommand.CommandType.RESUME);
         assertThat(captor.getValue().getInputQty()).isEqualTo(6);
         assertThat(captor.getValue().getStatus()).isEqualTo(WorkCommand.Status.PENDING);
+    }
+
+
+    @Test
+    void createsOp70ResumeCommandFromCompletedInspectionUnits() {
+        Process process = process("OP70", 70);
+        Machine machine = machine("EQ-TEST-01", process);
+        machine.setStatus(Machine.Status.ERROR);
+        Lot lot = Lot.builder().lotNo("LOT-070").status(Lot.Status.HOLD).build();
+        WorkCommand interrupted = command(701L, lot, machine, process);
+        interrupted.setStatus(WorkCommand.Status.CANCELED);
+
+        when(workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
+                        "EQ-TEST-01", WorkCommand.Status.CANCELED))
+                .thenReturn(Optional.of(interrupted));
+        when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-070"))
+                .thenReturn(List.of(interrupted));
+        when(inspectionUnitResultRepository
+                .countByLot_LotNoAndProcess_ProcessCode("LOT-070", "OP70"))
+                .thenReturn(3L);
+        when(workCommandRepository.save(any(WorkCommand.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        var result = workCommandService.createResumeCommand("EQ-TEST-01");
+
+        ArgumentCaptor<WorkCommand> captor = ArgumentCaptor.forClass(WorkCommand.class);
+        org.mockito.Mockito.verify(workCommandRepository).save(captor.capture());
+        assertThat(result).isPresent();
+        assertThat(captor.getValue().getCommandType()).isEqualTo(WorkCommand.CommandType.RESUME);
+        assertThat(captor.getValue().getInputQty()).isEqualTo(7);
     }
 
     @Test

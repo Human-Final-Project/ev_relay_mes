@@ -94,7 +94,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET,
                                 "/api/items/**", "/api/boms/**", "/api/processes/**",
                                 "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**",
-                                "/api/material-lots/**", "/api/work-orders/**", "/api/lots/**")
+                                "/api/material-lots/**", "/api/work-orders/**", "/api/lots/**",
+                                "/api/workers/**", "/api/inspection-standards/**")
                                 .authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/production-logs/**")
                                 .authenticated()
@@ -108,7 +109,8 @@ public class SecurityConfig {
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
                         .requestMatchers(
                                 "/api/items/**", "/api/boms/**", "/api/processes/**",
-                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**")
+                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**",
+                                "/api/workers/**", "/api/inspection-standards/**")
                                 .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers("/api/material-lots/**")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")

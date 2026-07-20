@@ -21,6 +21,30 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
     @Query("select c from WorkCommand c where c.status = :status order by c.createdAt asc, c.commandId asc")
     List<WorkCommand> findByStatusForUpdate(@Param("status") WorkCommand.Status status);
 
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.machine.machineId = :machineId "
+            + "and c.status = :status order by c.createdAt asc, c.commandId asc")
+    List<WorkCommand> findByMachineAndStatusForDispatch(
+            @Param("machineId") String machineId,
+            @Param("status") WorkCommand.Status status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.status = :status "
+            + "and c.acknowledgedAt is null and c.dispatchedAt < :cutoff")
+    List<WorkCommand> findStaleDispatchedForUpdate(
+            @Param("status") WorkCommand.Status status,
+            @Param("cutoff") java.time.LocalDateTime cutoff);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.machine.machineId = :machineId "
+            + "and c.status = :status and c.acknowledgedAt is null "
+            + "and c.dispatchedAt < :cutoff")
+    List<WorkCommand> findStaleDispatchedByMachineForUpdate(
+            @Param("machineId") String machineId,
+            @Param("status") WorkCommand.Status status,
+            @Param("cutoff") java.time.LocalDateTime cutoff);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select c from WorkCommand c where c.machine.machineId = :machineId "
             + "and c.status in :statuses order by c.createdAt desc, c.commandId desc")

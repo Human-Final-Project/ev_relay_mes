@@ -76,14 +76,10 @@ typedef struct {
     char machine_id[PROTOCOL_MACHINE_ID_CAPACITY];
     char process_code[PROTOCOL_PROCESS_CODE_CAPACITY];
     char lot_no[PROTOCOL_LOT_NO_CAPACITY];
+    int unit_seq;
     char item[PROTOCOL_INSPECTION_ITEM_CAPACITY];
     double value;
     char unit[PROTOCOL_UNIT_CAPACITY];
-    int has_lower_limit;
-    double lower_limit;
-    int has_upper_limit;
-    double upper_limit;
-    char result[PROTOCOL_STATUS_CAPACITY];
 } ProtocolInspectionEvent;
 
 typedef struct {

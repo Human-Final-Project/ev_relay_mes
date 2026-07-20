@@ -84,6 +84,10 @@ public enum ErrorCode {
     INVALID_INSPECTION_RESULT(HttpStatus.BAD_REQUEST, "IN002", "검사 결과 값이 올바르지 않습니다."),
     INVALID_INSPECTION_LIMIT(HttpStatus.BAD_REQUEST, "IN003", "검사 기준값이 올바르지 않습니다."),
     INVALID_INSPECTION_VALUE(HttpStatus.BAD_REQUEST, "IN004", "검사 측정값이 올바르지 않습니다."),
+    INSPECTION_STANDARD_NOT_FOUND(HttpStatus.NOT_FOUND, "IN005", "검사 기준을 찾을 수 없습니다."),
+    INSPECTION_STANDARD_NOT_CONFIGURED(HttpStatus.CONFLICT, "IN006", "활성 검사 기준이 설정되어 있지 않습니다."),
+    INVALID_INSPECTION_UNIT_SEQ(HttpStatus.BAD_REQUEST, "IN007", "검사 제품 순번이 올바르지 않습니다."),
+    DUPLICATE_INSPECTION_MEASUREMENT(HttpStatus.CONFLICT, "IN008", "동일 제품의 검사 항목이 이미 등록되어 있습니다."),
 
     // Machine
     MACHINE_NOT_FOUND(HttpStatus.NOT_FOUND, "MC001", "설비를 찾을 수 없습니다."),
@@ -95,6 +99,14 @@ public enum ErrorCode {
     MACHINE_STOPPED(HttpStatus.CONFLICT, "MC007", "정지 상태의 설비입니다."),
     MACHINE_ERROR_STATE(HttpStatus.CONFLICT, "MC008", "이상 상태의 설비입니다."),
     INVALID_MACHINE_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "MC009", "설비 상태 변경이 올바르지 않습니다."),
+
+    // Worker / machine assignment
+    WORKER_NOT_FOUND(HttpStatus.NOT_FOUND, "WK001", "작업자를 찾을 수 없습니다."),
+    WORKER_NO_DUPLICATED(HttpStatus.CONFLICT, "WK002", "이미 등록된 사번입니다."),
+    INVALID_WORKER_STATUS(HttpStatus.BAD_REQUEST, "WK003", "작업자 상태 값이 올바르지 않습니다."),
+    WORKER_INACTIVE(HttpStatus.CONFLICT, "WK004", "비활성 작업자는 설비에 배치할 수 없습니다."),
+    WORKER_ASSIGNED_TO_MACHINE(HttpStatus.CONFLICT, "WK005", "설비에 배치된 작업자입니다."),
+    MACHINE_WORKER_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "WK006", "설비 인원 배치 정보를 찾을 수 없습니다."),
 
     // Defect
     DEFECT_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "D001", "불량 코드를 찾을 수 없습니다."),

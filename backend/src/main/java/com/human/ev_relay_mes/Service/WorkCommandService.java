@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
+import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
@@ -29,6 +30,7 @@ public class WorkCommandService {
 
     private static final String PARALLEL_PROCESS_1 = "OP20";
     private static final String PARALLEL_PROCESS_2 = "OP30";
+    private static final long DISPATCH_ACK_TIMEOUT_SECONDS = 10L;
 
     private static final EnumSet<WorkCommand.Status> ACTIVE_STATUSES = EnumSet.of(
             WorkCommand.Status.PENDING,
@@ -45,6 +47,9 @@ public class WorkCommandService {
     private final MachineRepository machineRepository;
     private final ProcessRepository processRepository;
     private final ProductionLogRepository productionLogRepository;
+    private final InspectionUnitResultRepository inspectionUnitResultRepository;
+    private final LotProcessResponsibleService lotProcessResponsibleService;
+    private final InspectionStandardService inspectionStandardService;
 
     @Transactional
     public List<WorkCommandResponseDto> createInitialStartCommands(Lot lot) {
@@ -88,9 +93,18 @@ public class WorkCommandService {
 
     @Transactional
     public List<WorkCommandResponseDto> claimPendingCommands() {
-        List<WorkCommand> pending = workCommandRepository
-                .findByStatusForUpdate(WorkCommand.Status.PENDING);
+        return claimPendingCommands(null);
+    }
+
+    @Transactional
+    public List<WorkCommandResponseDto> claimPendingCommands(String machineId) {
+        String normalizedMachineId = machineId == null ? null : machineId.trim();
         LocalDateTime now = LocalDateTime.now();
+        requeueStaleDispatched(normalizedMachineId, now.minusSeconds(DISPATCH_ACK_TIMEOUT_SECONDS));
+        List<WorkCommand> pending = normalizedMachineId == null || normalizedMachineId.isBlank()
+                ? workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING)
+                : workCommandRepository.findByMachineAndStatusForDispatch(
+                        normalizedMachineId, WorkCommand.Status.PENDING);
 
         return pending.stream()
                 .filter(this::canDispatch)
@@ -102,6 +116,18 @@ public class WorkCommandService {
                     return WorkCommandResponseDto.fromEntity(command);
                 })
                 .toList();
+    }
+
+    private void requeueStaleDispatched(String machineId, LocalDateTime cutoff) {
+        List<WorkCommand> stale = machineId == null || machineId.isBlank()
+                ? workCommandRepository.findStaleDispatchedForUpdate(
+                        WorkCommand.Status.DISPATCHED, cutoff)
+                : workCommandRepository.findStaleDispatchedByMachineForUpdate(
+                        machineId, WorkCommand.Status.DISPATCHED, cutoff);
+        stale.forEach(command -> {
+            command.setStatus(WorkCommand.Status.PENDING);
+            command.setDispatchedAt(null);
+        });
     }
 
     @Transactional
@@ -139,10 +165,17 @@ public class WorkCommandService {
         }
 
         int targetQty = originalTargetQty(interrupted);
-        int processedQty = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), process.getProcessCode())
-                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int processedQty;
+        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(process.getProcessCode())) {
+            processedQty = Math.toIntExact(inspectionUnitResultRepository
+                    .countByLot_LotNoAndProcess_ProcessCode(
+                            lot.getLotNo(), process.getProcessCode()));
+        } else {
+            processedQty = productionLogRepository
+                    .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                            lot.getLotNo(), process.getProcessCode())
+                    .stream().mapToInt(log -> log.getInputQty()).sum();
+        }
         int remainingQty = targetQty - processedQty;
         if (remainingQty <= 0) {
             return Optional.empty();
@@ -177,20 +210,73 @@ public class WorkCommandService {
     }
 
     @Transactional
+    public WorkCommandResponseDto releaseDispatchedCommand(Long commandId, String machineId) {
+        WorkCommand command = workCommandRepository.findByIdForUpdate(commandId)
+                .orElseThrow(() -> new CustomException(ErrorCode.WORK_COMMAND_NOT_FOUND));
+        if (machineId == null || machineId.isBlank()
+                || !command.getMachine().getMachineId().equals(machineId.trim())) {
+            throw new CustomException(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
+        }
+        if (command.getStatus() == WorkCommand.Status.PENDING) {
+            return WorkCommandResponseDto.fromEntity(command);
+        }
+        if (command.getStatus() != WorkCommand.Status.DISPATCHED) {
+            throw new CustomException(ErrorCode.INVALID_WORK_COMMAND_STATUS,
+                    "L1 전송 전에 DISPATCHED 상태인 명령만 반환할 수 있습니다.");
+        }
+        command.setStatus(WorkCommand.Status.PENDING);
+        command.setDispatchedAt(null);
+        return WorkCommandResponseDto.fromEntity(command);
+    }
+
+    @Transactional
     public WorkCommandResponseDto acknowledge(WorkCommandAckRequestDto dto) {
         WorkCommand command = workCommandRepository.findByIdForUpdate(dto.getCommandId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WORK_COMMAND_NOT_FOUND));
         if (!command.getMachine().getMachineId().equals(dto.getMachineId())) {
             throw new CustomException(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
         }
+        WorkCommand.Status acknowledgedStatus =
+                WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase());
+        boolean acceptedAlreadyProcessed =
+                acknowledgedStatus == WorkCommand.Status.ACCEPTED
+                        && command.getAcknowledgedAt() != null
+                        && EnumSet.of(
+                                WorkCommand.Status.ACCEPTED,
+                                WorkCommand.Status.COMPLETED,
+                                WorkCommand.Status.CANCELED)
+                        .contains(command.getStatus());
+        if (command.getStatus() == acknowledgedStatus || acceptedAlreadyProcessed) {
+            if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
+                captureStartContext(command);
+            }
+            return WorkCommandResponseDto.fromEntity(command);
+        }
         if (command.getStatus() != WorkCommand.Status.DISPATCHED) {
             throw new CustomException(ErrorCode.INVALID_WORK_COMMAND_STATUS);
         }
 
-        command.setStatus(WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase()));
+        command.setStatus(acknowledgedStatus);
+        if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
+            captureStartContext(command);
+        }
         command.setAckMessage(dto.getMessage());
         command.setAcknowledgedAt(LocalDateTime.now());
         return WorkCommandResponseDto.fromEntity(command);
+    }
+
+
+    private void captureStartContext(WorkCommand command) {
+        if (command.getCommandType() == WorkCommand.CommandType.STOP) {
+            return;
+        }
+        lotProcessResponsibleService.captureIfAbsent(
+                command.getLot(), command.getProcess(), command.getMachine());
+        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(
+                command.getProcess().getProcessCode())) {
+            inspectionStandardService.captureStandardsIfAbsent(
+                    command.getLot(), command.getProcess());
+        }
     }
 
     @Transactional

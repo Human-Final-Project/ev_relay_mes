@@ -71,6 +71,10 @@ size_t connection_registry_active_count(
 size_t connection_registry_registered_count(
     CollectorConnectionRegistry *registry);
 
+int connection_registry_is_machine_registered(
+    CollectorConnectionRegistry *registry,
+    const char *machine_id);
+
 NetSocket collector_connection_socket(const CollectorConnection *connection);
 const char *collector_connection_peer_address(
     const CollectorConnection *connection);
