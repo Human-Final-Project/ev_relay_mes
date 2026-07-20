@@ -7,13 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface InspectionStandardRepository extends JpaRepository<InspectionStandard, Long> {
-    Optional<InspectionStandard> findByProcess_ProcessCodeAndInspectionItem(
-            String processCode, String inspectionItem);
-
-    List<InspectionStandard> findByProcess_ProcessCodeAndUseYnOrderByStandardIdAsc(
-            String processCode, String useYn);
-
-    List<InspectionStandard> findAllByOrderByProcess_ProcessOrderAscStandardIdAsc();
-
+    List<InspectionStandard> findByProcess_ProcessCodeOrderByStandardIdAsc(String processCode);
+    Optional<InspectionStandard> findByProcess_ProcessCodeAndInspectionItem(String processCode, String inspectionItem);
     long countByProcess_ProcessCode(String processCode);
 }

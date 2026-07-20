@@ -52,10 +52,4 @@ public class DefectHistory {
 
     @Column(name = "message", length = 255)
     private String message;
-
-    // 설비/시뮬레이터가 자동 등록하는 경우가 많아 필수값이 아니다.
-    // 사람이 확인 처리한 경우에만 값이 채워진다.
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "confirmed_by")
-    private Member confirmedBy;
 }

@@ -20,6 +20,4 @@ public class DefectHistoryResponseDto {
     private Integer defectQty;
     private LocalDateTime occurredAt;
     private String message;
-    private Long confirmedById;
-    private String confirmedByName;
 }

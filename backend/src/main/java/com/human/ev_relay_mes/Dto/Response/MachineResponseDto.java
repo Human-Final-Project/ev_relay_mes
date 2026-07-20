@@ -15,7 +15,6 @@ public class MachineResponseDto {
     private String processCode;
     private String processName;
     private String status;
-    private String useYn;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

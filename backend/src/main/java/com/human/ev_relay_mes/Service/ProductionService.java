@@ -192,12 +192,6 @@ public class ProductionService {
     }
 
     private void validateMachineAndProcess(Machine machine, Process process) {
-        if (!"Y".equalsIgnoreCase(machine.getUseYn())) {
-            throw new CustomException(ErrorCode.MACHINE_NOT_USABLE);
-        }
-        if (!"Y".equalsIgnoreCase(process.getUseYn())) {
-            throw new CustomException(ErrorCode.PROCESS_NOT_USABLE);
-        }
         if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
                     "설비에 지정된 공정과 생산실적 공정이 일치하지 않습니다.");
@@ -226,8 +220,8 @@ public class ProductionService {
         }
 
         Optional<Process> nextProcess = processRepository
-                .findFirstByProcessOrderGreaterThanAndUseYnOrderByProcessOrderAsc(
-                        process.getProcessOrder(), "Y");
+                .findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(
+                        process.getProcessOrder());
         if (nextProcess.isPresent()) {
             lot.setCurrentProcess(nextProcess.get());
             if (totalOkQty > 0) {
@@ -252,8 +246,7 @@ public class ProductionService {
         }
 
         Process assembly = processRepository.findById(ASSEMBLY_PROCESS)
-                .filter(process -> "Y".equalsIgnoreCase(process.getUseYn()))
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND,
+                                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND,
                         "병렬 공정 합류 공정이 등록되어 있지 않습니다."));
         int assemblyInputQty = Math.min(
                 processOkQty(lot, PARALLEL_PROCESS_1),
@@ -276,8 +269,8 @@ public class ProductionService {
                     processOkQty(lot, PARALLEL_PROCESS_2));
         }
         return processRepository
-                .findFirstByProcessOrderLessThanAndUseYnOrderByProcessOrderDesc(
-                        process.getProcessOrder(), "Y")
+                .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(
+                        process.getProcessOrder())
                 .map(previous -> processOkQty(lot, previous.getProcessCode()))
                 .filter(quantity -> quantity > 0)
                 .orElse(lot.getInputQty());

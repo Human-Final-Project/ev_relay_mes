@@ -1,6 +1,5 @@
 package com.human.ev_relay_mes.Service;
 
-import com.human.ev_relay_mes.Dto.Request.MachineRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MachineResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
@@ -29,48 +28,6 @@ public class MachineService {
     private final ProcessRepository processRepository;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
-
-    @Transactional
-    public MachineResponseDto createMachine(MachineRequestDto dto) {
-        if (machineRepository.existsByMachineId(dto.getMachineId())) {
-            throw new CustomException(ErrorCode.DUPLICATE_MACHINE_ID);
-        }
-        com.human.ev_relay_mes.Entity.Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
-        Machine machine = Machine.builder()
-                .machineId(dto.getMachineId())
-                .machineName(dto.getMachineName())
-                .machineType(dto.getMachineType())
-                .process(process)
-                .build();
-        return toMachineResponse(machineRepository.save(machine));
-    }
-
-    @Transactional
-    public MachineResponseDto updateMachine(String machineId, MachineRequestDto dto) {
-        if (!machineId.equals(dto.getMachineId())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "경로와 요청 본문의 설비 ID가 다릅니다.");
-        }
-        Machine machine = findMachine(machineId);
-        com.human.ev_relay_mes.Entity.Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
-        machine.setMachineName(dto.getMachineName());
-        machine.setMachineType(dto.getMachineType());
-        machine.setProcess(process);
-        return toMachineResponse(machine);
-    }
-
-    @Transactional
-    public MachineResponseDto updateUseYn(String machineId, boolean active) {
-        Machine machine = findMachine(machineId);
-        machine.setUseYn(active ? "Y" : "N");
-        return toMachineResponse(machine);
-    }
-
-    @Transactional
-    public void deleteMachine(String machineId) {
-        machineRepository.delete(findMachine(machineId));
-    }
 
     // 설비 현황 화면에 전체 설비의 기본 정보와 현재 상태를 표시할 때 사용한다.
     public List<MachineResponseDto> getMachines() {
@@ -162,7 +119,6 @@ public class MachineService {
                 .processCode(machine.getProcess().getProcessCode())
                 .processName(machine.getProcess().getProcessName())
                 .status(machine.getStatus().name())
-                .useYn(machine.getUseYn())
                 .createdAt(machine.getCreatedAt())
                 .updatedAt(machine.getUpdatedAt())
                 .build();

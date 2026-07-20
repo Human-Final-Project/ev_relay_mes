@@ -14,7 +14,6 @@ public class AlarmCodeResponseDto {
     private String alarmName;
     private String machineType;
     private String description;
-    private String useYn;
     private LocalDateTime createdAt;
 
     public static AlarmCodeResponseDto fromEntity(AlarmCode alarmCode) {
@@ -23,7 +22,6 @@ public class AlarmCodeResponseDto {
                 .alarmName(alarmCode.getAlarmName())
                 .machineType(alarmCode.getMachineType())
                 .description(alarmCode.getDescription())
-                .useYn(alarmCode.getUseYn())
                 .createdAt(alarmCode.getCreatedAt())
                 .build();
     }

@@ -17,7 +17,6 @@ public class InspectionStandardResponseDto {
     private String unit;
     private BigDecimal lowerLimit;
     private BigDecimal upperLimit;
-    private String useYn;
     private Integer standardVersion;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

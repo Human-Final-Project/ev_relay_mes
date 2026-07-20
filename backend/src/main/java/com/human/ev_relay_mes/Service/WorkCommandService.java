@@ -321,8 +321,7 @@ public class WorkCommandService {
 
     private Process activeProcess(String processCode) {
         return processRepository.findById(processCode)
-                .filter(process -> "Y".equalsIgnoreCase(process.getUseYn()))
-                .orElse(null);
+                                .orElse(null);
     }
 
     private Machine selectMachine(String processCode) {
