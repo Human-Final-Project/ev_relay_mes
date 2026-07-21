@@ -7,6 +7,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Objects;
 
 public class CustomUserDetails implements UserDetails {
 
@@ -65,6 +66,22 @@ public class CustomUserDetails implements UserDetails {
     @Override
     public String getUsername() {
         return loginId;
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+        if (!(object instanceof CustomUserDetails other)) {
+            return false;
+        }
+        return Objects.equals(memberId, other.memberId);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(memberId);
     }
 
     @Override
