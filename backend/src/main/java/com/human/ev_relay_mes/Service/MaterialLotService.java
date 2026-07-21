@@ -65,27 +65,55 @@ public class MaterialLotService {
         return response;
     }
 
+    /**
+     * 작업지시/LOT 생성 전에 현재 재고로 생산 가능한지만 확인한다.
+     * 실제 재고 차감은 LOT 시작 시 consumeMaterials()에서 다시 검증한 뒤 수행한다.
+     */
+    public void validateMaterialAvailability(String parentItemCode, int productionQty) {
+        Map<String, Integer> requiredQtyByItem = calculateRequiredQuantities(parentItemCode, productionQty);
+        requiredQtyByItem.forEach((itemCode, requiredQty) -> {
+            long availableQty = materialLotRepository.sumAvailableQty(
+                    itemCode, MaterialLot.Status.AVAILABLE);
+            if (availableQty < requiredQty) {
+                throw insufficientMaterial(itemCode, requiredQty, availableQty);
+            }
+        });
+    }
+
+    /**
+     * LOT 시작 직전에 자재 LOT을 잠그고 재고를 최종 확인한 뒤 FIFO로 차감한다.
+     */
     @Transactional
     public void consumeMaterials(String parentItemCode, int productionQty) {
-        if (productionQty <= 0) {
-            throw new CustomException(ErrorCode.INVALID_LOT_QUANTITY);
-        }
-        Map<String, BigDecimal> requiredByItem = new LinkedHashMap<>();
-        explodeBom(parentItemCode, BigDecimal.ONE, requiredByItem, new HashSet<>(), true);
-        Map<String, Integer> requiredQtyByItem = new LinkedHashMap<>();
+        Map<String, Integer> requiredQtyByItem = calculateRequiredQuantities(parentItemCode, productionQty);
         Map<String, List<MaterialLot>> availableLotsByItem = new LinkedHashMap<>();
 
-        requiredByItem.forEach((itemCode, quantityPerUnit) -> {
-            int requiredQty = calculateRequiredQty(quantityPerUnit, productionQty);
+        requiredQtyByItem.forEach((itemCode, requiredQty) -> {
             List<MaterialLot> lots = materialLotRepository.findAvailableLotsForUpdate(
                     itemCode, MaterialLot.Status.AVAILABLE);
             validateAvailableQuantity(itemCode, requiredQty, lots);
-            requiredQtyByItem.put(itemCode, requiredQty);
             availableLotsByItem.put(itemCode, lots);
         });
 
         requiredQtyByItem.forEach((itemCode, requiredQty) ->
                 deductLots(availableLotsByItem.get(itemCode), requiredQty));
+    }
+
+    private Map<String, Integer> calculateRequiredQuantities(
+            String parentItemCode, int productionQty) {
+        if (productionQty <= 0) {
+            throw new CustomException(ErrorCode.INVALID_LOT_QUANTITY);
+        }
+
+        Map<String, BigDecimal> requiredByItem = new LinkedHashMap<>();
+        explodeBom(parentItemCode, BigDecimal.ONE, requiredByItem, new HashSet<>(), true);
+
+        Map<String, Integer> requiredQtyByItem = new LinkedHashMap<>();
+        requiredByItem.forEach((itemCode, quantityPerUnit) ->
+                requiredQtyByItem.put(
+                        itemCode,
+                        calculateRequiredQty(quantityPerUnit, productionQty)));
+        return requiredQtyByItem;
     }
 
     private void explodeBom(
@@ -176,9 +204,13 @@ public class MaterialLotService {
     private void validateAvailableQuantity(String itemCode, int requiredQty, List<MaterialLot> lots) {
         long availableQty = lots.stream().mapToLong(MaterialLot::getCurrentQty).sum();
         if (availableQty < requiredQty) {
-            throw new CustomException(ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY,
-                    itemCode + " 재고가 부족합니다. 필요: " + requiredQty + ", 가용: " + availableQty);
+            throw insufficientMaterial(itemCode, requiredQty, availableQty);
         }
+    }
+
+    private CustomException insufficientMaterial(String itemCode, int requiredQty, long availableQty) {
+        return new CustomException(ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY,
+                itemCode + " 재고가 부족합니다. 필요: " + requiredQty + ", 가용: " + availableQty);
     }
 
     private void deductLots(List<MaterialLot> lots, int requiredQty) {

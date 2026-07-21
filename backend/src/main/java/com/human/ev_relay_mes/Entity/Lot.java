@@ -32,10 +32,18 @@ public class Lot {
     @JoinColumn(name = "item_code", referencedColumnName = "item_code", nullable = false)
     private Item item;
 
-    // processes 테이블이 엔티티로 추가되어 실제 연관관계로 매핑한다.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "current_process_code", referencedColumnName = "process_code")
     private Process currentProcess;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lot_type", nullable = false, length = 20)
+    @Builder.Default
+    private LotType lotType = LotType.INITIAL;
+
+    @Column(name = "production_round", nullable = false)
+    @Builder.Default
+    private Integer productionRound = 1;
 
     @Column(name = "input_qty", nullable = false)
     private Integer inputQty;
@@ -69,6 +77,8 @@ public class Lot {
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public enum LotType { INITIAL, SUPPLEMENT }
 
     public enum Status { WAITING, RUNNING, COMPLETED, HOLD, SCRAPPED }
 }

@@ -106,6 +106,9 @@ public class MesController {
                 order.getItemCode(),
                 order.getItemName(),
                 order.getTargetQty(),
+                order.getCompletedOkQty(),
+                order.getRemainingQty(),
+                order.getSupplementRequired(),
                 toReactStatus(order.getStatus()),
                 order.getCreatedAt());
     }
@@ -142,6 +145,9 @@ public class MesController {
             String productCode,
             String productName,
             Integer targetQty,
+            Integer completedOkQty,
+            Integer remainingQty,
+            Boolean supplementRequired,
             String status,
             java.time.LocalDateTime createdAt) {
     }

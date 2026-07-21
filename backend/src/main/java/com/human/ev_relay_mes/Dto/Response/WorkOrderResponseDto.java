@@ -16,6 +16,9 @@ public class WorkOrderResponseDto {
     private String itemCode;
     private String itemName;
     private Integer targetQty;
+    private Integer completedOkQty;
+    private Integer remainingQty;
+    private Boolean supplementRequired;
     private String status;
     private LocalDateTime plannedStartAt;
     private LocalDateTime plannedEndAt;
@@ -24,6 +27,14 @@ public class WorkOrderResponseDto {
     private LocalDateTime createdAt;
 
     public static WorkOrderResponseDto fromEntity(WorkOrder workOrder) {
+        return fromEntity(workOrder, 0, workOrder.getTargetQty(), false);
+    }
+
+    public static WorkOrderResponseDto fromEntity(
+            WorkOrder workOrder,
+            int completedOkQty,
+            int remainingQty,
+            boolean supplementRequired) {
         Member creator = workOrder.getCreatedBy();
         return WorkOrderResponseDto.builder()
                 .workOrderId(workOrder.getWorkOrderId())
@@ -31,6 +42,9 @@ public class WorkOrderResponseDto {
                 .itemCode(workOrder.getItem().getItemCode())
                 .itemName(workOrder.getItem().getItemName())
                 .targetQty(workOrder.getTargetQty())
+                .completedOkQty(completedOkQty)
+                .remainingQty(remainingQty)
+                .supplementRequired(supplementRequired)
                 .status(workOrder.getStatus().name())
                 .plannedStartAt(workOrder.getPlannedStartAt())
                 .plannedEndAt(workOrder.getPlannedEndAt())

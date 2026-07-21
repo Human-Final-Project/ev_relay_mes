@@ -29,6 +29,8 @@ class WorkOrderServiceTest {
     private MemberRepository memberRepository;
     @Mock
     private LotRepository lotRepository;
+    @Mock
+    private MaterialLotService materialLotService;
 
     @InjectMocks
     private WorkOrderService workOrderService;

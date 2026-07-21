@@ -27,6 +27,8 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
 
     boolean existsByWorkOrder_WorkOrderId(Long workOrderId);
 
+    boolean existsByWorkOrder_WorkOrderIdAndStatus(Long workOrderId, Lot.Status status);
+
     boolean existsByWorkOrder_WorkOrderIdAndStatusIn(
             Long workOrderId, Collection<Lot.Status> statuses);
 
@@ -52,4 +54,30 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
     Long sumInputQtyByWorkOrderIdAndStatus(
             @Param("workOrderId") Long workOrderId,
             @Param("status") Lot.Status status);
+
+    @Query("select coalesce(sum(l.okQty), 0) from Lot l "
+            + "where l.workOrder.workOrderId = :workOrderId and l.status = :status")
+    Long sumOkQtyByWorkOrderIdAndStatus(
+            @Param("workOrderId") Long workOrderId,
+            @Param("status") Lot.Status status);
+
+    @Query("select coalesce(max(l.productionRound), 0) from Lot l "
+            + "where l.workOrder.workOrderId = :workOrderId")
+    Integer findMaxProductionRoundByWorkOrderId(@Param("workOrderId") Long workOrderId);
+
+    @Query("select count(l) from Lot l "
+            + "where l.lotId <> :lotId and ("
+            + "l.status in :blockingStatuses or "
+            + "(l.status = :waitingStatus and l.startRequestedAt is not null))")
+    long countAnotherLineBlockingLot(
+            @Param("lotId") Long lotId,
+            @Param("blockingStatuses") Collection<Lot.Status> blockingStatuses,
+            @Param("waitingStatus") Lot.Status waitingStatus);
+
+    @Query("select count(l) from Lot l where "
+            + "l.status in :blockingStatuses or "
+            + "(l.status = :waitingStatus and l.startRequestedAt is not null)")
+    long countLineBlockingLots(
+            @Param("blockingStatuses") Collection<Lot.Status> blockingStatuses,
+            @Param("waitingStatus") Lot.Status waitingStatus);
 }

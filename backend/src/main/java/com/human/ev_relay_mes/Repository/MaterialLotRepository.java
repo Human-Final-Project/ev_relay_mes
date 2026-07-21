@@ -20,4 +20,11 @@ public interface MaterialLotRepository extends JpaRepository<MaterialLot, Long> 
     List<MaterialLot> findAvailableLotsForUpdate(
             @Param("itemCode") String itemCode,
             @Param("status") MaterialLot.Status status);
+
+    @Query("select coalesce(sum(ml.currentQty), 0) from MaterialLot ml "
+            + "where ml.item.itemCode = :itemCode "
+            + "and ml.status = :status and ml.currentQty > 0")
+    Long sumAvailableQty(
+            @Param("itemCode") String itemCode,
+            @Param("status") MaterialLot.Status status);
 }

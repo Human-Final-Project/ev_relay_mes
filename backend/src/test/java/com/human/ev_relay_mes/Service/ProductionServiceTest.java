@@ -80,7 +80,7 @@ class ProductionServiceTest {
     @Test
     void completesFinalProcessLotAndWorkOrder() {
         Fixture fixture = fixture();
-        ProductionResultReceiveRequestDto request = request(10, 9, 1, "COMPLETED");
+        ProductionResultReceiveRequestDto request = request(10, 10, 0, "COMPLETED");
         mockBase(fixture);
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
@@ -89,15 +89,17 @@ class ProductionServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(1))
                 .thenReturn(Optional.empty());
-        when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
-                .thenReturn(List.of(fixture.lot));
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+                .thenReturn(10L);
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
+                .thenReturn(false);
 
         var response = productionService.saveResult(request);
 
         assertThat(response.getStatus()).isEqualTo("COMPLETED");
         assertThat(fixture.lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
-        assertThat(fixture.lot.getOkQty()).isEqualTo(9);
-        assertThat(fixture.lot.getNgQty()).isEqualTo(1);
+        assertThat(fixture.lot.getOkQty()).isEqualTo(10);
+        assertThat(fixture.lot.getNgQty()).isZero();
         assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.COMPLETED);
     }
 
@@ -141,14 +143,17 @@ class ProductionServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(6))
                 .thenReturn(Optional.empty());
-        when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(1L))
-                .thenReturn(List.of(lot));
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+                .thenReturn(5L);
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
+                .thenReturn(false);
 
         productionService.saveResult(request);
 
         assertThat(lot.getOkQty()).isEqualTo(5);
         assertThat(lot.getNgQty()).isEqualTo(5);
         assertThat(lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
+        assertThat(order.getStatus()).isEqualTo(WorkOrder.Status.RUNNING);
     }
 
     @Test
