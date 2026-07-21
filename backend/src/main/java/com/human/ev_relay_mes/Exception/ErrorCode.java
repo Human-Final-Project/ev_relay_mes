@@ -26,6 +26,8 @@ public enum ErrorCode {
     MEMBER_RETIRED(HttpStatus.FORBIDDEN, "M007", "퇴사 또는 비활성 처리된 사용자 계정입니다."),
     INVALID_MEMBER_ROLE(HttpStatus.BAD_REQUEST, "M008", "사용자 권한 값이 올바르지 않습니다."),
     INVALID_MEMBER_STATUS(HttpStatus.BAD_REQUEST, "M009", "사용자 상태 값이 올바르지 않습니다."),
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "M010", "현재 비밀번호가 일치하지 않습니다."),
+    NEW_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "M011", "새 비밀번호와 비밀번호 확인이 일치하지 않습니다."),
 
     // Item
     ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "I001", "품목을 찾을 수 없습니다."),

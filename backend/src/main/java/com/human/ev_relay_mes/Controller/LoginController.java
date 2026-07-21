@@ -1,9 +1,11 @@
 package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.LoginRequestDto;
+import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LoginResponseDto;
 import com.human.ev_relay_mes.Security.CustomUserDetails;
 import com.human.ev_relay_mes.Service.LoginService;
+import com.human.ev_relay_mes.Service.MemberService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -21,6 +23,7 @@ import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,6 +36,7 @@ import java.util.Map;
 public class LoginController {
 
     private final LoginService loginService;
+    private final MemberService memberService;
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final SecurityContextRepository securityContextRepository;
 
@@ -69,6 +73,18 @@ public class LoginController {
             HttpServletRequest request,
             HttpServletResponse response,
             Authentication authentication) {
+        new SecurityContextLogoutHandler().logout(request, response, authentication);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/password")
+    public ResponseEntity<Void> changePassword(
+            @Valid @RequestBody PasswordChangeRequestDto dto,
+            HttpServletRequest request,
+            HttpServletResponse response,
+            Authentication authentication) {
+        CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
+        memberService.changePassword(userDetails.getMemberId(), dto);
         new SecurityContextLogoutHandler().logout(request, response, authentication);
         return ResponseEntity.noContent().build();
     }

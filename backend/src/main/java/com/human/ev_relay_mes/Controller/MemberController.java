@@ -3,10 +3,13 @@ package com.human.ev_relay_mes.Controller;
 import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MemberUpdateRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MemberResponseDto;
+import com.human.ev_relay_mes.Dto.Response.TemporaryPasswordResponseDto;
 import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.Security.MemberSessionService;
 import com.human.ev_relay_mes.Service.MemberService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +23,7 @@ import java.util.List;
 public class MemberController {
 
     private final MemberService memberService;
+    private final MemberSessionService memberSessionService;
 
     @PostMapping
     public ResponseEntity<MemberResponseDto> createMember(
@@ -43,5 +47,14 @@ public class MemberController {
     public MemberResponseDto updateMember(
             @PathVariable Long id, @Valid @RequestBody MemberUpdateRequestDto dto) {
         return memberService.updateMember(id, dto);
+    }
+
+    @PatchMapping("/{id}/password-reset")
+    public ResponseEntity<TemporaryPasswordResponseDto> resetPassword(@PathVariable Long id) {
+        TemporaryPasswordResponseDto response = memberService.resetPassword(id);
+        memberSessionService.expireAllSessions(id);
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(response);
     }
 }

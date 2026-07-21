@@ -2,6 +2,7 @@ package com.human.ev_relay_mes.Config;
 
 import com.human.ev_relay_mes.Security.RestAccessDeniedHandler;
 import com.human.ev_relay_mes.Security.RestAuthenticationEntryPoint;
+import com.human.ev_relay_mes.Security.RestSessionInformationExpiredStrategy;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,9 +21,14 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.CompositeSessionAuthenticationStrategy;
+import org.springframework.security.web.authentication.session.ConcurrentSessionControlAuthenticationStrategy;
+import org.springframework.security.web.authentication.session.RegisterSessionAuthenticationStrategy;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
+import org.springframework.security.core.session.SessionRegistry;
+import org.springframework.security.core.session.SessionRegistryImpl;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
+import org.springframework.security.web.session.HttpSessionEventPublisher;
 
 import java.util.List;
 
@@ -32,6 +38,7 @@ public class SecurityConfig {
 
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
+    private final RestSessionInformationExpiredStrategy sessionInformationExpiredStrategy;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -54,10 +61,28 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SessionAuthenticationStrategy sessionAuthenticationStrategy(CsrfTokenRepository csrfTokenRepository) {
+    public SessionRegistry sessionRegistry() {
+        return new SessionRegistryImpl();
+    }
+
+    @Bean
+    public HttpSessionEventPublisher httpSessionEventPublisher() {
+        return new HttpSessionEventPublisher();
+    }
+
+    @Bean
+    public SessionAuthenticationStrategy sessionAuthenticationStrategy(
+            CsrfTokenRepository csrfTokenRepository,
+            SessionRegistry sessionRegistry) {
+        ConcurrentSessionControlAuthenticationStrategy concurrentSessionStrategy =
+                new ConcurrentSessionControlAuthenticationStrategy(sessionRegistry);
+        concurrentSessionStrategy.setMaximumSessions(1);
+
         return new CompositeSessionAuthenticationStrategy(List.of(
+                concurrentSessionStrategy,
                 new ChangeSessionIdAuthenticationStrategy(),
-                new CsrfAuthenticationStrategy(csrfTokenRepository)
+                new CsrfAuthenticationStrategy(csrfTokenRepository),
+                new RegisterSessionAuthenticationStrategy(sessionRegistry)
         ));
     }
 
@@ -65,7 +90,8 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             CsrfTokenRepository csrfTokenRepository,
-            SecurityContextRepository securityContextRepository) throws Exception {
+            SecurityContextRepository securityContextRepository,
+            SessionRegistry sessionRegistry) throws Exception {
         http
                 .cors(Customizer.withDefaults())
                 .csrf(csrf -> csrf
@@ -74,8 +100,12 @@ public class SecurityConfig {
                         .ignoringRequestMatchers("/api/collector/**"))
                 .securityContext(context -> context
                         .securityContextRepository(securityContextRepository))
-                .sessionManagement(session -> session
-                        .sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .sessionManagement(session -> {
+                    session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED);
+                    session.maximumSessions(1)
+                            .sessionRegistry(sessionRegistry)
+                            .expiredSessionStrategy(sessionInformationExpiredStrategy);
+                })
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/csrf", "/api/collector/**", "/error").permitAll()

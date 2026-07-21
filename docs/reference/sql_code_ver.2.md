@@ -1,80 +1,471 @@
-# EV Relay MES DB 설계 SQL
+# EV Relay MES DB 초기화 SQL
 
-> 기존 `sql_code.md`에 `members` 테이블과 사용자 추적 컬럼을 반영한 버전이다.
-> 실제 SQL 실행 시에는 FK 참조 순서 때문에 `members`, `items`, `processes` 같은 기준 테이블을 먼저 생성한 뒤, `boms`, `machines`, 생산/이력 테이블 순서로 생성하는 것이 안전하다.
+> 기준: `backend/src/main/java/com/human/ev_relay_mes/Entity`의 현재 JPA 엔티티 22개
+>
+> 대상: MySQL 8.x / MySQL Workbench
+>
+> 최종 동기화: 2026-07-21
 
----
+이 문서의 SQL 블록은 위에서 아래까지 한 번에 실행할 수 있다. 기존 MES 테이블을 삭제한 뒤 다시 생성하므로 운영 데이터가 있는 DB에는 그대로 실행하면 안 된다.
 
-# 1. 마스터 테이블
+현재 `application.properties`의 `spring.jpa.hibernate.ddl-auto=create`는 Backend를 시작할 때 테이블을 다시 생성한다. Workbench에서 만든 스키마와 데이터를 유지하려면 개발 환경에 맞게 `validate` 또는 `none`으로 변경해야 한다.
 
-## members(사용자/권한) 테이블
+## 이전 문서와 달라진 핵심 사항
 
-### 역할
+- 현재 엔티티에 없는 `processes.use_yn`, `defect_codes.use_yn`, `alarm_codes.use_yn`, `machines.use_yn`을 제거했다.
+- 현재 엔티티에 없는 `defect_histories.confirmed_by`를 제거했다.
+- `lots.start_requested_at`과 이벤트 중복 방지용 `event_id` 컬럼을 반영했다.
+- 검사 기준, LOT별 검사 기준 스냅샷, 개별 제품 검사 결과 구조를 반영했다.
+- 작업자, 설비 작업자 배치, LOT 공정별 책임자 테이블을 반영했다.
+- L2 명령 Polling에 사용하는 `work_commands` 테이블을 반영했다.
+- JPA의 모든 UNIQUE 제약조건과 FK를 현재 컬럼 기준으로 맞췄다.
 
-- MES 로그인 사용자 관리
-- 관리자/일반 사용자 권한 관리
-- 최초 관리자 1명은 하드코딩 또는 초기 SQL로 등록
-- 이후 일반 사용자는 관리자가 등록하고 권한을 부여
-- 생산 지시, LOT 생성, 자재 입고, 알람 해제, 불량 확인 등 사용자 작업 이력 추적
-
-### role 값
-
-| 값       | 내용             |
-| -------- | ---------------- |
-| ADMIN    | 관리자           |
-| MANAGER  | 생산/품질 관리자 |
-| OPERATOR | 현장 작업자      |
-| VIEWER   | 조회 전용 사용자 |
-
-### status 값
-
-| 값      | 내용        |
-| ------- | ----------- |
-| ACTIVE  | 사용 가능   |
-| LOCKED  | 잠김        |
-| RETIRED | 퇴사/비활성 |
+## 전체 초기화 및 생성 SQL
 
 ```sql
+CREATE DATABASE IF NOT EXISTS mes_hm_db
+    CHARACTER SET utf8mb4
+    COLLATE utf8mb4_unicode_ci;
+
+USE mes_hm_db;
+SET NAMES utf8mb4;
+
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS inspection_unit_results;
+DROP TABLE IF EXISTS inspections;
+DROP TABLE IF EXISTS work_commands;
+DROP TABLE IF EXISTS lot_inspection_standard_snapshots;
+DROP TABLE IF EXISTS lot_process_responsibles;
+DROP TABLE IF EXISTS production_logs;
+DROP TABLE IF EXISTS defect_histories;
+DROP TABLE IF EXISTS machine_alarm_histories;
+DROP TABLE IF EXISTS machine_status_histories;
+DROP TABLE IF EXISTS lots;
+DROP TABLE IF EXISTS work_orders;
+DROP TABLE IF EXISTS material_lots;
+DROP TABLE IF EXISTS machine_worker_assignments;
+DROP TABLE IF EXISTS inspection_standards;
+DROP TABLE IF EXISTS machines;
+DROP TABLE IF EXISTS defect_codes;
+DROP TABLE IF EXISTS alarm_codes;
+DROP TABLE IF EXISTS boms;
+DROP TABLE IF EXISTS workers;
+DROP TABLE IF EXISTS processes;
+DROP TABLE IF EXISTS items;
+DROP TABLE IF EXISTS members;
+
+SET FOREIGN_KEY_CHECKS = 1;
+
+-- --------------------------------------------------------------------------
+-- 1. 사용자와 기준정보
+-- --------------------------------------------------------------------------
+
 CREATE TABLE members (
-    member_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    login_id VARCHAR(50) NOT NULL UNIQUE,
+    member_id BIGINT NOT NULL AUTO_INCREMENT,
+    login_id VARCHAR(50) NOT NULL,
     password VARCHAR(255) NOT NULL,
     member_name VARCHAR(100) NOT NULL,
     role VARCHAR(20) NOT NULL DEFAULT 'OPERATOR',
     status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
-    department VARCHAR(50),
-    position VARCHAR(50),
-    created_by BIGINT,
+    department VARCHAR(50) NULL,
+    position VARCHAR(50) NULL,
+    created_by BIGINT NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NULL,
-
+    PRIMARY KEY (member_id),
+    UNIQUE KEY uk_members_login_id (login_id),
     CONSTRAINT fk_members_created_by
-        FOREIGN KEY (created_by)
-        REFERENCES members(member_id)
-);
-```
+        FOREIGN KEY (created_by) REFERENCES members (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
----
+CREATE TABLE items (
+    item_code VARCHAR(50) NOT NULL,
+    item_name VARCHAR(100) NOT NULL,
+    item_type VARCHAR(20) NOT NULL,
+    use_yn VARCHAR(1) NOT NULL DEFAULT 'Y',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (item_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-- 초기 관리자 입력 데이터
+CREATE TABLE processes (
+    process_code VARCHAR(30) NOT NULL,
+    process_name VARCHAR(100) NOT NULL,
+    process_order INT NOT NULL,
+    description VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-> 실제 프로젝트에서는 비밀번호를 평문으로 저장하지 말고 Spring Security의 BCryptPasswordEncoder로 암호화한 값을 넣어야 한다.
-> 아래 password 값은 예시 자리값이므로 실제 해시값으로 교체해서 사용한다.
+CREATE TABLE workers (
+    worker_id BIGINT NOT NULL AUTO_INCREMENT,
+    worker_no VARCHAR(30) NOT NULL,
+    worker_name VARCHAR(100) NOT NULL,
+    department VARCHAR(50) NULL,
+    position VARCHAR(50) NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (worker_id),
+    UNIQUE KEY uk_workers_worker_no (worker_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-```sql
+CREATE TABLE boms (
+    bom_id BIGINT NOT NULL AUTO_INCREMENT,
+    parent_item_code VARCHAR(50) NOT NULL,
+    child_item_code VARCHAR(50) NOT NULL,
+    quantity DECIMAL(10, 3) NOT NULL DEFAULT 1.000,
+    process_code VARCHAR(30) NULL,
+    use_yn VARCHAR(1) NOT NULL DEFAULT 'Y',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (bom_id),
+    CONSTRAINT fk_boms_parent_item
+        FOREIGN KEY (parent_item_code) REFERENCES items (item_code),
+    CONSTRAINT fk_boms_child_item
+        FOREIGN KEY (child_item_code) REFERENCES items (item_code),
+    CONSTRAINT fk_boms_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE defect_codes (
+    defect_code VARCHAR(50) NOT NULL,
+    defect_name VARCHAR(100) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    description VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (defect_code),
+    CONSTRAINT fk_defect_codes_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE alarm_codes (
+    alarm_code VARCHAR(50) NOT NULL,
+    alarm_name VARCHAR(100) NOT NULL,
+    machine_type VARCHAR(30) NOT NULL,
+    description VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (alarm_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE machines (
+    machine_id VARCHAR(50) NOT NULL,
+    machine_name VARCHAR(100) NOT NULL,
+    machine_type VARCHAR(30) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'IDLE',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (machine_id),
+    CONSTRAINT fk_machines_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspection_standards (
+    standard_id BIGINT NOT NULL AUTO_INCREMENT,
+    process_code VARCHAR(30) NOT NULL,
+    inspection_item VARCHAR(100) NOT NULL,
+    item_name VARCHAR(100) NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    lower_limit DECIMAL(12, 3) NULL,
+    upper_limit DECIMAL(12, 3) NULL,
+    standard_version INT NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NULL,
+    PRIMARY KEY (standard_id),
+    UNIQUE KEY uk_inspection_standard_process_item
+        (process_code, inspection_item),
+    CONSTRAINT fk_inspection_standards_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE machine_worker_assignments (
+    assignment_id BIGINT NOT NULL AUTO_INCREMENT,
+    machine_id VARCHAR(50) NOT NULL,
+    worker_id BIGINT NOT NULL,
+    assignment_role VARCHAR(20) NOT NULL,
+    assigned_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (assignment_id),
+    UNIQUE KEY uk_machine_worker_assignment (machine_id, worker_id),
+    CONSTRAINT fk_machine_worker_assignments_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_machine_worker_assignments_worker
+        FOREIGN KEY (worker_id) REFERENCES workers (worker_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------------
+-- 2. 자재, 작업지시와 LOT
+-- --------------------------------------------------------------------------
+
+CREATE TABLE material_lots (
+    material_lot_id BIGINT NOT NULL AUTO_INCREMENT,
+    material_lot_no VARCHAR(50) NOT NULL,
+    item_code VARCHAR(50) NOT NULL,
+    received_qty INT NOT NULL,
+    current_qty INT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
+    received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    received_by BIGINT NULL,
+    PRIMARY KEY (material_lot_id),
+    UNIQUE KEY uk_material_lots_lot_no (material_lot_no),
+    CONSTRAINT fk_material_lots_item
+        FOREIGN KEY (item_code) REFERENCES items (item_code),
+    CONSTRAINT fk_material_lots_received_by
+        FOREIGN KEY (received_by) REFERENCES members (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE work_orders (
+    work_order_id BIGINT NOT NULL AUTO_INCREMENT,
+    order_no VARCHAR(50) NOT NULL,
+    item_code VARCHAR(50) NOT NULL,
+    target_qty INT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
+    planned_start_at DATETIME NULL,
+    planned_end_at DATETIME NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (work_order_id),
+    UNIQUE KEY uk_work_orders_order_no (order_no),
+    CONSTRAINT fk_work_orders_item
+        FOREIGN KEY (item_code) REFERENCES items (item_code),
+    CONSTRAINT fk_work_orders_created_by
+        FOREIGN KEY (created_by) REFERENCES members (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE lots (
+    lot_id BIGINT NOT NULL AUTO_INCREMENT,
+    lot_no VARCHAR(50) NOT NULL,
+    work_order_id BIGINT NOT NULL,
+    item_code VARCHAR(50) NOT NULL,
+    current_process_code VARCHAR(30) NULL,
+    input_qty INT NOT NULL,
+    ok_qty INT NOT NULL DEFAULT 0,
+    ng_qty INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'WAITING',
+    started_at DATETIME NULL,
+    start_requested_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    created_by BIGINT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (lot_id),
+    UNIQUE KEY uk_lots_lot_no (lot_no),
+    CONSTRAINT fk_lots_work_order
+        FOREIGN KEY (work_order_id) REFERENCES work_orders (work_order_id),
+    CONSTRAINT fk_lots_item
+        FOREIGN KEY (item_code) REFERENCES items (item_code),
+    CONSTRAINT fk_lots_current_process
+        FOREIGN KEY (current_process_code) REFERENCES processes (process_code),
+    CONSTRAINT fk_lots_created_by
+        FOREIGN KEY (created_by) REFERENCES members (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE lot_process_responsibles (
+    lot_process_responsible_id BIGINT NOT NULL AUTO_INCREMENT,
+    lot_id BIGINT NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    worker_id BIGINT NOT NULL,
+    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (lot_process_responsible_id),
+    UNIQUE KEY uk_lot_process_responsible (lot_id, process_code),
+    CONSTRAINT fk_lot_process_responsibles_lot
+        FOREIGN KEY (lot_id) REFERENCES lots (lot_id),
+    CONSTRAINT fk_lot_process_responsibles_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code),
+    CONSTRAINT fk_lot_process_responsibles_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_lot_process_responsibles_worker
+        FOREIGN KEY (worker_id) REFERENCES workers (worker_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE lot_inspection_standard_snapshots (
+    snapshot_id BIGINT NOT NULL AUTO_INCREMENT,
+    lot_no VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    inspection_item VARCHAR(100) NOT NULL,
+    item_name VARCHAR(100) NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    lower_limit DECIMAL(12, 3) NULL,
+    upper_limit DECIMAL(12, 3) NULL,
+    standard_version INT NOT NULL,
+    captured_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (snapshot_id),
+    UNIQUE KEY uk_lot_inspection_snapshot
+        (lot_no, process_code, inspection_item),
+    CONSTRAINT fk_lot_inspection_snapshots_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_lot_inspection_snapshots_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------------
+-- 3. L2 명령과 생산/품질/설비 이력
+-- --------------------------------------------------------------------------
+
+CREATE TABLE work_commands (
+    command_id BIGINT NOT NULL AUTO_INCREMENT,
+    command_type VARCHAR(20) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    lot_no VARCHAR(50) NOT NULL,
+    input_qty INT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    ack_message VARCHAR(255) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    dispatched_at DATETIME NULL,
+    acknowledged_at DATETIME NULL,
+    completed_at DATETIME NULL,
+    PRIMARY KEY (command_id),
+    CONSTRAINT fk_work_commands_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_work_commands_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code),
+    CONSTRAINT fk_work_commands_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE production_logs (
+    production_log_id BIGINT NOT NULL AUTO_INCREMENT,
+    event_id VARCHAR(100) NULL,
+    lot_no VARCHAR(50) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    input_qty INT NOT NULL DEFAULT 0,
+    ok_qty INT NOT NULL DEFAULT 0,
+    ng_qty INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
+    started_at DATETIME NULL,
+    ended_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (production_log_id),
+    UNIQUE KEY uk_production_logs_event_id (event_id),
+    CONSTRAINT fk_production_logs_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_production_logs_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_production_logs_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspections (
+    inspection_id BIGINT NOT NULL AUTO_INCREMENT,
+    event_id VARCHAR(100) NULL,
+    lot_no VARCHAR(50) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    snapshot_id BIGINT NOT NULL,
+    unit_seq INT NOT NULL,
+    inspection_item VARCHAR(100) NOT NULL,
+    measured_value DECIMAL(12, 3) NOT NULL,
+    unit VARCHAR(20) NOT NULL,
+    result VARCHAR(10) NOT NULL,
+    inspected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (inspection_id),
+    UNIQUE KEY uk_inspection_event_id (event_id),
+    UNIQUE KEY uk_inspection_unit_item
+        (lot_no, process_code, unit_seq, inspection_item),
+    CONSTRAINT fk_inspections_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_inspections_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_inspections_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code),
+    CONSTRAINT fk_inspections_snapshot
+        FOREIGN KEY (snapshot_id) REFERENCES lot_inspection_standard_snapshots (snapshot_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE inspection_unit_results (
+    unit_result_id BIGINT NOT NULL AUTO_INCREMENT,
+    lot_no VARCHAR(50) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    unit_seq INT NOT NULL,
+    result VARCHAR(10) NOT NULL,
+    evaluated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (unit_result_id),
+    UNIQUE KEY uk_inspection_unit_result (lot_no, process_code, unit_seq),
+    CONSTRAINT fk_inspection_unit_results_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_inspection_unit_results_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_inspection_unit_results_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE defect_histories (
+    defect_history_id BIGINT NOT NULL AUTO_INCREMENT,
+    event_id VARCHAR(100) NULL,
+    lot_no VARCHAR(50) NOT NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    process_code VARCHAR(30) NOT NULL,
+    defect_code VARCHAR(50) NOT NULL,
+    defect_qty INT NOT NULL DEFAULT 0,
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    message VARCHAR(255) NULL,
+    PRIMARY KEY (defect_history_id),
+    UNIQUE KEY uk_defect_histories_event_id (event_id),
+    CONSTRAINT fk_defect_histories_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_defect_histories_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_defect_histories_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code),
+    CONSTRAINT fk_defect_histories_defect_code
+        FOREIGN KEY (defect_code) REFERENCES defect_codes (defect_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE machine_alarm_histories (
+    machine_alarm_history_id BIGINT NOT NULL AUTO_INCREMENT,
+    event_id VARCHAR(100) NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    alarm_code VARCHAR(50) NOT NULL,
+    alarm_level VARCHAR(20) NOT NULL DEFAULT 'ERROR',
+    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    cleared_at DATETIME NULL,
+    cleared_by BIGINT NULL,
+    message VARCHAR(255) NULL,
+    PRIMARY KEY (machine_alarm_history_id),
+    UNIQUE KEY uk_machine_alarm_histories_event_id (event_id),
+    CONSTRAINT fk_machine_alarm_histories_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_machine_alarm_histories_alarm_code
+        FOREIGN KEY (alarm_code) REFERENCES alarm_codes (alarm_code),
+    CONSTRAINT fk_machine_alarm_histories_cleared_by
+        FOREIGN KEY (cleared_by) REFERENCES members (member_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE machine_status_histories (
+    machine_status_history_id BIGINT NOT NULL AUTO_INCREMENT,
+    event_id VARCHAR(100) NULL,
+    machine_id VARCHAR(50) NOT NULL,
+    status VARCHAR(20) NOT NULL,
+    lot_no VARCHAR(50) NULL,
+    process_code VARCHAR(30) NULL,
+    recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    message VARCHAR(255) NULL,
+    PRIMARY KEY (machine_status_history_id),
+    UNIQUE KEY uk_machine_status_histories_event_id (event_id),
+    CONSTRAINT fk_machine_status_histories_machine
+        FOREIGN KEY (machine_id) REFERENCES machines (machine_id),
+    CONSTRAINT fk_machine_status_histories_lot
+        FOREIGN KEY (lot_no) REFERENCES lots (lot_no),
+    CONSTRAINT fk_machine_status_histories_process
+        FOREIGN KEY (process_code) REFERENCES processes (process_code)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------------------------
+-- 4. 초기 기준 데이터
+-- --------------------------------------------------------------------------
+
+-- 초기 관리자: admin / admin1234!
+-- 애플리케이션 로그인 후 즉시 비밀번호를 변경한다.
 INSERT INTO members (
-    login_id,
-    password,
-    member_name,
-    role,
-    status,
-    department,
-    position,
-    created_by
-)
-VALUES (
+    login_id, password, member_name, role, status, department, position, created_by
+) VALUES (
     'admin',
-    '$2a$10$REPLACE_WITH_BCRYPT_HASH_VALUE',
+    '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
     '시스템 관리자',
     'ADMIN',
     'ACTIVE',
@@ -82,39 +473,8 @@ VALUES (
     '관리자',
     NULL
 );
-```
 
----
-
-## items(품목 마스터) 테이블
-
-- item_type:
-  - RM = 원자재
-  - SA = 반제품
-  - FG = 완제품
-
-> 모든 품목 단위가 `EA`로 고정이므로 `unit` 컬럼은 제거했다.
-> `use_yn`은 품목 삭제 대신 비활성화 처리를 위해 유지한다.
-
-```sql
-CREATE TABLE items (
-    item_code VARCHAR(50) PRIMARY KEY,
-    item_name VARCHAR(100) NOT NULL,
-    item_type VARCHAR(20) NOT NULL,
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NULL
-);
-```
-
----
-
-- 입력 데이터
-
-```sql
-INSERT INTO items (item_code, item_name, item_type, use_yn)
-VALUES
--- 원자재
+INSERT INTO items (item_code, item_name, item_type, use_yn) VALUES
 ('RM-CU-001', '코일용 구리선', 'RM', 'Y'),
 ('RM-BOB-001', '보빈', 'RM', 'Y'),
 ('RM-CONTACT-F', '고정 접점', 'RM', 'Y'),
@@ -129,899 +489,196 @@ VALUES
 ('RM-CASE-001', '하우징', 'RM', 'Y'),
 ('RM-EPOXY-001', '에폭시', 'RM', 'Y'),
 ('RM-PACK-001', '포장 자재', 'RM', 'Y'),
-
--- 반제품
 ('SA-COIL-001', '코일 어셈블리', 'SA', 'Y'),
 ('SA-CONTACT-001', '접점 어셈블리', 'SA', 'Y'),
 ('SA-BODY-001', '본체 어셈블리', 'SA', 'Y'),
 ('SA-SEALED-001', '실링 완료품', 'SA', 'Y'),
 ('SA-TESTED-001', '검사 완료품', 'SA', 'Y'),
-
--- 완제품
 ('FG-EVR-001', 'EV Relay 완제품', 'FG', 'Y');
-```
 
----
-
-## processes(공정 목록) 테이블
-
-### L1-1 ~ L1-6 공정 정보를 저장하는 테이블
-
-- OP20 = 코일 권선
-- OP30 = 접점 가공/용접
-- OP40_OP50 = 자동 조립
-- OP60 = 실링/가스충전
-- OP70 = 최종 검사
-- OP80 = 마킹/포장
-
-### 역할
-
-- 공정 코드 관리
-- 공정 순서 관리
-- 공정명 관리
-
-```sql
-CREATE TABLE processes (
-    process_code VARCHAR(30) PRIMARY KEY,
-    process_name VARCHAR(100) NOT NULL,
-    process_order INT NOT NULL,
-    description VARCHAR(255),
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NULL
-);
-```
-
----
-
-- 입력 데이터
-
-```sql
 INSERT INTO processes (
-    process_code,
-    process_name,
-    process_order,
-    description,
-    use_yn
-)
-VALUES
-('OP20', '코일 권선', 1, '코일 어셈블리 제작 공정', 'Y'),
-('OP30', '접점 가공/용접', 2, '접점 어셈블리 제작 공정', 'Y'),
-('OP40_OP50', '자동 조립', 3, '코일, 접점, 코어, 챔버 등을 조립하는 공정', 'Y'),
-('OP60', '실링/가스충전', 4, '제품 실링 및 가스 충전 공정', 'Y'),
-('OP70', '최종 검사', 5, '전기 특성 및 품질 검사 공정', 'Y'),
-('OP80', '마킹/포장', 6, '마킹, 라벨링, 포장 공정', 'Y');
-```
+    process_code, process_name, process_order, description
+) VALUES
+('OP20', '코일 권선', 1, '코일 어셈블리 제작 공정'),
+('OP30', '접점 가공/용접', 2, '접점 어셈블리 제작 공정'),
+('OP40_OP50', '자동 조립', 3, '코일, 접점 및 내부 부품 자동 조립 공정'),
+('OP60', '실링/가스 충전', 4, '제품 실링 및 가스 충전 공정'),
+('OP70', '최종 검사', 5, '전기 특성 최종 검사 공정'),
+('OP80', '마킹/포장', 6, '제품 마킹, 라벨링 및 포장 공정');
 
----
+INSERT INTO boms (
+    parent_item_code, child_item_code, quantity, process_code, use_yn
+) VALUES
+('SA-COIL-001', 'RM-CU-001', 1.000, 'OP20', 'Y'),
+('SA-COIL-001', 'RM-BOB-001', 1.000, 'OP20', 'Y'),
+('SA-CONTACT-001', 'RM-CONTACT-F', 2.000, 'OP30', 'Y'),
+('SA-CONTACT-001', 'RM-CONTACT-M', 1.000, 'OP30', 'Y'),
+('SA-BODY-001', 'SA-COIL-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'SA-CONTACT-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-CORE-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-YOKE-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-SPR-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-TERM-HV', 2.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-TERM-COIL', 2.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-CER-001', 1.000, 'OP40_OP50', 'Y'),
+('SA-BODY-001', 'RM-MAG-001', 2.000, 'OP40_OP50', 'Y'),
+('SA-SEALED-001', 'SA-BODY-001', 1.000, 'OP60', 'Y'),
+('SA-SEALED-001', 'RM-CASE-001', 1.000, 'OP60', 'Y'),
+('SA-SEALED-001', 'RM-EPOXY-001', 1.000, 'OP60', 'Y'),
+('SA-TESTED-001', 'SA-SEALED-001', 1.000, 'OP70', 'Y'),
+('FG-EVR-001', 'SA-TESTED-001', 1.000, 'OP80', 'Y'),
+('FG-EVR-001', 'RM-PACK-001', 1.000, 'OP80', 'Y');
 
-## BOM 테이블
+INSERT INTO defect_codes (
+    defect_code, defect_name, process_code, description
+) VALUES
+('COIL_OPEN_NG', '코일 단선', 'OP20', '코일 권선 중 단선 발생'),
+('COIL_RESISTANCE_NG', '코일 저항 불량', 'OP20', '코일 저항 측정값이 기준 범위를 벗어남'),
+('COIL_SHORT_NG', '코일 쇼트', 'OP20', '코일 내부 쇼트 발생'),
+('WELD_STRENGTH_NG', '용접 강도 불량', 'OP30', '접점 용접 강도가 기준 미달'),
+('CONTACT_RESISTANCE_NG', '접촉 저항 불량', 'OP30', '접촉 저항이 기준 범위를 벗어남'),
+('CONTACT_POSITION_NG', '접점 위치 불량', 'OP30', '접점 위치가 기준 위치를 벗어남'),
+('ASSY_MISALIGN_NG', '조립 위치 불량', 'OP40_OP50', '자동 조립 중 부품 정렬 불량'),
+('SPRING_MISSING_NG', '스프링 누락', 'OP40_OP50', '자동 조립 중 스프링 누락'),
+('CHAMBER_CRACK_NG', '챔버 균열', 'OP40_OP50', '챔버 조립 중 균열 발생'),
+('GAS_PRESSURE_NG', '가스 압력 불량', 'OP60', '가스 충전 압력이 기준 범위를 벗어남'),
+('SEAL_LEAK_NG', '실링 누설 불량', 'OP60', '실링 후 누설률이 기준 초과'),
+('SEAL_WELD_NG', '실링 용접 불량', 'OP60', '실링 용접 상태 불량'),
+('INSULATION_NG', '절연 저항 불량', 'OP70', '절연 저항 측정값이 기준 미달'),
+('WITHSTAND_VOLTAGE_NG', '내전압 불량', 'OP70', '내전압 검사 기준 미달'),
+('OPERATION_VOLTAGE_NG', '동작 전압 불량', 'OP70', '동작 전압이 기준 범위를 벗어남'),
+('CONTACT_BOUNCE_NG', '접점 바운스 불량', 'OP70', '접점 바운스 시간이 기준 초과'),
+('MARKING_NG', '마킹 불량', 'OP80', '제품 마킹 누락 또는 식별 불가'),
+('PACKING_COUNT_NG', '포장 수량 불일치', 'OP80', '포장 수량이 기준 수량과 불일치');
 
-> 모든 소요 단위가 `EA`로 고정이므로 `unit` 컬럼은 제거했다.
-> `use_yn`은 BOM 변경 시 기존 이력과 기준정보를 보존하기 위해 유지한다.
+INSERT INTO alarm_codes (
+    alarm_code, alarm_name, machine_type, description
+) VALUES
+('COMM_DISCONNECTED', '통신 끊김', 'COMMON', 'L1과 L2의 TCP 연결이 끊어진 상태'),
+('COMM_TIMEOUT', '통신 시간 초과', 'COMMON', '일정 시간 동안 L1 응답이 없는 상태'),
+('EMERGENCY_STOP', '비상 정지', 'COMMON', '비상 정지 또는 안전 조건으로 정지된 상태'),
+('POWER_OFF', '전원 꺼짐', 'COMMON', '장비 전원이 꺼졌거나 확인할 수 없는 상태'),
+('DOOR_OPEN', '도어 열림', 'COMMON', '장비 안전 도어가 열린 상태'),
+('SENSOR_ERROR', '센서 오류', 'COMMON', '센서 값 또는 응답이 비정상인 상태'),
+('MOTOR_OVERLOAD', '모터 과부하', 'COMMON', '구동 모터 부하가 기준치를 초과한 상태'),
+('MATERIAL_SHORTAGE', '자재 부족', 'COMMON', '공정 수행에 필요한 자재가 부족한 상태'),
+('JAM_DETECTED', '걸림 발생', 'COMMON', '제품 또는 자재가 장비 내부에서 걸린 상태'),
+('UNKNOWN_ERROR', '알 수 없는 오류', 'COMMON', '분류되지 않은 장비 이상'),
+('WIRE_SHORTAGE', '구리선 부족', 'EQ-WIND', '권선용 구리선 부족'),
+('WIRE_BREAK', '구리선 끊김', 'EQ-WIND', '권선 중 구리선 끊김'),
+('WINDING_MOTOR_ERROR', '권선 모터 오류', 'EQ-WIND', '권선 모터 이상'),
+('BOBBIN_FEED_ERROR', '보빈 공급 오류', 'EQ-WIND', '보빈 공급 실패'),
+('WELD_POWER_ERROR', '용접 전원 오류', 'EQ-WELD', '용접 전원 또는 출력 이상'),
+('WELD_TIP_WORN', '용접 팁 마모', 'EQ-WELD', '용접 팁 교체 필요'),
+('CONTACT_FEED_ERROR', '접점 공급 오류', 'EQ-WELD', '접점 공급 실패'),
+('WELD_OVERHEAT', '용접부 과열', 'EQ-WELD', '용접부 또는 장치 온도 초과'),
+('PART_FEED_ERROR', '부품 공급 오류', 'EQ-ASSY', '조립 부품 공급 실패'),
+('PICK_PLACE_ERROR', '픽앤플레이스 오류', 'EQ-ASSY', '부품 집기 또는 배치 실패'),
+('ALIGN_SENSOR_ERROR', '정렬 센서 오류', 'EQ-ASSY', '부품 정렬 센서 이상'),
+('ASSEMBLY_JAM', '조립 걸림', 'EQ-ASSY', '자동 조립 중 제품 걸림'),
+('VACUUM_PUMP_ERROR', '진공 펌프 오류', 'EQ-SEAL', '진공 펌프 이상'),
+('GAS_SUPPLY_ERROR', '가스 공급 오류', 'EQ-SEAL', '가스 공급 압력 또는 공급량 이상'),
+('SEAL_HEAD_ERROR', '실링 헤드 오류', 'EQ-SEAL', '실링 헤드 동작 이상'),
+('CHAMBER_PRESSURE_ERROR', '챔버 압력 오류', 'EQ-SEAL', '챔버 압력이 기준 범위를 벗어남'),
+('TEST_PROBE_ERROR', '검사 프로브 오류', 'EQ-TEST', '검사 핀 접촉 또는 프로브 이상'),
+('HV_TESTER_ERROR', '내전압 검사기 오류', 'EQ-TEST', '내전압 검사 장비 이상'),
+('MEASURE_DEVICE_ERROR', '측정 장비 오류', 'EQ-TEST', '전기 특성 측정 장비 이상'),
+('TEST_SEQUENCE_ERROR', '검사 시퀀스 오류', 'EQ-TEST', '검사 순서 또는 조건 이상'),
+('LABEL_PRINTER_ERROR', '라벨 프린터 오류', 'EQ-PACK', '제품 라벨 출력 실패'),
+('BARCODE_READER_ERROR', '바코드 리더 오류', 'EQ-PACK', '제품 또는 LOT 바코드 인식 실패'),
+('PACK_MATERIAL_SHORTAGE', '포장 자재 부족', 'EQ-PACK', '박스 또는 라벨 부족'),
+('PACK_COUNT_ERROR', '포장 카운트 오류', 'EQ-PACK', '포장 수량 카운트 불일치');
 
-```sql
-CREATE TABLE boms (
-    bom_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    parent_item_code VARCHAR(50) NOT NULL,
-    child_item_code VARCHAR(50) NOT NULL,
-    quantity DECIMAL(10, 3) NOT NULL DEFAULT 1,
-    process_code VARCHAR(30),
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NULL,
-
-    CONSTRAINT fk_boms_parent_item
-        FOREIGN KEY (parent_item_code)
-        REFERENCES items(item_code),
-
-    CONSTRAINT fk_boms_child_item
-        FOREIGN KEY (child_item_code)
-        REFERENCES items(item_code),
-
-    CONSTRAINT fk_boms_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
----
-
-- BOM 입력 데이터
-
-```sql
-INSERT INTO boms (parent_item_code, child_item_code, quantity, process_code, use_yn)
-VALUES
--- 1단계 BOM: 코일 어셈블리 / OP20
-('SA-COIL-001', 'RM-CU-001', 1, 'OP20', 'Y'),
-('SA-COIL-001', 'RM-BOB-001', 1, 'OP20', 'Y'),
-
--- 2단계 BOM: 접점 어셈블리 / OP30
-('SA-CONTACT-001', 'RM-CONTACT-F', 2, 'OP30', 'Y'),
-('SA-CONTACT-001', 'RM-CONTACT-M', 1, 'OP30', 'Y'),
-
--- 3단계 BOM: 본체 어셈블리 / OP40_OP50
-('SA-BODY-001', 'SA-COIL-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'SA-CONTACT-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-CORE-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-YOKE-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-SPR-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-TERM-HV', 2, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-TERM-COIL', 2, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-CER-001', 1, 'OP40_OP50', 'Y'),
-('SA-BODY-001', 'RM-MAG-001', 2, 'OP40_OP50', 'Y'),
-
--- 4단계 BOM: 실링 완료품 / OP60
-('SA-SEALED-001', 'SA-BODY-001', 1, 'OP60', 'Y'),
-('SA-SEALED-001', 'RM-CASE-001', 1, 'OP60', 'Y'),
-('SA-SEALED-001', 'RM-EPOXY-001', 1, 'OP60', 'Y'),
-
--- 5단계 BOM: 검사 완료품 / OP70
-('SA-TESTED-001', 'SA-SEALED-001', 1, 'OP70', 'Y'),
-
--- 6단계 BOM: EV Relay 완제품 / OP80
-('FG-EVR-001', 'SA-TESTED-001', 1, 'OP80', 'Y'),
-('FG-EVR-001', 'RM-PACK-001', 1, 'OP80', 'Y');
-```
-
----
-
-## defectCode(불량 코드) 테이블
-
-```sql
-CREATE TABLE defect_codes (
-    defect_code VARCHAR(50) PRIMARY KEY,
-    defect_name VARCHAR(100) NOT NULL,
-    process_code VARCHAR(30) NOT NULL,
-    description VARCHAR(255),
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_defect_codes_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
----
-
-- 입력 데이터
-
-```sql
-INSERT INTO defect_codes (defect_code, defect_name, process_code, description, use_yn)
-VALUES
-('COIL_OPEN_NG', '코일 단선', 'OP20', '코일 권선 공정에서 단선이 발생한 불량', 'Y'),
-('COIL_RESISTANCE_NG', '코일 저항 불량', 'OP20', '코일 저항 측정값이 기준 범위를 벗어난 불량', 'Y'),
-('COIL_SHORT_NG', '코일 쇼트', 'OP20', '코일 내부 쇼트가 발생한 불량', 'Y'),
-
-('WELD_STRENGTH_NG', '용접 강도 불량', 'OP30', '접점 용접 강도가 기준 미달인 불량', 'Y'),
-('CONTACT_RESISTANCE_NG', '접촉저항 불량', 'OP30', '접점 접촉저항이 기준 범위를 벗어난 불량', 'Y'),
-('CONTACT_POSITION_NG', '접점 위치 불량', 'OP30', '접점 위치가 기준 위치에서 벗어난 불량', 'Y'),
-
-('ASSY_MISALIGN_NG', '조립 위치 불량', 'OP40_OP50', '자동 조립 공정에서 부품 정렬이 틀어진 불량', 'Y'),
-('SPRING_MISSING_NG', '스프링 누락', 'OP40_OP50', '자동 조립 공정에서 스프링이 누락된 불량', 'Y'),
-('CHAMBER_CRACK_NG', '챔버 균열', 'OP40_OP50', '챔버 조립 중 균열이 발생한 불량', 'Y'),
-
-('GAS_PRESSURE_NG', '가스 압력 불량', 'OP60', '가스 충전 압력이 기준 범위를 벗어난 불량', 'Y'),
-('SEAL_LEAK_NG', '실링 누설 불량', 'OP60', '실링 후 누설률이 기준을 초과한 불량', 'Y'),
-('SEAL_WELD_NG', '실링 용접 불량', 'OP60', '실링 용접 상태가 불량한 경우', 'Y'),
-
-('INSULATION_NG', '절연저항 불량', 'OP70', '절연저항 측정값이 기준 미달인 불량', 'Y'),
-('WITHSTAND_VOLTAGE_NG', '내전압 불량', 'OP70', '내전압 검사에서 기준을 만족하지 못한 불량', 'Y'),
-('OPERATION_VOLTAGE_NG', '동작 전압 불량', 'OP70', '동작 전압이 기준 범위를 벗어난 불량', 'Y'),
-('CONTACT_BOUNCE_NG', '접점 바운스 불량', 'OP70', '접점 바운스 시간이 기준을 초과한 불량', 'Y'),
-
-('MARKING_NG', '마킹 불량', 'OP80', '제품 마킹이 누락되거나 식별 불가능한 불량', 'Y'),
-('PACKING_COUNT_NG', '포장 수량 불일치', 'OP80', '포장 수량이 기준 수량과 일치하지 않는 불량', 'Y');
-```
-
----
-
-## alarmCode(설비 알람) 테이블
-
-```sql
-CREATE TABLE alarm_codes (
-    alarm_code VARCHAR(50) PRIMARY KEY,
-    alarm_name VARCHAR(100) NOT NULL,
-    machine_type VARCHAR(30) NOT NULL,
-    description VARCHAR(255),
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-```
-
----
-
-- 입력 데이터
-
-```sql
-INSERT INTO alarm_codes (alarm_code, alarm_name, machine_type, description, use_yn)
-VALUES
--- 공통 설비 알람
-('COMM_DISCONNECTED', '통신 끊김', 'COMMON', 'L1 장비와 L2 수집 서버 간 연결이 끊긴 상태', 'Y'),
-('COMM_TIMEOUT', '통신 시간 초과', 'COMMON', '일정 시간 동안 장비 응답 또는 데이터 수신이 없는 상태', 'Y'),
-('EMERGENCY_STOP', '비상 정지', 'COMMON', '장비가 비상 정지 버튼 또는 안전 조건에 의해 정지된 상태', 'Y'),
-('POWER_OFF', '전원 꺼짐', 'COMMON', '장비 전원이 꺼져 있거나 전원 상태를 확인할 수 없는 상태', 'Y'),
-('DOOR_OPEN', '도어 열림', 'COMMON', '장비 안전 도어가 열린 상태', 'Y'),
-('SENSOR_ERROR', '센서 오류', 'COMMON', '센서값이 비정상이거나 센서 응답이 없는 상태', 'Y'),
-('MOTOR_OVERLOAD', '모터 과부하', 'COMMON', '장비 구동 모터의 부하가 기준치를 초과한 상태', 'Y'),
-('MATERIAL_SHORTAGE', '자재 부족', 'COMMON', '공정 수행에 필요한 자재가 부족한 상태', 'Y'),
-('JAM_DETECTED', '걸림 발생', 'COMMON', '제품 또는 자재가 장비 내부에서 걸린 상태', 'Y'),
-('UNKNOWN_ERROR', '알 수 없는 오류', 'COMMON', '분류되지 않은 설비 이상이 발생한 상태', 'Y'),
-
--- L1-1 / EQ-WIND 코일 권선기 알람
-('WIRE_SHORTAGE', '구리선 부족', 'EQ-WIND', '코일 권선에 필요한 구리선이 부족한 상태', 'Y'),
-('WIRE_BREAK', '구리선 끊김', 'EQ-WIND', '권선 작업 중 구리선이 끊어진 상태', 'Y'),
-('WINDING_MOTOR_ERROR', '권선 모터 오류', 'EQ-WIND', '코일 권선 모터에 이상이 발생한 상태', 'Y'),
-('BOBBIN_FEED_ERROR', '보빈 공급 오류', 'EQ-WIND', '보빈이 정상적으로 공급되지 않는 상태', 'Y'),
-
--- L1-2 / EQ-WELD 접점 용접기 알람
-('WELD_POWER_ERROR', '용접 전원 오류', 'EQ-WELD', '접점 용접기의 전원 또는 용접 출력에 이상이 발생한 상태', 'Y'),
-('WELD_TIP_WORN', '용접 팁 마모', 'EQ-WELD', '용접 팁이 마모되어 교체가 필요한 상태', 'Y'),
-('CONTACT_FEED_ERROR', '접점 공급 오류', 'EQ-WELD', '고정 접점 또는 가동 접점이 정상적으로 공급되지 않는 상태', 'Y'),
-('WELD_OVERHEAT', '용접부 과열', 'EQ-WELD', '용접부 또는 용접 장치 온도가 기준치를 초과한 상태', 'Y'),
-
--- L1-3 / EQ-ASSY 자동 조립기 알람
-('PART_FEED_ERROR', '부품 공급 오류', 'EQ-ASSY', '조립에 필요한 부품이 정상적으로 공급되지 않는 상태', 'Y'),
-('PICK_PLACE_ERROR', '픽앤플레이스 오류', 'EQ-ASSY', '부품 집기 또는 배치 동작에 실패한 상태', 'Y'),
-('ALIGN_SENSOR_ERROR', '정렬 센서 오류', 'EQ-ASSY', '부품 위치 정렬을 감지하는 센서에 이상이 발생한 상태', 'Y'),
-('ASSEMBLY_JAM', '조립 걸림', 'EQ-ASSY', '자동 조립 중 부품 또는 제품이 걸린 상태', 'Y'),
-
--- L1-4 / EQ-SEAL 실링/가스충전기 알람
-('VACUUM_PUMP_ERROR', '진공 펌프 오류', 'EQ-SEAL', '진공 형성을 위한 펌프에 이상이 발생한 상태', 'Y'),
-('GAS_SUPPLY_ERROR', '가스 공급 오류', 'EQ-SEAL', '가스 공급 압력 또는 공급량에 이상이 발생한 상태', 'Y'),
-('SEAL_HEAD_ERROR', '실링 헤드 오류', 'EQ-SEAL', '실링 헤드 동작에 이상이 발생한 상태', 'Y'),
-('CHAMBER_PRESSURE_ERROR', '챔버 압력 오류', 'EQ-SEAL', '챔버 내부 압력값이 기준 범위를 벗어난 상태', 'Y'),
-
--- L1-5 / EQ-TEST 최종 검사기 알람
-('TEST_PROBE_ERROR', '검사 프로브 오류', 'EQ-TEST', '검사 핀 접촉 불량 또는 프로브 이상이 발생한 상태', 'Y'),
-('HV_TESTER_ERROR', '내전압 검사기 오류', 'EQ-TEST', '내전압 검사 장비에 이상이 발생한 상태', 'Y'),
-('MEASURE_DEVICE_ERROR', '측정 장비 오류', 'EQ-TEST', '전기 특성 측정 장비에서 이상이 발생한 상태', 'Y'),
-('TEST_SEQUENCE_ERROR', '검사 시퀀스 오류', 'EQ-TEST', '검사 순서 또는 검사 조건이 비정상인 상태', 'Y'),
-
--- L1-6 / EQ-PACK 포장기 알람
-('LABEL_PRINTER_ERROR', '라벨 프린터 오류', 'EQ-PACK', '제품 라벨 또는 식별 라벨 출력에 실패한 상태', 'Y'),
-('BARCODE_READER_ERROR', '바코드 리더 오류', 'EQ-PACK', '제품 또는 LOT 바코드 인식에 실패한 상태', 'Y'),
-('PACK_MATERIAL_SHORTAGE', '포장 자재 부족', 'EQ-PACK', '박스, 라벨 등 포장 자재가 부족한 상태', 'Y'),
-('PACK_COUNT_ERROR', '포장 카운트 오류', 'EQ-PACK', '포장 수량 카운트가 기준 수량과 일치하지 않는 상태', 'Y');
-```
-
----
-
-## machines(설비/장비 목록) 테이블
-
-### L1 장비 6개를 관리하는 테이블
-
-- EQ-WIND-01 = 코일 권선기
-- EQ-WELD-01 = 접점 용접기
-- EQ-ASSY-01 = 자동 조립기
-- EQ-SEAL-01 = 실링/가스충전기
-- EQ-TEST-01 = 최종 검사기
-- EQ-PACK-01 = 포장기
-
-### status 값
-
-| 값      | 내용 |
-| ------- | ---- |
-| IDLE    | 대기 |
-| RUNNING | 가동 |
-| ERROR   | 이상 |
-| STOPPED | 정지 |
-
-```sql
-CREATE TABLE machines (
-    machine_id VARCHAR(50) PRIMARY KEY,
-    machine_name VARCHAR(100) NOT NULL,
-    machine_type VARCHAR(30) NOT NULL,
-    process_code VARCHAR(30) NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'IDLE',
-    use_yn CHAR(1) NOT NULL DEFAULT 'Y',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NULL,
-
-    CONSTRAINT fk_machines_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
----
-
-- 입력 데이터
-
-```sql
 INSERT INTO machines (
-    machine_id,
-    machine_name,
-    machine_type,
-    process_code,
-    status,
-    use_yn
-)
-VALUES
-('EQ-WIND-01', '코일 권선기', 'EQ-WIND', 'OP20', 'IDLE', 'Y'),
-('EQ-WELD-01', '접점 용접기', 'EQ-WELD', 'OP30', 'IDLE', 'Y'),
-('EQ-ASSY-01', '자동 조립기', 'EQ-ASSY', 'OP40_OP50', 'IDLE', 'Y'),
-('EQ-SEAL-01', '실링/가스충전기', 'EQ-SEAL', 'OP60', 'IDLE', 'Y'),
-('EQ-TEST-01', '최종 검사기', 'EQ-TEST', 'OP70', 'IDLE', 'Y'),
-('EQ-PACK-01', '포장기', 'EQ-PACK', 'OP80', 'IDLE', 'Y');
+    machine_id, machine_name, machine_type, process_code, status
+) VALUES
+('EQ-WIND-01', '코일 권선기', 'EQ-WIND', 'OP20', 'IDLE'),
+('EQ-WELD-01', '접점 용접기', 'EQ-WELD', 'OP30', 'IDLE'),
+('EQ-ASSY-01', '자동 조립기', 'EQ-ASSY', 'OP40_OP50', 'IDLE'),
+('EQ-SEAL-01', '실링/가스 충전기', 'EQ-SEAL', 'OP60', 'IDLE'),
+('EQ-TEST-01', '최종 검사기', 'EQ-TEST', 'OP70', 'IDLE'),
+('EQ-PACK-01', '포장기', 'EQ-PACK', 'OP80', 'IDLE');
+
+INSERT INTO inspection_standards (
+    process_code, inspection_item, item_name, unit,
+    lower_limit, upper_limit, standard_version
+) VALUES
+('OP70', 'OPERATION_VOLTAGE', '동작 전압', 'V', 10.000, 14.000, 1),
+('OP70', 'COIL_RESISTANCE', '코일 저항', 'OHM', 80.000, 120.000, 1),
+('OP70', 'CONTACT_RESISTANCE', '접촉 저항', 'mOHM', 0.000, 50.000, 1);
 ```
 
----
-
-# 2. 생산 흐름 테이블
-
-## Material Lots
-
-### 자재 입고 검사 후 생성되는 자재 LOT 테이블
-
-```text
-RM-CU-001 자재가 1000개 입고됨
-↓
-MAT-LOT-20260708-001 생성
-```
-
-### status 값
-
-| 값        | 내용      |
-| --------- | --------- |
-| AVAILABLE | 사용 가능 |
-| HOLD      | 보류      |
-| USED      | 사용 완료 |
-| DISCARDED | 폐기      |
-
-```sql
-CREATE TABLE material_lots (
-    material_lot_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    material_lot_no VARCHAR(50) NOT NULL UNIQUE,
-    item_code VARCHAR(50) NOT NULL,
-    received_qty INT NOT NULL,
-    current_qty INT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'AVAILABLE',
-    received_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    received_by BIGINT,
-
-    CONSTRAINT fk_material_lots_item
-        FOREIGN KEY (item_code)
-        REFERENCES items(item_code),
-
-    CONSTRAINT fk_material_lots_received_by
-        FOREIGN KEY (received_by)
-        REFERENCES members(member_id)
-);
-```
-
----
-
-## work_orders(작업지시/생산 지시) 테이블
-
-### status 값
-
-| 값        | 내용      |
-| --------- | --------- |
-| CREATED   | 생성      |
-| RELEASED  | 생산 투입 |
-| RUNNING   | 생산 중   |
-| COMPLETED | 완료      |
-| CANCELED  | 취소      |
-
-```sql
-CREATE TABLE work_orders (
-    work_order_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    order_no VARCHAR(50) NOT NULL UNIQUE,
-    item_code VARCHAR(50) NOT NULL,
-    target_qty INT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'CREATED',
-    planned_start_at DATETIME,
-    planned_end_at DATETIME,
-    created_by BIGINT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_work_orders_item
-        FOREIGN KEY (item_code)
-        REFERENCES items(item_code),
-
-    CONSTRAINT fk_work_orders_created_by
-        FOREIGN KEY (created_by)
-        REFERENCES members(member_id)
-);
-```
-
----
-
-## lots(생산 LOT) 테이블
-
-### 실제로 생산이 시작되면 생성되는 LOT
-
-```text
-생산 지시: EV Relay 100개 생산
-↓
-생산 LOT: EVR-LOT-20260708-001
-```
-
-### status 값
-
-| 값        | 내용    |
-| --------- | ------- |
-| WAITING   | 대기    |
-| RUNNING   | 생산 중 |
-| COMPLETED | 완료    |
-| HOLD      | 보류    |
-| SCRAPPED  | 폐기    |
-
-```sql
-CREATE TABLE lots (
-    lot_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    lot_no VARCHAR(50) NOT NULL UNIQUE,
-    work_order_id BIGINT NOT NULL,
-    item_code VARCHAR(50) NOT NULL,
-    current_process_code VARCHAR(30),
-    input_qty INT NOT NULL,
-    ok_qty INT NOT NULL DEFAULT 0,
-    ng_qty INT NOT NULL DEFAULT 0,
-    status VARCHAR(20) NOT NULL DEFAULT 'WAITING',
-    started_at DATETIME,
-    completed_at DATETIME,
-    created_by BIGINT,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_lots_order
-        FOREIGN KEY (work_order_id)
-        REFERENCES work_orders(work_order_id),
-
-    CONSTRAINT fk_lots_item
-        FOREIGN KEY (item_code)
-        REFERENCES items(item_code),
-
-    CONSTRAINT fk_lots_process
-        FOREIGN KEY (current_process_code)
-        REFERENCES processes(process_code),
-
-    CONSTRAINT fk_lots_created_by
-        FOREIGN KEY (created_by)
-        REFERENCES members(member_id)
-);
-```
-
----
-
-## production_logs(공정별 생산 실적 로그) 테이블
-
-### L2가 Spring Boot MES로 보내는 설비 생산 데이터가 쌓이는 테이블
-
-```text
-EQ-WIND-01에서 OP20 공정을 수행
-투입 100개
-OK 97개
-NG 3개
-```
-
-```sql
-CREATE TABLE production_logs (
-    production_log_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    lot_no VARCHAR(50) NOT NULL,
-    machine_id VARCHAR(50) NOT NULL,
-    process_code VARCHAR(30) NOT NULL,
-    input_qty INT NOT NULL DEFAULT 0,
-    ok_qty INT NOT NULL DEFAULT 0,
-    ng_qty INT NOT NULL DEFAULT 0,
-    status VARCHAR(20) NOT NULL DEFAULT 'COMPLETED',
-    started_at DATETIME,
-    ended_at DATETIME,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_production_logs_lot
-        FOREIGN KEY (lot_no)
-        REFERENCES lots(lot_no),
-
-    CONSTRAINT fk_production_logs_machine
-        FOREIGN KEY (machine_id)
-        REFERENCES machines(machine_id),
-
-    CONSTRAINT fk_production_logs_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
-### 생산 실적 저장 정책
-
-- 정상 제품 한 개마다 행을 만들지 않고 LOT·공정 단위의 구간 실적을 저장한다.
-- 정상 실행은 공정별 `COMPLETED` 실적 한 건을 저장한다. 오류·정지 시에는 중단 전 `RUNNING` 부분 실적과 재개 후 잔여 `COMPLETED` 실적을 별도 행으로 저장하고, 같은 LOT·공정의 수량을 합산한다.
-- `input_qty = ok_qty + ng_qty` 관계를 만족해야 한다.
-- OP20과 OP30은 병렬로 실행되므로 두 행의 저장 순서는 보장하지 않는다.
-- OP40_OP50의 투입 수량은 BOM 기준 선행 반제품 준비 수량으로 계산한다. 현재 BOM에서는 `SA-COIL-001` 1개와 `SA-CONTACT-001` 1개가 필요하므로 다른 자재가 충분할 때 `MIN(OP20.ok_qty, OP30.ok_qty)`이다.
-- OP40_OP50 이후 공정의 `input_qty`는 직전 공정의 `ok_qty`를 사용한다.
-- 최종 완제품 수량은 OP80 생산 로그의 `ok_qty`를 사용하여 `lots.ok_qty`에 반영한다.
-- `ng_qty`는 공정의 전체 불량 수량이고, 구체적인 불량 코드와 수량은 `defect_histories`에 저장한다.
-- MVP에서는 불량품 재작업 없이 폐기 처리한다.
-
-예시:
-
-| 공정 | input_qty | ok_qty | ng_qty |
-|---|---:|---:|---:|
-| OP20 | 100 | 97 | 3 |
-| OP30 | 100 | 95 | 5 |
-| OP40_OP50 | 95 | 94 | 1 |
-| OP60 | 94 | 94 | 0 |
-| OP70 | 94 | 92 | 2 |
-| OP80 | 92 | 92 | 0 |
-
----
-
-## inspections(공정별 검사 결과) 테이블
-
-### 공정별 측정값/검사 결과를 저장하는 테이블
-
-- 처음에는 모든 검사값을 컬럼으로 고정하지 말고, 항목명-측정값 구조로 가면 편함
-- 생산 수량 단위는 전부 `EA`지만 검사 측정값 단위는 공정마다 다르므로 `unit` 컬럼 유지
-
-```text
-OP20 코일 권선:
-coilResistance = 12.5 Ω
-
-OP60 실링/가스충전:
-gasPressure = 1.2 MPa
-leakRate = 0.03 cc/min
-
-OP70 최종 검사:
-insulationResistance = 500 MΩ
-withstandVoltage = 1500 V
-operationVoltage = 12 V
-```
-
-### result
-
-- OK
-- NG
-
-```sql
-CREATE TABLE inspections (
-    inspection_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    lot_no VARCHAR(50) NOT NULL,
-    machine_id VARCHAR(50) NOT NULL,
-    process_code VARCHAR(30) NOT NULL,
-    inspection_item VARCHAR(100) NOT NULL,
-    measured_value DECIMAL(12, 3),
-    unit VARCHAR(20),
-    lower_limit DECIMAL(12, 3),
-    upper_limit DECIMAL(12, 3),
-    result VARCHAR(10) NOT NULL,
-    inspected_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-
-    CONSTRAINT fk_inspections_lot
-        FOREIGN KEY (lot_no)
-        REFERENCES lots(lot_no),
-
-    CONSTRAINT fk_inspections_machine
-        FOREIGN KEY (machine_id)
-        REFERENCES machines(machine_id),
-
-    CONSTRAINT fk_inspections_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
----
-
-# 3. 이벤트 / 이력 테이블
-
-## defect_histories(제품 불량 발생 이력) 테이블
-
-> 불량 발생은 설비/시뮬레이터에서 자동 등록될 수 있으므로 `member_id`를 필수로 두지 않는다.
-> 사람이 불량을 확인한 경우만 `confirmed_by`에 사용자 ID를 저장한다.
-
-```sql
-CREATE TABLE defect_histories (
-    defect_history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    lot_no VARCHAR(50) NOT NULL,
-    machine_id VARCHAR(50) NOT NULL,
-    process_code VARCHAR(30) NOT NULL,
-    defect_code VARCHAR(50) NOT NULL,
-    defect_qty INT NOT NULL DEFAULT 0,
-    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    message VARCHAR(255),
-    confirmed_by BIGINT,
-
-    CONSTRAINT fk_defect_histories_lot
-        FOREIGN KEY (lot_no)
-        REFERENCES lots(lot_no),
-
-    CONSTRAINT fk_defect_histories_machine
-        FOREIGN KEY (machine_id)
-        REFERENCES machines(machine_id),
-
-    CONSTRAINT fk_defect_histories_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code),
-
-    CONSTRAINT fk_defect_histories_defect_code
-        FOREIGN KEY (defect_code)
-        REFERENCES defect_codes(defect_code),
-
-    CONSTRAINT fk_defect_histories_confirmed_by
-        FOREIGN KEY (confirmed_by)
-        REFERENCES members(member_id)
-);
-```
-
----
-
-## machine_alarm_histories(설비 알람 발생 이력) 테이블
-
-> 알람 발생은 설비가 자동 등록하고, 알람 해제는 사용자가 처리할 수 있으므로 `cleared_by`를 둔다.
-
-```sql
-CREATE TABLE machine_alarm_histories (
-    machine_alarm_history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    machine_id VARCHAR(50) NOT NULL,
-    alarm_code VARCHAR(50) NOT NULL,
-    alarm_level VARCHAR(20) NOT NULL DEFAULT 'ERROR',
-    occurred_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    cleared_at DATETIME NULL,
-    cleared_by BIGINT,
-    message VARCHAR(255),
-
-    CONSTRAINT fk_machine_alarm_histories_machine
-        FOREIGN KEY (machine_id)
-        REFERENCES machines(machine_id),
-
-    CONSTRAINT fk_machine_alarm_histories_alarm_code
-        FOREIGN KEY (alarm_code)
-        REFERENCES alarm_codes(alarm_code),
-
-    CONSTRAINT fk_machine_alarm_histories_cleared_by
-        FOREIGN KEY (cleared_by)
-        REFERENCES members(member_id)
-);
-```
-
----
-
-## machine_status_histories(설비 상태 이력) 테이블
-
-### 설비 상태가 바뀔 때마다 기록하는 테이블
-
-```text
-IDLE → RUNNING → ERROR → IDLE
-```
-
-```sql
-CREATE TABLE machine_status_histories (
-    machine_status_history_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    machine_id VARCHAR(50) NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    lot_no VARCHAR(50),
-    process_code VARCHAR(30),
-    recorded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    message VARCHAR(255),
-
-    CONSTRAINT fk_machine_status_histories_machine
-        FOREIGN KEY (machine_id)
-        REFERENCES machines(machine_id),
-
-    CONSTRAINT fk_machine_status_histories_lot
-        FOREIGN KEY (lot_no)
-        REFERENCES lots(lot_no),
-
-    CONSTRAINT fk_machine_status_histories_process
-        FOREIGN KEY (process_code)
-        REFERENCES processes(process_code)
-);
-```
-
----
-
-# 4. DB 관계
-
-```text
-members 1 ─ N members
-members 1 ─ N material_lots
-members 1 ─ N work_orders
-members 1 ─ N lots
-members 1 ─ N defect_histories
-members 1 ─ N machine_alarm_histories
-
-items 1 ─ N boms
-items 1 ─ N material_lots
-items 1 ─ N work_orders
-items 1 ─ N lots
-
-work_orders 1 ─ N lots
-
-lots 1 ─ N production_logs
-lots 1 ─ N inspections
-lots 1 ─ N defect_histories
-lots 1 ─ N machine_status_histories
-
-processes 1 ─ N boms
-processes 1 ─ N defect_codes
-processes 1 ─ N machines
-processes 1 ─ N production_logs
-processes 1 ─ N inspections
-processes 1 ─ N defect_histories
-processes 1 ─ N machine_status_histories
-
-machines 1 ─ N production_logs
-machines 1 ─ N inspections
-machines 1 ─ N defect_histories
-machines 1 ─ N machine_alarm_histories
-machines 1 ─ N machine_status_histories
-
-defect_codes 1 ─ N defect_histories
-alarm_codes 1 ─ N machine_alarm_histories
-```
-
----
-
-# 4.1 members 관계 상세
-
-```text
-members.created_by ─ members.member_id
-material_lots.received_by ─ members.member_id
-work_orders.created_by ─ members.member_id
-lots.created_by ─ members.member_id
-defect_histories.confirmed_by ─ members.member_id
-machine_alarm_histories.cleared_by ─ members.member_id
-```
-
----
-
-# 4.2 unit / use_yn 정리
-
-## unit 제거 기준
-
-- `items.unit`은 현재 모든 품목 단위가 `EA`이므로 제거
-- `boms.unit`도 현재 모든 BOM 소요 단위가 `EA`이므로 제거
-- `inspections.unit`은 검사 측정 단위가 공정별로 다르므로 유지
-
-## use_yn 유지 기준
-
-`use_yn`은 기준정보 테이블에서 삭제 대신 비활성화 처리를 위해 유지한다.
-
-유지 대상:
-
-```text
-items
-boms
-defect_codes
-alarm_codes
-processes
-machines
-```
-
-예를 들어 과거에 사용하던 불량코드를 더 이상 신규 등록에 쓰지 않더라도, 기존 `defect_histories` 이력과 FK 관계를 유지해야 하므로 삭제보다는 `use_yn = 'N'` 처리가 안전하다.
-
-`members`는 `use_yn` 대신 `status`를 사용한다.
-
-```text
-ACTIVE
-LOCKED
-RETIRED
-```
-
----
-
-# 4.3 created_at / updated_at 정리
-
-## created_at 기준
-
-`created_at`은 데이터가 최초 생성된 시점을 저장하기 위한 컬럼이다.
-
-주로 기준정보, 생산 지시, LOT, 생산 결과처럼 데이터가 생성되는 시점이 중요한 테이블에 사용한다.
-
-현재 `created_at`을 사용하는 주요 테이블은 다음과 같다.
+## Backend Enum 값
+
+SQL은 JPA의 `EnumType.STRING`과 호환되도록 다음 문자열을 사용한다.
+
+| 테이블/컬럼 | 허용 값 |
+|---|---|
+| `members.role` | `ADMIN`, `MANAGER`, `OPERATOR`, `VIEWER` |
+| `members.status` | `ACTIVE`, `LOCKED`, `RETIRED` |
+| `items.item_type` | `RM`, `SA`, `FG` |
+| `workers.status` | `ACTIVE`, `INACTIVE` |
+| `machine_worker_assignments.assignment_role` | `RESPONSIBLE`, `WORKER` |
+| `machines.status` | `IDLE`, `RUNNING`, `ERROR`, `STOPPED` |
+| `material_lots.status` | `AVAILABLE`, `HOLD`, `USED`, `DISCARDED` |
+| `work_orders.status` | `CREATED`, `RELEASED`, `RUNNING`, `COMPLETED`, `CANCELED` |
+| `lots.status` | `WAITING`, `RUNNING`, `COMPLETED`, `HOLD`, `SCRAPPED` |
+| `work_commands.command_type` | `START`, `STOP`, `RESUME` |
+| `work_commands.status` | `PENDING`, `DISPATCHED`, `ACCEPTED`, `REJECTED`, `COMPLETED`, `CANCELED` |
+| `inspections.result` | `OK`, `NG` |
+| `inspection_unit_results.result` | `OK`, `NG` |
+
+`production_logs.status`와 `machine_alarm_histories.alarm_level`은 현재 Entity에서 문자열로 관리한다. 서비스와 TCP 프로토콜이 사용하는 값은 각각 `RUNNING`/`COMPLETED`, `ERROR`이다.
+
+## 핵심 관계
 
 ```text
 members
-items
-processes
-boms
-defect_codes
-alarm_codes
-machines
-work_orders
-lots
-production_logs
+ ├─ members.created_by
+ ├─ material_lots.received_by
+ ├─ work_orders.created_by
+ ├─ lots.created_by
+ └─ machine_alarm_histories.cleared_by
+
+items ─ boms / material_lots / work_orders / lots
+processes ─ boms / defect_codes / machines / inspection_standards
+workers ─ machine_worker_assignments ─ machines
+lots ─ lot_process_responsibles ─ workers
+lots ─ lot_inspection_standard_snapshots ─ inspections
+lots ─ work_commands / production_logs / inspections / defect_histories
+machines ─ work_commands / 생산·검사·불량·알람·상태 이력
 ```
 
-이벤트성 테이블은 업무 의미에 맞는 별도 시점 컬럼을 사용한다.
-
-```text
-material_lots.received_at
-inspections.inspected_at
-defect_histories.occurred_at
-machine_alarm_histories.occurred_at
-machine_alarm_histories.cleared_at
-machine_status_histories.recorded_at
-```
-
-## updated_at 기준
-
-`updated_at`은 데이터가 수정된 시점을 저장하기 위한 컬럼이다.
-
-수정 가능성이 있는 기준정보 테이블에는 `updated_at`을 둔다.
-
-현재 `updated_at`을 사용하는 테이블은 다음과 같다.
-
-```text
-members
-items
-processes
-boms
-machines
-```
-
-각 테이블별 의미는 다음과 같다.
-
-| 테이블      | updated_at 사용 이유                                |
-| ----------- | --------------------------------------------------- |
-| `members`   | 사용자 정보, 권한, 상태 변경 시점 기록              |
-| `items`     | 품목명, 품목 유형, 사용 여부 변경 시점 기록         |
-| `processes` | 공정명, 공정 순서, 사용 여부 변경 시점 기록         |
-| `boms`      | BOM 구성, 수량, 적용 공정, 사용 여부 변경 시점 기록 |
-| `machines`  | 설비명, 설비 상태, 사용 여부 변경 시점 기록         |
-
-## updated_at을 두지 않는 기준
-
-생산 결과, 검사 결과, 불량 이력, 설비 알람 이력처럼 한 번 발생한 이력을 기록하는 테이블은 원칙적으로 수정하지 않는다.
-
-따라서 아래 테이블은 `updated_at`을 두지 않는다.
-
-```text
-production_logs
-inspections
-defect_histories
-machine_alarm_histories
-machine_status_histories
-```
-
-이력 데이터의 상태가 바뀌는 경우에는 기존 행을 수정하기보다, 별도 상태 컬럼 또는 별도 이력 행으로 관리한다.
-
-예를 들어 설비 알람은 발생 시 `occurred_at`을 저장하고, 조치 완료 시 `cleared_at`, `cleared_by`를 저장한다.
-
-## Java Entity 처리 기준
-
-`created_at`은 DB의 `DEFAULT CURRENT_TIMESTAMP` 또는 Entity의 `@PrePersist`로 처리할 수 있다.
-
-`updated_at`은 수정 시점에 Java Entity의 `@PreUpdate`로 처리한다.
-
-예시:
-
-```java
-@PrePersist
-public void prePersist() {
-    this.createdAt = LocalDateTime.now();
-}
-
-@PreUpdate
-public void preUpdate() {
-    this.updatedAt = LocalDateTime.now();
-}
-```
-
-현재 프로젝트는 주요 사용자 작업 이력을 `created_by`, `received_by`, `confirmed_by`, `cleared_by` 같은 업무 컬럼으로 직접 관리하므로, `JpaAuditingConfig.java`는 필수로 두지 않는다.
-
----
-
-# 5. 조회 코드
-
-- 품목별 조회
+## 생성 결과 확인 SQL
 
 ```sql
+USE mes_hm_db;
+
+SELECT COUNT(*) AS table_count
+FROM information_schema.tables
+WHERE table_schema = 'mes_hm_db'
+  AND table_type = 'BASE TABLE';
+
+-- 현재 Entity 수와 동일하게 22가 나와야 한다.
+
+SELECT machine_id, process_code, status
+FROM machines
+ORDER BY process_code;
+
+SELECT process_code, inspection_item, lower_limit, upper_limit, unit
+FROM inspection_standards
+ORDER BY standard_id;
+
 SELECT
     b.parent_item_code,
-    p.item_name AS parent_item_name,
+    parent.item_name AS parent_item_name,
     b.child_item_code,
-    c.item_name AS child_item_name,
+    child.item_name AS child_item_name,
     b.quantity,
     b.process_code
 FROM boms b
-JOIN items p ON b.parent_item_code = p.item_code
-JOIN items c ON b.child_item_code = c.item_code
-WHERE b.parent_item_code = 'SA-BODY-001'
-  AND b.use_yn = 'Y';
+JOIN items parent ON parent.item_code = b.parent_item_code
+JOIN items child ON child.item_code = b.child_item_code
+WHERE b.use_yn = 'Y'
+ORDER BY b.bom_id;
 ```
-
----
