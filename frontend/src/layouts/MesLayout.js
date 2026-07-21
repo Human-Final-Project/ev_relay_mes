@@ -111,7 +111,7 @@ const layoutStyles = `
   .mesdash .noti-desc { margin: 0; font-size: 12px; color: var(--on-surface-variant); line-height: 1.4; }
 `;
 
-const MesLayout = () => {
+const MesLayout = ({ onLogout }) => {
   const [currentTime, setCurrentTime] = useState("");
 
   useEffect(() => {
@@ -133,7 +133,7 @@ const MesLayout = () => {
         <div className="dashboard-layout">
           <Sidebar />
           <div className="main-container">
-            <Header currentTime={currentTime} />
+            <Header currentTime={currentTime} onLogout={onLogout} />
             <main className="content-area custom-scrollbar">
               <Outlet />
             </main>

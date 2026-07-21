@@ -94,23 +94,14 @@ const Header = ({ currentTime, onLogout }) => {
     }
   };
 
-  const handleLogout = () => {
-    // 세션 정보나 로컬스토리지 토큰 삭제 등 로그아웃 처리
-    localStorage.removeItem("token"); // 예시: 저장된 토큰 삭제
-    sessionStorage.clear();           // 세션 비우기
-
-    if (onLogout) {
-      onLogout(); // 부모 컴포넌트에서 전달받은 로그아웃 함수가 있다면 실행
+  const handleLogout = async () => {
+    try {
+      if (onLogout) {
+        await onLogout();
+      }
+    } finally {
+      navigate("/login", { replace: true });
     }
-
-    // 3. 로그인 페이지('/login')로 라우팅 이동
-    navigate("/login");
-
-    /* 
-      ※ 만약 react-router-dom을 사용하지 않는 일반 HTML 환경이라면,
-         위의 navigate("/login") 대신 아래 주석을 풀고 사용하세요.
-         window.location.href = "/login";
-    */
   };
 
   return (
