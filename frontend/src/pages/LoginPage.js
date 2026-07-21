@@ -10,7 +10,6 @@ function LoginPage({ onLoginSuccess }) {
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [isTcpActive] = useState(true);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,12 +26,7 @@ function LoginPage({ onLoginSuccess }) {
       const response = await AuthApi.login(loginId, password);
       const user = response.data;
       onLoginSuccess(user);
-      navigate(
-        user.role?.toUpperCase() === "ADMIN"
-          ? "/admin/employees"
-          : "/dashboard",
-        { replace: true }
-      );
+      navigate("/dashboard", { replace: true });
     } catch (error) {
       setErrorMessage(
         error.response?.data?.message ||
@@ -482,33 +476,14 @@ function LoginPage({ onLoginSuccess }) {
               </button>
             </form>
 
-            <div className="card-footer">
-              <button type="button" className="help-btn">
-                <span className="material-symbols-outlined">help_outline</span>
-                문의하기
-              </button>
-
-              <div className="status-indicator">
-                <div
-                  className={`status-dot animate-pulse ${
-                    isTcpActive ? "active" : ""
-                  }`}
-                />
-                <span>
-                  {isTcpActive
-                    ? "TCP Listener Active"
-                    : "TCP Listener Inactive"}
-                </span>
-              </div>
-            </div>
           </div>
 
           <footer className="page-footer">
             <p>본 시스템은 사내 전용 생산 관리 시스템입니다.</p>
             <div className="system-info">
-              <span>v2.4.0-STABLE</span>
+              <span>Spring Boot Session</span>
               <span className="separator"></span>
-              <span>IP: 192.168.0.42</span>
+              <span>CSRF Protected</span>
             </div>
           </footer>
         </main>

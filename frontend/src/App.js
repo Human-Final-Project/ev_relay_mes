@@ -1,240 +1,41 @@
 import React, { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import MesLayout from "./layouts/MesLayout"; 
-import DashboardPage from "./pages/DashboardPage";
-import ProductionPage from "./pages/ProductionPage"; // 1. 정상적으로 교체 완료!
-import MaterialPage from "./pages/MaterialPage";
-import LoginPage from "./pages/LoginPage";
-import QualityPage from "./pages/QualityPage";
-import QualityInspectionPage from "./pages/QualityInspectionPage";
-import ProductionEntryPage from "./pages/ProductionEntryPage";
-import EquipmentIssuePage from "./pages/EquipmentIssuePage";
-import AdminEquipmentIssuePage from "./pages/AdminEquipmentIssuePage";
-import MyAttendancePage from "./pages/MyAttendancePage";
-import AdminAttendancePage from "./pages/AdminAttendancePage";
-import TrainingRecordPage from "./pages/TrainingRecordPage";
-import AdminEmployeePage from "./pages/AdminEmployeePage";
-import AdminNoticeEditor from "./pages/AdminNoticeEditor";
-import NoticeBoardPage from "./pages/NoticeBoardPage";
-import MyPage from "./pages/MyPage";
-import AdminProfilePage from "./pages/AdminProfilePage";
-import MasterDataPage from "./pages/MasterDataPage";
-import WorkOrderPage from "./pages/WorkOrderPage";
-import EmployeeDashboardPage from "./pages/EmployeeDashboardPage";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import AuthApi from "./api/AuthApi";
-
-const AUTH_CACHE_KEYS = [
-  "isLoggedIn",
-  "userRole",
-  "userId",
-  "userName",
-];
-
-function toFrontendRole(role) {
-  return role?.toUpperCase() === "ADMIN" ? "admin" : "user";
-}
-
-function cacheUserForLegacyScreens(user) {
-  localStorage.removeItem("isLoggedIn");
-  localStorage.setItem("userRole", toFrontendRole(user.role));
-  localStorage.setItem("userId", user.loginId || "");
-  localStorage.setItem("userName", user.memberName || "");
-}
-
-function clearCachedUser() {
-  AUTH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
-}
+import MesLayout from "./layouts/MesLayout";
+import LoginPage from "./pages/LoginPage";
+import DashboardPage from "./pages/DashboardPage";
+import WorkOrderPage from "./pages/WorkOrderPage";
+import LotPage from "./pages/LotPage";
+import ProductionPage from "./pages/ProductionPage";
+import QualityPage from "./pages/QualityPage";
+import MaterialPage from "./pages/MaterialPage";
+import MasterDataPage from "./pages/MasterDataPage";
+import WorkerAssignmentPage from "./pages/WorkerAssignmentPage";
+import AdminEmployeePage from "./pages/AdminEmployeePage";
+import AccountPage from "./pages/AccountPage";
 
 function App() {
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isCheckingSession, setIsCheckingSession] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-
-    AuthApi.getCurrentUser()
-      .then((response) => {
-        if (!active) return;
-        cacheUserForLegacyScreens(response.data);
-        setCurrentUser(response.data);
-      })
-      .catch(() => {
-        if (!active) return;
-        clearCachedUser();
-        setCurrentUser(null);
-      })
-      .finally(() => {
-        if (active) setIsCheckingSession(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const isLoggedIn = Boolean(currentUser);
-  const userRole = currentUser ? toFrontendRole(currentUser.role) : "";
-
-  const handleLoginSuccess = (user) => {
-    cacheUserForLegacyScreens(user);
-    setCurrentUser(user);
-  };
-
-  const handleLogout = async () => {
-    try {
-      await AuthApi.logout();
-    } catch (error) {
-      if (error.response?.status !== 401) {
-        console.error("Backend 로그아웃 요청 실패:", error);
-      }
-    } finally {
-      clearCachedUser();
-      setCurrentUser(null);
-    }
-  };
-
-  if (isCheckingSession) {
-    return <div role="status">로그인 상태를 확인하고 있습니다...</div>;
-  }
-
-  return (
-    <BrowserRouter>
-      <Routes>
-        {/* 1. 첫 화면 ('/') 접근 시 권한 분기 */}
-        <Route 
-          path="/" 
-          element={
-            !isLoggedIn ? (
-              <Navigate to="/login" replace />
-            ) : userRole === "admin" ? (
-              <Navigate to="/admin/employees" replace />
-            ) : (
-              <Navigate to="/dashboard" replace />
-            )
-          } 
-        />
-
-        {/* 2. 로그인 페이지 */}
-        <Route 
-          path="/login" 
-          element={<LoginPage onLoginSuccess={handleLoginSuccess} />} 
-        />
-
-        {/* 3. 메인 서비스 레이아웃 그룹 (인증 보호) */}
-        <Route 
-          element={
-            isLoggedIn ? (
-              <MesLayout onLogout={handleLogout} />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        >
-          <Route
-            path="/dashboard"
-            element={userRole === "admin" ? <DashboardPage /> : <EmployeeDashboardPage />}
-          />
-
-          {/* 💡 기준정보 관리 (제품/BOM) */}
-          <Route path="/master-data" element={<MasterDataPage />} />
-          
-          {/* 2. [수정 포인트] 경로를 /production으로 변경하고, 기존 WorkOrderPage를 ProductionPage로 교체했습니다. */}
-          <Route path="/production" element={<ProductionPage />} />
-          
-          <Route path="/material" element={<MaterialPage />} />
-
-          {/* 💡 생산 실적 입력 (관리자/사원 공통) */}
-          <Route path="/production-entry" element={<ProductionEntryPage />} />
-
-          {/* 💡 설비 이상 신고 (관리자/사원 공통) */}
-          <Route path="/equipment-issue" element={<EquipmentIssuePage />} />
-
-          {/* 💡 설비 이상 신고 관리 (관리자 전용) */}
-          <Route 
-            path="/admin/equipment-issues" 
-            element={
-              userRole === "admin" ? (
-                <AdminEquipmentIssuePage />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            } 
-          />
-
-          {/* 💡 작업지시 (관리자 전용) */}
-          <Route 
-            path="/work-order" 
-            element={
-              userRole === "admin" ? (
-                <WorkOrderPage />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            } 
-          />
-
-          <Route path="/quality" element={<QualityPage />} />
-
-          {/* 💡 품질 검사 입력 (관리자/사원 공통) */}
-          <Route path="/quality-inspection" element={<QualityInspectionPage />} />
-          
-          {/* 💡 마이페이지: 관리자/사원 역할에 따라 다른 컴포넌트 렌더링 */}
-          <Route
-            path="/mypage"
-            element={userRole === "admin" ? <AdminProfilePage /> : <MyPage />}
-          />
-
-          {/* 💡 내 근태 조회 (관리자/사원 공통) */}
-          <Route path="/my-attendance" element={<MyAttendancePage />} />
-
-          {/* 💡 전체 사원 근태 조회 (관리자 전용) */}
-          <Route 
-            path="/admin/attendance" 
-            element={
-              userRole === "admin" ? (
-                <AdminAttendancePage />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            } 
-          />
-
-          {/* 💡 교육/자격 이력 (관리자/사원 공통) */}
-          <Route path="/training-record" element={<TrainingRecordPage />} />
-
-          {/* 관리자 전용 사원관리 페이지 */}
-          <Route 
-            path="/admin/employees" 
-            element={
-              userRole === "admin" ? (
-                <AdminEmployeePage />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            } 
-          />
-
-          {/* 💡 관리자 전용 공지 작성 페이지 */}
-          <Route 
-            path="/admin/notices" 
-            element={
-              userRole === "admin" ? (
-                <AdminNoticeEditor />
-              ) : (
-                <Navigate to="/dashboard" replace />
-              )
-            } 
-          />
-
-          {/* 💡 공지사항 전체보기 (관리자/사원 공통) */}
-          <Route path="/notices" element={<NoticeBoardPage />} />
-        </Route>
-
-        {/* 4. 잘못된 경로(404) 예외 처리 */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </BrowserRouter>
-  );
+  const [currentUser,setCurrentUser]=useState(null); const [checking,setChecking]=useState(true);
+  useEffect(()=>{let active=true;AuthApi.getCurrentUser().then(r=>active&&setCurrentUser(r.data)).catch(()=>active&&setCurrentUser(null)).finally(()=>active&&setChecking(false));return()=>{active=false}},[]);
+  const logout=async()=>{try{await AuthApi.logout()}catch(e){if(e.response?.status!==401)console.error(e)}finally{setCurrentUser(null)}};
+  if(checking)return <div role="status" className="mes-state">로그인 상태를 확인하고 있습니다.</div>;
+  return <BrowserRouter><Routes>
+    <Route path="/login" element={currentUser?<Navigate to="/dashboard" replace/>:<LoginPage onLoginSuccess={setCurrentUser}/>}/>
+    <Route element={currentUser?<MesLayout currentUser={currentUser} onLogout={logout}/>:<Navigate to="/login" replace/>}>
+      <Route path="/dashboard" element={<DashboardPage/>}/>
+      <Route path="/work-orders" element={<WorkOrderPage currentUser={currentUser}/>}/>
+      <Route path="/lots" element={<LotPage currentUser={currentUser}/>}/>
+      <Route path="/production" element={<ProductionPage currentUser={currentUser}/>}/>
+      <Route path="/quality" element={<QualityPage currentUser={currentUser}/>}/>
+      <Route path="/materials" element={<MaterialPage currentUser={currentUser}/>}/>
+      <Route path="/master-data" element={<MasterDataPage currentUser={currentUser}/>}/>
+      <Route path="/workers" element={<WorkerAssignmentPage currentUser={currentUser}/>}/>
+      <Route path="/members" element={currentUser?.role==="ADMIN"?<AdminEmployeePage/>:<Navigate to="/dashboard" replace/>}/>
+      <Route path="/account" element={<AccountPage currentUser={currentUser} onLoggedOut={()=>setCurrentUser(null)}/>}/>
+    </Route>
+    <Route path="/" element={<Navigate to={currentUser?"/dashboard":"/login"} replace/>}/>
+    <Route path="*" element={<Navigate to="/" replace/>}/>
+  </Routes></BrowserRouter>;
 }
 
 export default App;

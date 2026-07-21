@@ -9,6 +9,7 @@ jest.mock("./httpClient", () => ({
   default: {
     get: jest.fn(),
     post: jest.fn(),
+    patch: jest.fn(),
   },
   refreshCsrfToken: jest.fn(),
   clearCsrfToken: jest.fn(),
@@ -52,5 +53,16 @@ test("clears the cached CSRF header after logout", async () => {
 
   expect(refreshCsrfToken).toHaveBeenCalledTimes(1);
   expect(httpClient.post).toHaveBeenCalledWith("/api/auth/logout");
+  expect(clearCsrfToken).toHaveBeenCalledTimes(1);
+});
+
+test("changes password with CSRF and clears the cached token", async () => {
+  httpClient.patch.mockResolvedValue({ status: 204 });
+  const payload = { currentPassword: "old-password", newPassword: "new-password", newPasswordConfirm: "new-password" };
+
+  await AuthApi.changePassword(payload);
+
+  expect(refreshCsrfToken).toHaveBeenCalledTimes(1);
+  expect(httpClient.patch).toHaveBeenCalledWith("/api/auth/password", payload);
   expect(clearCsrfToken).toHaveBeenCalledTimes(1);
 });

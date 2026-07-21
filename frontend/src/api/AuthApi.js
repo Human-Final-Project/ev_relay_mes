@@ -29,6 +29,13 @@ const AuthApi = {
       clearCsrfToken();
     }
   },
+
+  async changePassword(data) {
+    await refreshCsrfToken();
+    const response = await httpClient.patch("/api/auth/password", data);
+    clearCsrfToken();
+    return response;
+  },
 };
 
 export default AuthApi;
