@@ -150,6 +150,9 @@ function AdminEmployeePage() {
   };
 
   const handleRefresh = () => {
+    // TODO: 백엔드 연동 시 서버에서 최신 사원 목록을 다시 조회하는 API 호출로 교체하세요.
+    // 예: const res = await MesApi.getEmployees(); setEmployees(res.data);
+    setEmployees(initialEmployees);
     setSearchTerm("");
     setSelectedIds([]);
   };
