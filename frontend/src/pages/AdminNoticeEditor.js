@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import MesApi from "../api/MesApi";
+import React, { useState, useMemo } from "react";
 import { pushNotification } from "../utils/notificationBus";
 
 const styles = `
@@ -118,6 +117,12 @@ const styles = `
   font-family: inherit;
 }
 
+.ane-row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
 /* 유형 선택 카드 */
 .ane-type-grid {
   display: grid;
@@ -233,10 +238,6 @@ const styles = `
 }
 .ane-btn-primary:hover {
   background: #1F3FA6;
-}
-.ane-btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 .ane-btn-ghost {
   background: #F1F4F9;
@@ -405,17 +406,19 @@ const styles = `
 }
 `;
 
-// 화면 표시용 키(warn/info/plain) <-> 백엔드 Notice.NoticeType 매핑
 const TYPES = {
-  warn: { label: "필독 · 경고", icon: "⚠️", backend: "WARNING" },
-  info: { label: "안전 안내", icon: "🦺", backend: "INFO" },
-  plain: { label: "일반 공지", icon: "📋", backend: "GENERAL" },
+  warn: { label: "필독 · 경고", icon: "⚠️" },
+  info: { label: "안전 안내", icon: "🦺" },
+  plain: { label: "일반 공지", icon: "📋" },
 };
-const BACKEND_TO_KEY = { WARNING: "warn", INFO: "info", GENERAL: "plain" };
 
 function Toggle({ on, onClick }) {
   return (
-    <button type="button" onClick={onClick} className={`ane-switch ${on ? "on" : ""}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      className={`ane-switch ${on ? "on" : ""}`}
+    >
       <span className="dot" />
     </button>
   );
@@ -430,7 +433,9 @@ function NoticeCard({ type, title, body, meta, pinned }) {
         <span className="title">{title || "제목을 입력하세요"}</span>
         {pinned && <span className="pin">📌 고정</span>}
       </div>
-      <div className="body">{body || "내용을 입력하면 여기에 표시됩니다."}</div>
+      <div className="body">
+        {body || "내용을 입력하면 여기에 표시됩니다."}
+      </div>
       <div className="meta">{meta}</div>
     </div>
   );
@@ -438,8 +443,16 @@ function NoticeCard({ type, title, body, meta, pinned }) {
 
 const MegaphoneIcon = ({ size = 18 }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <path d="M3 11v2a2 2 0 0 0 2 2h1l2 5h2l-1.5-5H11l7 4V6l-7 4H6a2 2 0 0 0-2 2z" fill="currentColor" />
-    <path d="M19 8.5a3.5 3.5 0 0 1 0 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    <path
+      d="M3 11v2a2 2 0 0 0 2 2h1l2 5h2l-1.5-5H11l7 4V6l-7 4H6a2 2 0 0 0-2 2z"
+      fill="currentColor"
+    />
+    <path
+      d="M19 8.5a3.5 3.5 0 0 1 0 7"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+    />
   </svg>
 );
 
@@ -447,98 +460,93 @@ export default function AdminNoticeEditor() {
   const [type, setType] = useState("warn");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [team, setTeam] = useState("");
+  const [writer, setWriter] = useState("");
   const [pinned, setPinned] = useState(false);
   const [postNow, setPostNow] = useState(true);
   const [schedule, setSchedule] = useState("");
   const [titleError, setTitleError] = useState(false);
   const [publishedFlash, setPublishedFlash] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [notices, setNotices] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [posts, setPosts] = useState([
+    {
+      type: "warn",
+      title: "필독: 라인 클리닝 일정 변경",
+      body: "오후 3시 예정되었던 정기 클리닝이 설비 점검으로 인해 4시로 연기되었습니다.",
+      meta: "최관리 팀장 | 14:10",
+      pinned: false,
+    },
+    {
+      type: "info",
+      title: "신규 안전 보호구 착용 안내",
+      body: "내일부터 지급되는 신형 정전기 방지 장갑을 필히 착용해주시기 바랍니다.",
+      meta: "품질관리팀 | 09:20",
+      pinned: false,
+    },
+  ]);
 
-  const fetchNotices = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await MesApi.getNotices();
-      setNotices(res.data || []);
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "공지 목록을 불러오지 못했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+  const meta = useMemo(() => {
+    const who = [team, writer].filter(Boolean).join(" ");
+    const when = postNow ? "방금" : schedule ? "예약됨" : "방금";
+    return who ? `${who} | ${when}` : when;
+  }, [team, writer, postNow, schedule]);
 
-  useEffect(() => {
-    fetchNotices();
-  }, [fetchNotices]);
-
-  const meta = useMemo(() => (postNow ? "방금" : schedule ? "예약됨" : "방금"), [postNow, schedule]);
-
-  const sortedNotices = useMemo(
-    () => [...notices].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)),
-    [notices]
+  const sortedPosts = useMemo(
+    () => [...posts].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)),
+    [posts]
   );
 
   function resetForm() {
     setTitle("");
     setBody("");
+    setTeam("");
+    setWriter("");
     setPinned(false);
     setType("warn");
-    setPostNow(true);
-    setSchedule("");
   }
 
-  async function handlePublish() {
+  function handlePublish() {
     if (!title.trim()) {
       setTitleError(true);
       setTimeout(() => setTitleError(false), 900);
       return;
     }
+    const now = new Date();
+    const time = postNow
+      ? `${String(now.getHours()).padStart(2, "0")}:${String(
+          now.getMinutes()
+        ).padStart(2, "0")}`
+      : schedule
+      ? new Date(schedule).toLocaleString("ko-KR", {
+          month: "numeric",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : "방금";
 
-    setIsSubmitting(true);
-    try {
-      await MesApi.createNotice({
-        title,
-        content: body,
-        noticeType: TYPES[type].backend,
-        pinned,
-        publishAt: postNow || !schedule ? null : schedule,
+    const who = [team, writer].filter(Boolean).join(" ");
+    setPosts((prev) => [
+      { type, title, body, meta: who ? `${who} | ${time}` : time, pinned },
+      ...prev,
+    ]);
+
+    setPublishedFlash(true);
+    setTimeout(() => setPublishedFlash(false), 1400);
+
+    // 필독·경고 공지는 사원 전체에게 실시간 알림으로도 전달합니다.
+    if (type === "warn") {
+      pushNotification({
+        targetRole: "employee",
+        type: "warn",
+        title: `필독 ${title}`,
+        desc: body || "새로운 필독 공지가 등록되었습니다.",
       });
-
-      setPublishedFlash(true);
-      setTimeout(() => setPublishedFlash(false), 1400);
-
-      // 필독·경고 공지는 사원 전체에게 실시간 알림으로도 전달합니다.
-      if (type === "warn") {
-        pushNotification({
-          targetRole: "employee",
-          type: "warn",
-          title: `필독 ${title}`,
-          desc: body || "새로운 필독 공지가 등록되었습니다.",
-        });
-      }
-
-      resetForm();
-      await fetchNotices();
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "공지 게시에 실패했습니다.");
-    } finally {
-      setIsSubmitting(false);
     }
   }
 
-  async function deleteNotice(noticeId) {
-    if (!window.confirm("이 공지를 삭제하시겠습니까?")) return;
-    try {
-      await MesApi.deleteNotice(noticeId);
-      await fetchNotices();
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "삭제에 실패했습니다.");
-    }
+  function deletePost(idx) {
+    setPosts((prev) => prev.filter((_, i) => i !== idx));
   }
 
   return (
@@ -553,7 +561,8 @@ export default function AdminNoticeEditor() {
           <h1>관리자 공지 작성</h1>
         </div>
         <p className="ane-sub">
-          사원 홈 화면의 '관리자 공지' 카드와 공지사항 게시판에 표시될 내용을 작성하고 바로 확인하세요.
+          사원 홈 화면의 '관리자 공지' 카드에 표시될 내용을 작성하고 바로
+          확인하세요.
         </p>
 
         <div className="ane-grid">
@@ -568,7 +577,9 @@ export default function AdminNoticeEditor() {
                     key={key}
                     type="button"
                     onClick={() => setType(key)}
-                    className={`ane-type-opt ${key} ${type === key ? "active" : ""}`}
+                    className={`ane-type-opt ${key} ${
+                      type === key ? "active" : ""
+                    }`}
                   >
                     <div className="ic">{t.icon}</div>
                     <div className="name">{t.label}</div>
@@ -599,7 +610,35 @@ export default function AdminNoticeEditor() {
                 placeholder="사원이 확인해야 할 내용을 간결하게 작성하세요."
                 className="ane-textarea"
               />
-              <div className="ane-hint">줄바꿈은 그대로 적용됩니다. 2~3문장 이내를 권장합니다.</div>
+              <div className="ane-hint">
+                줄바꿈은 그대로 적용됩니다. 2~3문장 이내를 권장합니다.
+              </div>
+            </div>
+
+            {/* 부서 / 작성자 */}
+            <div className="ane-field ane-row2">
+              <div>
+                <label>작성 부서/팀</label>
+                <input
+                  type="text"
+                  value={team}
+                  onChange={(e) => setTeam(e.target.value)}
+                  maxLength={20}
+                  placeholder="예: 품질관리팀"
+                  className="ane-input"
+                />
+              </div>
+              <div>
+                <label>작성자</label>
+                <input
+                  type="text"
+                  value={writer}
+                  onChange={(e) => setWriter(e.target.value)}
+                  maxLength={20}
+                  placeholder="예: 최관리 팀장"
+                  className="ane-input"
+                />
+              </div>
             </div>
 
             {/* 옵션 */}
@@ -633,11 +672,19 @@ export default function AdminNoticeEditor() {
 
             {/* 버튼 */}
             <div className="ane-submit-bar">
-              <button type="button" onClick={resetForm} className="ane-btn ane-btn-ghost">
+              <button
+                type="button"
+                onClick={resetForm}
+                className="ane-btn ane-btn-ghost"
+              >
                 초기화
               </button>
-              <button type="button" onClick={handlePublish} className="ane-btn ane-btn-primary" disabled={isSubmitting}>
-                {isSubmitting ? "게시 중..." : publishedFlash ? "게시되었습니다 ✓" : "공지 게시하기"}
+              <button
+                type="button"
+                onClick={handlePublish}
+                className="ane-btn ane-btn-primary"
+              >
+                {publishedFlash ? "게시되었습니다 ✓" : "공지 게시하기"}
               </button>
             </div>
           </div>
@@ -652,39 +699,51 @@ export default function AdminNoticeEditor() {
                 </div>
                 <h2>관리자 공지</h2>
               </div>
-              <NoticeCard type={type} title={title} body={body} meta={meta} pinned={pinned} />
+              <NoticeCard
+                type={type}
+                title={title}
+                body={body}
+                meta={meta}
+                pinned={pinned}
+              />
             </div>
 
             <div className="ane-panel ane-list-panel">
               <div className="ane-list-head">
                 <h3>게시된 공지</h3>
-                <span>{notices.length}건</span>
+                <span>{posts.length}건</span>
               </div>
-              {isLoading && <div className="ane-empty-hint">불러오는 중...</div>}
-              {!isLoading && sortedNotices.length === 0 && (
-                <div className="ane-empty-hint">아직 게시된 공지가 없습니다.</div>
-              )}
-              {!isLoading &&
-                sortedNotices.map((n) => {
-                  const key = BACKEND_TO_KEY[n.noticeType] || "plain";
+              {sortedPosts.length === 0 ? (
+                <div className="ane-empty-hint">
+                  아직 게시된 공지가 없습니다.
+                </div>
+              ) : (
+                sortedPosts.map((p) => {
+                  const originalIdx = posts.indexOf(p);
                   return (
-                    <div key={n.noticeId} className={`ane-item ${key}`}>
+                    <div key={originalIdx} className={`ane-item ${p.type}`}>
                       <div className="dot" />
                       <div className="content">
                         <div className="title">
-                          {n.pinned ? "📌 " : ""}
-                          {n.title}
+                          {p.pinned ? "📌 " : ""}
+                          {p.title}
                         </div>
                         <div className="meta">
-                          {TYPES[key].label} · {n.createdByName || "-"} | {new Date(n.createdAt).toLocaleString()}
+                          {TYPES[p.type].label} · {p.meta}
                         </div>
                       </div>
-                      <button type="button" onClick={() => deleteNotice(n.noticeId)} className="del-btn" title="삭제">
+                      <button
+                        type="button"
+                        onClick={() => deletePost(originalIdx)}
+                        className="del-btn"
+                        title="삭제"
+                      >
                         ✕
                       </button>
                     </div>
                   );
-                })}
+                })
+              )}
             </div>
           </div>
         </div>

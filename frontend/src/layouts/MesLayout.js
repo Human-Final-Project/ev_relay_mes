@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
+import LowStockAlertModal from "../modal/LowStockAlertModal";
 
 // 폰트 및 핵심 레이아웃 디자인 전체 저장
 const layoutStyles = `
@@ -127,6 +128,8 @@ const MesLayout = () => {
       <GlobalStyle />
       <style>{layoutStyles}</style>
       <div className="mesdash">
+        {/* 관리자 로그인 시 제일 먼저 뜨는 재고 부족 알림 */}
+        <LowStockAlertModal />
         <div className="dashboard-layout">
           <Sidebar />
           <div className="main-container">

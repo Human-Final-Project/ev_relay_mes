@@ -1,6 +1,61 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import MesApi from "../api/MesApi";
+
+// -------------------------------------------------------------
+// [데이터 정의] 더미 데이터
+// 실제로는 관리자 공지 작성(AdminNoticeEditor)에서 저장한 데이터를
+// API/상태관리를 통해 그대로 받아오면 됩니다.
+// -------------------------------------------------------------
+const allNotices = [
+  {
+    id: 1,
+    type: "warn",
+    title: "필독: 라인 클리닝 일정 변경",
+    desc: "오후 3시 예정되었던 정기 클리닝이 설비 점검으로 인해 4시로 연기되었습니다.",
+    footer: "최관리 팀장 | 오늘 14:10",
+    pinned: true,
+  },
+  {
+    id: 2,
+    type: "info",
+    title: "신규 안전 보호구 착용 안내",
+    desc: "내일부터 지급되는 신형 정전기 방지 장갑을 필히 착용해주시기 바랍니다.",
+    footer: "품질관리팀 | 오늘 09:20",
+    pinned: false,
+  },
+  {
+    id: 3,
+    type: "plain",
+    title: "7월 정기 안전 교육 일정 안내",
+    desc: "이번 달 정기 안전 교육은 25일(금) 오전 9시, 3층 교육장에서 진행됩니다.",
+    footer: "안전관리팀 | 어제 17:40",
+    pinned: false,
+  },
+  {
+    id: 4,
+    type: "warn",
+    title: "필독: 정전 예정 안내",
+    desc: "설비 점검을 위해 내일 새벽 2시~4시 사이 B동 전체 정전이 예정되어 있습니다.",
+    footer: "설비관리팀 | 2일 전 11:05",
+    pinned: false,
+  },
+  {
+    id: 5,
+    type: "info",
+    title: "라인 A 작업대 배치 변경 안내",
+    desc: "동선 개선을 위해 라인 A의 2번, 3번 작업대 위치가 서로 바뀌었습니다.",
+    footer: "생산관리팀 | 3일 전 08:30",
+    pinned: false,
+  },
+  {
+    id: 6,
+    type: "plain",
+    title: "사내 식당 여름철 운영시간 변경",
+    desc: "7월부터 8월까지 중식 운영시간이 11:30~13:30으로 조정됩니다.",
+    footer: "총무팀 | 4일 전 10:00",
+    pinned: false,
+  },
+];
 
 const TYPES = {
   all: { label: "전체" },
@@ -8,7 +63,6 @@ const TYPES = {
   info: { label: "안전 안내", icon: "🦺" },
   plain: { label: "일반 공지", icon: "📋" },
 };
-const BACKEND_TO_KEY = { WARNING: "warn", INFO: "info", GENERAL: "plain" };
 
 const styles = `
   .nbp-container {
@@ -95,38 +149,14 @@ const styles = `
 function NoticeBoardPage() {
   const navigate = useNavigate();
   const [filter, setFilter] = useState("all");
-  const [notices, setNotices] = useState([]);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const fetchNotices = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const res = await MesApi.getNotices();
-      const now = new Date();
-      // 예약 게시 시각이 아직 안 지난 공지는 게시판에 노출하지 않는다.
-      const published = (res.data || []).filter(
-        (n) => !n.publishAt || new Date(n.publishAt) <= now
-      );
-      setNotices(published);
-    } catch (err) {
-      console.error(err);
-      alert(err.response?.data?.message || "공지 목록을 불러오지 못했습니다.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchNotices();
-  }, [fetchNotices]);
 
   const filtered = useMemo(() => {
     const list =
       filter === "all"
-        ? notices
-        : notices.filter((n) => BACKEND_TO_KEY[n.noticeType] === filter);
+        ? allNotices
+        : allNotices.filter((n) => n.type === filter);
     return [...list].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
-  }, [filter, notices]);
+  }, [filter]);
 
   return (
     <div className="nbp-container">
@@ -154,29 +184,22 @@ function NoticeBoardPage() {
         ))}
       </div>
 
-      {isLoading ? (
-        <div className="nbp-empty">불러오는 중...</div>
-      ) : filtered.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className="nbp-empty">해당 유형의 공지가 없습니다.</div>
       ) : (
-        filtered.map((n) => {
-          const key = BACKEND_TO_KEY[n.noticeType] || "plain";
-          return (
-            <div key={n.noticeId} className={`nbp-card ${key}`}>
-              <div className="nbp-icon">{TYPES[key].icon}</div>
-              <div className="nbp-content">
-                <div className="nbp-top">
-                  <span className="nbp-title">{n.title}</span>
-                  {n.pinned && <span className="nbp-pin">📌 고정</span>}
-                </div>
-                <div className="nbp-desc">{n.content}</div>
-                <div className="nbp-footer">
-                  {n.createdByName || "-"} | {new Date(n.createdAt).toLocaleString()}
-                </div>
+        filtered.map((n) => (
+          <div key={n.id} className={`nbp-card ${n.type}`}>
+            <div className="nbp-icon">{TYPES[n.type].icon}</div>
+            <div className="nbp-content">
+              <div className="nbp-top">
+                <span className="nbp-title">{n.title}</span>
+                {n.pinned && <span className="nbp-pin">📌 고정</span>}
               </div>
+              <div className="nbp-desc">{n.desc}</div>
+              <div className="nbp-footer">{n.footer}</div>
             </div>
-          );
-        })
+          </div>
+        ))
       )}
     </div>
   );
