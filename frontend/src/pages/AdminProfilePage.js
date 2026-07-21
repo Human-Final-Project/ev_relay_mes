@@ -1,10 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import MesApi from "../api/MesApi";
 
-function MyPage() {
-  const navigate = useNavigate();
-
+function AdminProfilePage() {
   // 💡 로컬스토리지에서 로그인된 유저의 사원번호와 이름을 가져옵니다.
   const [empId, setEmpId] = useState("");
 
@@ -20,12 +16,10 @@ function MyPage() {
     confirmPassword: "",
   });
 
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
-
   useEffect(() => {
     // 실제 프로젝트 환경에 맞게 로컬스토리지 키 이름을 맞춰주세요.
-    const savedId = localStorage.getItem("userId") || localStorage.getItem("userEmpId") || "user";
-    const savedName = localStorage.getItem("userName") || "김철수";
+    const savedId = localStorage.getItem("userId") || localStorage.getItem("userEmpId") || "admin";
+    const savedName = localStorage.getItem("userName") || "관리자";
     const savedEmail = localStorage.getItem("userEmail") || "";
     const savedPhone = localStorage.getItem("userPhone") || "";
     setEmpId(savedId);
@@ -54,7 +48,7 @@ function MyPage() {
     setPasswordForm({ ...passwordForm, [name]: value });
   };
 
-  const handlePasswordSubmit = async (e) => {
+  const handlePasswordSubmit = (e) => {
     e.preventDefault();
 
     if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
@@ -72,26 +66,11 @@ function MyPage() {
       return;
     }
 
-    setIsChangingPassword(true);
-    try {
-      // TODO: 백엔드 연동 시 아래 mock 대신 이 호출을 그대로 사용하세요.
-      // await MesApi.changeMyPassword(empId, passwordForm.currentPassword, passwordForm.newPassword);
-      console.log("비밀번호 변경 요청:", { empId, ...passwordForm });
+    // TODO: 백엔드 API 연동 (비밀번호 변경 요청)
+    console.log("비밀번호 변경 요청:", { empId, ...passwordForm });
 
-      // 서버는 비밀번호 변경 성공 시 사용자의 세션 버전을 올려
-      // 다른 모든 기기의 로그인 세션을 함께 무효화합니다.
-      // 이 기기(현재 세션)도 예외 없이 즉시 로그아웃 처리합니다.
-      alert(
-        "비밀번호가 변경되었습니다.\n보안을 위해 이 기기를 포함한 모든 기기에서 로그아웃됩니다."
-      );
-
-      localStorage.clear();
-      navigate("/login", { replace: true });
-    } catch (err) {
-      alert("비밀번호 변경에 실패했습니다. 현재 비밀번호를 다시 확인해주세요.");
-    } finally {
-      setIsChangingPassword(false);
-    }
+    alert("비밀번호가 안전하게 변경되었습니다.");
+    setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
   };
 
   const styles = `
@@ -115,10 +94,6 @@ function MyPage() {
 
     .submit-btn { width: 100%; padding: 12px; background: #0566d9; color: white; border: none; border-radius: 6px; font-weight: 700; cursor: pointer; transition: 0.2s; font-size: 13px; margin-top: 8px; }
     .submit-btn:hover { background: #004fb0; }
-    .submit-btn:disabled { background: #94a3b8; cursor: not-allowed; }
-
-    .security-notice { display: flex; gap: 8px; background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; font-size: 12px; color: #9a3412; line-height: 1.5; }
-    .security-notice .icon { flex-shrink: 0; }
   `;
 
   return (
@@ -127,7 +102,7 @@ function MyPage() {
 
       <div className="mypage-container">
         <div className="mypage-title-area">
-          <h2>내 정보 관리</h2>
+          <h2>관리자 프로필 관리</h2>
           <p>프로필 정보를 수정하고, 보안을 위해 비밀번호를 주기적으로 변경해 주세요.</p>
         </div>
 
@@ -181,15 +156,6 @@ function MyPage() {
           {/* 계정 정보 설정 (비밀번호 변경) */}
           <div className="card">
             <h3>계정 정보 설정</h3>
-
-            <div className="security-notice">
-              <span className="icon">🔒</span>
-              <span>
-                비밀번호를 변경하면 보안을 위해 <b>이 기기를 포함한 모든 기기</b>에서 자동으로
-                로그아웃됩니다. 변경 후에는 새 비밀번호로 다시 로그인해주세요.
-              </span>
-            </div>
-
             <form onSubmit={handlePasswordSubmit}>
               {/* 현재 비밀번호 */}
               <div className="form-group">
@@ -227,8 +193,8 @@ function MyPage() {
                 />
               </div>
 
-              <button type="submit" className="submit-btn" disabled={isChangingPassword}>
-                {isChangingPassword ? "변경 중..." : "비밀번호 변경 및 전체 로그아웃"}
+              <button type="submit" className="submit-btn">
+                비밀번호 수정하기
               </button>
             </form>
           </div>
@@ -238,4 +204,4 @@ function MyPage() {
   );
 }
 
-export default MyPage;
+export default AdminProfilePage;
