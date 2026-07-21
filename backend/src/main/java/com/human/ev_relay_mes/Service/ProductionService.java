@@ -20,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -294,16 +295,19 @@ public class ProductionService {
 
     private void completeWorkOrderIfReady(Lot completedLot) {
         WorkOrder workOrder = completedLot.getWorkOrder();
-        List<Lot> lots = lotRepository
-                .findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(workOrder.getWorkOrderId());
-        boolean allTerminal = lots.stream().allMatch(lot ->
-                lot.getStatus() == Lot.Status.COMPLETED || lot.getStatus() == Lot.Status.SCRAPPED);
-        int completedQty = lots.stream()
-                .filter(lot -> lot.getStatus() == Lot.Status.COMPLETED)
-                .mapToInt(Lot::getInputQty)
-                .sum();
-        if (allTerminal && completedQty >= workOrder.getTargetQty()) {
+        Long workOrderId = workOrder.getWorkOrderId();
+
+        long completedOkQty = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
+                workOrderId, Lot.Status.COMPLETED);
+        boolean hasNonTerminalLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                workOrderId,
+                EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD));
+
+        if (!hasNonTerminalLot && completedOkQty >= workOrder.getTargetQty()) {
             workOrder.setStatus(WorkOrder.Status.COMPLETED);
+        } else {
+            // LOT 한 차수가 끝나도 목표 양품이 부족하면 보충 생산을 위해 RUNNING을 유지한다.
+            workOrder.setStatus(WorkOrder.Status.RUNNING);
         }
     }
 

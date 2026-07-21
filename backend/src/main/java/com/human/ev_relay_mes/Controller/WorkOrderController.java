@@ -65,6 +65,14 @@ public class WorkOrderController {
                 .body(lotService.createLot(id, dto, userDetails.getMemberId()));
     }
 
+    @PostMapping("/{id}/supplement")
+    public ResponseEntity<LotResponseDto> createSupplementLot(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(lotService.createSupplementLot(id, userDetails.getMemberId()));
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteWorkOrder(@PathVariable Long id) {
         workOrderService.deleteWorkOrder(id);

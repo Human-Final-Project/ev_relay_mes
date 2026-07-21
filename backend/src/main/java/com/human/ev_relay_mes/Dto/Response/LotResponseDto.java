@@ -20,6 +20,8 @@ public class LotResponseDto {
     private String itemName;
     private String currentProcessCode;
     private String currentProcessName;
+    private String lotType;
+    private Integer productionRound;
     private Integer inputQty;
     private Integer okQty;
     private Integer ngQty;
@@ -49,6 +51,8 @@ public class LotResponseDto {
                 .itemName(lot.getItem().getItemName())
                 .currentProcessCode(lot.getCurrentProcess() == null ? null : lot.getCurrentProcess().getProcessCode())
                 .currentProcessName(lot.getCurrentProcess() == null ? null : lot.getCurrentProcess().getProcessName())
+                .lotType(lot.getLotType().name())
+                .productionRound(lot.getProductionRound())
                 .inputQty(lot.getInputQty())
                 .okQty(lot.getOkQty())
                 .ngQty(lot.getNgQty())

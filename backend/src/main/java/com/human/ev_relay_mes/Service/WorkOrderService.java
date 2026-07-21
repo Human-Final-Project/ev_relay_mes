@@ -28,18 +28,28 @@ import java.util.UUID;
 @Transactional(readOnly = true)
 public class WorkOrderService {
 
+    private static final EnumSet<Lot.Status> NON_TERMINAL_LOT_STATUSES =
+            EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+
     private final WorkOrderRepository workOrderRepository;
     private final ItemRepository itemRepository;
     private final MemberRepository memberRepository;
     private final LotRepository lotRepository;
+    private final MaterialLotService materialLotService;
 
     @Transactional
     public WorkOrderResponseDto createWorkOrder(WorkOrderRequestDto dto, Long memberId) {
         validatePlan(dto);
         Item item = findUsableItem(dto.getItemCode());
         if (item.getItemType() == Item.ItemType.RM) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "원자재 품목으로는 작업지시를 생성할 수 없습니다.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "원자재 품목으로는 작업지시를 생성할 수 없습니다.");
         }
+
+        // 작업지시 생성 시점에는 생산 가능 여부만 확인한다.
+        // 실제 차감은 LOT 시작 시 다시 확인한 뒤 처리한다.
+        materialLotService.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
+
         Member creator = memberRepository.findById(memberId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
         WorkOrder workOrder = WorkOrder.builder()
@@ -50,18 +60,19 @@ public class WorkOrderService {
                 .plannedEndAt(dto.getPlannedEndAt())
                 .createdBy(creator)
                 .build();
-        return WorkOrderResponseDto.fromEntity(workOrderRepository.save(workOrder));
+        WorkOrder saved = workOrderRepository.save(workOrder);
+        return toResponse(saved);
     }
 
     public List<WorkOrderResponseDto> getWorkOrders(String status) {
         List<WorkOrder> workOrders = isBlank(status)
                 ? workOrderRepository.findAllByOrderByCreatedAtDesc()
                 : workOrderRepository.findByStatusOrderByCreatedAtDesc(parseStatus(status));
-        return workOrders.stream().map(WorkOrderResponseDto::fromEntity).toList();
+        return workOrders.stream().map(this::toResponse).toList();
     }
 
     public WorkOrderResponseDto getWorkOrder(Long id) {
-        return WorkOrderResponseDto.fromEntity(findWorkOrder(id));
+        return toResponse(findWorkOrder(id));
     }
 
     @Transactional
@@ -73,13 +84,17 @@ public class WorkOrderService {
         }
         Item item = findUsableItem(dto.getItemCode());
         if (item.getItemType() == Item.ItemType.RM) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "원자재 품목으로는 작업지시를 생성할 수 없습니다.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "원자재 품목으로는 작업지시를 생성할 수 없습니다.");
         }
+
+        materialLotService.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
+
         workOrder.setItem(item);
         workOrder.setTargetQty(dto.getTargetQty());
         workOrder.setPlannedStartAt(dto.getPlannedStartAt());
         workOrder.setPlannedEndAt(dto.getPlannedEndAt());
-        return WorkOrderResponseDto.fromEntity(workOrder);
+        return toResponse(workOrder);
     }
 
     @Transactional
@@ -87,11 +102,11 @@ public class WorkOrderService {
         WorkOrder workOrder = findWorkOrderForUpdate(id);
         WorkOrder.Status targetStatus = parseStatus(dto.getStatus());
         if (workOrder.getStatus() == targetStatus) {
-            return WorkOrderResponseDto.fromEntity(workOrder);
+            return toResponse(workOrder);
         }
         validateTransition(workOrder, targetStatus);
         workOrder.setStatus(targetStatus);
-        return WorkOrderResponseDto.fromEntity(workOrder);
+        return toResponse(workOrder);
     }
 
     @Transactional
@@ -101,7 +116,8 @@ public class WorkOrderService {
             throw new CustomException(ErrorCode.WORK_ORDER_ALREADY_STARTED);
         }
         if (lotRepository.existsByWorkOrder_WorkOrderId(id)) {
-            throw new CustomException(ErrorCode.RESOURCE_CONFLICT, "연결된 생산 LOT가 있어 삭제할 수 없습니다.");
+            throw new CustomException(ErrorCode.RESOURCE_CONFLICT,
+                    "연결된 생산 LOT가 있어 삭제할 수 없습니다.");
         }
         workOrderRepository.delete(workOrder);
     }
@@ -138,15 +154,39 @@ public class WorkOrderService {
     private void validateCompletion(WorkOrder workOrder) {
         Long id = workOrder.getWorkOrderId();
         if (!lotRepository.existsByWorkOrder_WorkOrderId(id)) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS, "생산 LOT가 없는 작업지시는 완료할 수 없습니다.");
-        }
-        boolean hasActiveLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(id,
-                EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD));
-        long completedQty = lotRepository.sumInputQtyByWorkOrderIdAndStatus(id, Lot.Status.COMPLETED);
-        if (hasActiveLot || completedQty < workOrder.getTargetQty()) {
             throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
-                    "모든 목표 수량의 생산 LOT가 완료된 후 작업지시를 완료할 수 있습니다.");
+                    "생산 LOT가 없는 작업지시는 완료할 수 없습니다.");
         }
+        boolean hasActiveLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                id, NON_TERMINAL_LOT_STATUSES);
+        long completedOkQty = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
+                id, Lot.Status.COMPLETED);
+        if (hasActiveLot || completedOkQty < workOrder.getTargetQty()) {
+            throw new CustomException(ErrorCode.WORK_ORDER_TARGET_NOT_MET,
+                    "완료 LOT의 누적 양품 수량이 작업지시 목표 수량에 도달해야 완료할 수 있습니다.");
+        }
+    }
+
+    private WorkOrderResponseDto toResponse(WorkOrder workOrder) {
+        long completedOkLong = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
+                workOrder.getWorkOrderId(), Lot.Status.COMPLETED);
+        int completedOkQty = Math.toIntExact(completedOkLong);
+        int remainingQty = Math.max(workOrder.getTargetQty() - completedOkQty, 0);
+
+        boolean hasCompletedLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(
+                workOrder.getWorkOrderId(), Lot.Status.COMPLETED);
+        boolean hasNonTerminalLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                workOrder.getWorkOrderId(), NON_TERMINAL_LOT_STATUSES);
+        boolean supplementRequired = workOrder.getStatus() == WorkOrder.Status.RUNNING
+                && hasCompletedLot
+                && !hasNonTerminalLot
+                && remainingQty > 0;
+
+        return WorkOrderResponseDto.fromEntity(
+                workOrder,
+                completedOkQty,
+                remainingQty,
+                supplementRequired);
     }
 
     private WorkOrder findWorkOrder(Long id) {
@@ -179,7 +219,8 @@ public class WorkOrderService {
     private void validatePlan(WorkOrderRequestDto dto) {
         if (dto.getPlannedStartAt() != null && dto.getPlannedEndAt() != null
                 && dto.getPlannedStartAt().isAfter(dto.getPlannedEndAt())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE, "계획 종료 시각은 시작 시각보다 빠를 수 없습니다.");
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
+                    "계획 종료 시각은 시작 시각보다 빠를 수 없습니다.");
         }
     }
 
@@ -187,7 +228,8 @@ public class WorkOrderService {
         String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
         String orderNo;
         do {
-            orderNo = "WO-" + date + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+            orderNo = "WO-" + date + "-" + UUID.randomUUID().toString()
+                    .substring(0, 8).toUpperCase();
         } while (workOrderRepository.existsByOrderNo(orderNo));
         return orderNo;
     }

@@ -62,6 +62,11 @@ public enum ErrorCode {
     WORK_ORDER_ALREADY_STARTED(HttpStatus.CONFLICT, "WO005", "이미 시작된 작업지시입니다."),
     WORK_ORDER_ALREADY_COMPLETED(HttpStatus.CONFLICT, "WO006", "이미 완료된 작업지시입니다."),
     WORK_ORDER_CANCELED(HttpStatus.CONFLICT, "WO007", "취소된 작업지시입니다."),
+    WORK_ORDER_TARGET_NOT_MET(HttpStatus.CONFLICT, "WO008", "작업지시 목표 양품 수량이 충족되지 않았습니다."),
+    ANOTHER_WORK_ORDER_IN_PROGRESS(HttpStatus.CONFLICT, "WO009", "다른 작업지시가 현재 생산 중입니다."),
+    SUPPLEMENT_NOT_REQUIRED(HttpStatus.CONFLICT, "WO010", "추가 생산이 필요하지 않습니다."),
+    SUPPLEMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "WO011", "진행 중인 추가 생산 LOT가 이미 존재합니다."),
+    EARLIER_WORK_ORDER_NOT_COMPLETED(HttpStatus.CONFLICT, "WO012", "먼저 확정된 작업지시가 아직 완료되지 않았습니다."),
 
     // Lot
     LOT_NOT_FOUND(HttpStatus.NOT_FOUND, "L001", "생산 LOT를 찾을 수 없습니다."),
@@ -72,6 +77,8 @@ public enum ErrorCode {
     LOT_ALREADY_COMPLETED(HttpStatus.CONFLICT, "L006", "이미 완료된 생산 LOT입니다."),
     LOT_ON_HOLD(HttpStatus.CONFLICT, "L007", "보류 중인 생산 LOT입니다."),
     INVALID_LOT_STATUS_TRANSITION(HttpStatus.BAD_REQUEST, "L008", "생산 LOT 상태 변경이 올바르지 않습니다."),
+    ANOTHER_LOT_IN_PROGRESS(HttpStatus.CONFLICT, "L009", "다른 생산 LOT가 현재 가동 중입니다."),
+    INITIAL_LOT_ALREADY_EXISTS(HttpStatus.CONFLICT, "L010", "초기 생산 LOT가 이미 존재합니다."),
 
     // Production log
     PRODUCTION_LOG_NOT_FOUND(HttpStatus.NOT_FOUND, "PL001", "생산 실적 로그를 찾을 수 없습니다."),

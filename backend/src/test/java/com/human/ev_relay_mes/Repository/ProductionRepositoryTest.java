@@ -37,7 +37,10 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
         Lot waiting = lot("LOT-001", order, product, op10, Lot.Status.WAITING, 40);
         waiting.setStartRequestedAt(LocalDateTime.now().minusMinutes(1));
         lotRepository.saveAndFlush(waiting);
-        lot("LOT-002", order, product, op10, Lot.Status.COMPLETED, 30);
+        Lot completed = lot("LOT-002", order, product, op10, Lot.Status.COMPLETED, 30);
+        completed.setOkQty(25);
+        completed.setNgQty(5);
+        lotRepository.saveAndFlush(completed);
         lot("LOT-003", order, product, op10, Lot.Status.SCRAPPED, 10);
 
         assertThat(workOrderRepository.existsByOrderNo("WO-001")).isTrue();
@@ -52,6 +55,12 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
                 order.getWorkOrderId(), Lot.Status.SCRAPPED)).isEqualTo(70L);
         assertThat(lotRepository.sumInputQtyByWorkOrderIdAndStatus(
                 order.getWorkOrderId(), Lot.Status.COMPLETED)).isEqualTo(30L);
+        assertThat(lotRepository.sumOkQtyByWorkOrderIdAndStatus(
+                order.getWorkOrderId(), Lot.Status.COMPLETED)).isEqualTo(25L);
+        assertThat(lotRepository.findMaxProductionRoundByWorkOrderId(
+                order.getWorkOrderId())).isEqualTo(1);
+        assertThat(lotRepository.countLineBlockingLots(
+                List.of(Lot.Status.RUNNING, Lot.Status.HOLD), Lot.Status.WAITING)).isEqualTo(1L);
     }
 
     @Test
@@ -66,6 +75,8 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
         assertThat(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
                 .extracting(MaterialLot::getMaterialLotId)
                 .containsExactly(first.getMaterialLotId(), second.getMaterialLotId());
+        assertThat(materialLotRepository.sumAvailableQty(
+                "RM-001", MaterialLot.Status.AVAILABLE)).isEqualTo(30L);
     }
 
     @Test
