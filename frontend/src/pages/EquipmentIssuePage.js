@@ -63,12 +63,29 @@ function EquipmentIssuePage() {
     setPhoto(null);
   }
 
-  function handleSubmit() {
+  function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function handleSubmit() {
     if (!note.trim()) {
       alert("이상 증상에 대한 상세 내용을 입력해주세요.");
       return;
     }
+
+    // localStorage 저장 용량 보호를 위해 첨부 사진은 2MB로 제한합니다.
+    if (photo && photo.size > 2 * 1024 * 1024) {
+      alert("사진 용량이 너무 큽니다. 2MB 이하의 이미지를 첨부해주세요.");
+      return;
+    }
+
     const equipmentName = EQUIPMENT_LIST.find((e) => e.id === equipment)?.name || equipment;
+    const photoDataUrl = photo ? await readFileAsDataUrl(photo) : null;
 
     addIssue({
       equipment: equipmentName,
@@ -76,6 +93,7 @@ function EquipmentIssuePage() {
       severity,
       note,
       photoName: photo ? photo.name : null,
+      photoDataUrl,
       reporter: reporterName,
     });
 
@@ -145,6 +163,7 @@ function EquipmentIssuePage() {
     .es-history-eq { font-size: 13px; font-weight: 800; color: #0f172a; }
     .es-history-type { font-size: 12px; color: #64748b; margin-bottom: 4px; }
     .es-history-note { font-size: 12.5px; color: #334155; line-height: 1.5; margin-bottom: 6px; }
+    .es-history-photo { display: block; max-width: 100%; max-height: 160px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 8px; object-fit: cover; }
     .es-history-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #94a3b8; }
 
     .es-tag { font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 10px; white-space: nowrap; }
@@ -259,7 +278,10 @@ function EquipmentIssuePage() {
                 </div>
                 <div className="es-history-type">{h.issueType}</div>
                 <div className="es-history-note">{h.note}</div>
-                {h.photoName && (
+                {h.photoDataUrl && (
+                  <img className="es-history-photo" src={h.photoDataUrl} alt={h.photoName || "첨부 사진"} />
+                )}
+                {h.photoName && !h.photoDataUrl && (
                   <div className="es-history-note">📎 {h.photoName}</div>
                 )}
                 <div className="es-history-meta">
