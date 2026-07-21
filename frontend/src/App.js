@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import MesLayout from "./layouts/MesLayout"; 
 import DashboardPage from "./pages/DashboardPage";
@@ -21,30 +21,81 @@ import AdminProfilePage from "./pages/AdminProfilePage";
 import MasterDataPage from "./pages/MasterDataPage";
 import WorkOrderPage from "./pages/WorkOrderPage";
 import EmployeeDashboardPage from "./pages/EmployeeDashboardPage";
+import AuthApi from "./api/AuthApi";
+
+const AUTH_CACHE_KEYS = [
+  "isLoggedIn",
+  "userRole",
+  "userId",
+  "userName",
+];
+
+function toFrontendRole(role) {
+  return role?.toUpperCase() === "ADMIN" ? "admin" : "user";
+}
+
+function cacheUserForLegacyScreens(user) {
+  localStorage.removeItem("isLoggedIn");
+  localStorage.setItem("userRole", toFrontendRole(user.role));
+  localStorage.setItem("userId", user.loginId || "");
+  localStorage.setItem("userName", user.memberName || "");
+}
+
+function clearCachedUser() {
+  AUTH_CACHE_KEYS.forEach((key) => localStorage.removeItem(key));
+}
 
 function App() {
-  // 로컬스토리지 초기값을 기준으로 React 상태(State)를 생성합니다.
-  const [isLoggedIn, setIsLoggedIn] = useState(
-    localStorage.getItem("isLoggedIn") === "true"
-  );
-  const [userRole, setUserRole] = useState(
-    localStorage.getItem("userRole") || ""
-  );
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  // 상태를 변경해줄 로그인 처리 함수
-  const handleLoginSuccess = (role) => {
-    localStorage.setItem("isLoggedIn", "true");
-    localStorage.setItem("userRole", role);
-    setIsLoggedIn(true);
-    setUserRole(role);
+  useEffect(() => {
+    let active = true;
+
+    AuthApi.getCurrentUser()
+      .then((response) => {
+        if (!active) return;
+        cacheUserForLegacyScreens(response.data);
+        setCurrentUser(response.data);
+      })
+      .catch(() => {
+        if (!active) return;
+        clearCachedUser();
+        setCurrentUser(null);
+      })
+      .finally(() => {
+        if (active) setIsCheckingSession(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const isLoggedIn = Boolean(currentUser);
+  const userRole = currentUser ? toFrontendRole(currentUser.role) : "";
+
+  const handleLoginSuccess = (user) => {
+    cacheUserForLegacyScreens(user);
+    setCurrentUser(user);
   };
 
-  // 로그아웃 처리 함수
-  const handleLogout = () => {
-    localStorage.clear();
-    setIsLoggedIn(false);
-    setUserRole("");
+  const handleLogout = async () => {
+    try {
+      await AuthApi.logout();
+    } catch (error) {
+      if (error.response?.status !== 401) {
+        console.error("Backend 로그아웃 요청 실패:", error);
+      }
+    } finally {
+      clearCachedUser();
+      setCurrentUser(null);
+    }
   };
+
+  if (isCheckingSession) {
+    return <div role="status">로그인 상태를 확인하고 있습니다...</div>;
+  }
 
   return (
     <BrowserRouter>
@@ -72,7 +123,11 @@ function App() {
         {/* 3. 메인 서비스 레이아웃 그룹 (인증 보호) */}
         <Route 
           element={
-            isLoggedIn ? <MesLayout /> : <Navigate to="/login" replace />
+            isLoggedIn ? (
+              <MesLayout onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/login" replace />
+            )
           }
         >
           <Route

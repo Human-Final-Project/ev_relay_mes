@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 // 💡 페이지 이동을 위해 useNavigate를 가져옵니다.
 import { useNavigate } from "react-router-dom";
+import AuthApi from "../api/AuthApi";
 
 function LoginPage({ onLoginSuccess }) { 
   const navigate = useNavigate();
@@ -11,30 +12,34 @@ function LoginPage({ onLoginSuccess }) {
   const [errorMessage, setErrorMessage] = useState("");
   const [isTcpActive] = useState(true);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (employeeId && password) {
-      setIsLoading(true);
-      setErrorMessage("");
+    const loginId = employeeId.trim();
+    if (!loginId || !password) {
+      return;
+    }
 
-      setTimeout(() => {
-        setIsLoading(false);
+    setIsLoading(true);
+    setErrorMessage("");
 
-        if (employeeId === "admin" && password === "1234") {
-          // 💡 App.js의 상태를 직접 변경해 줍니다! (중요)
-          onLoginSuccess("admin");
-          // 그 후 이동
-          navigate("/admin/employees");
-        } else if (employeeId === "user" && password === "1234") {
-          // 💡 일반 유저 로그인 상태 변경
-          onLoginSuccess("user");
-          // 그 후 이동
-          navigate("/dashboard");
-        } else {
-          setErrorMessage("사원번호 또는 비밀번호가 올바르지 않습니다.");
-        }
-      }, 1000); // 1초 뒤 실행
+    try {
+      const response = await AuthApi.login(loginId, password);
+      const user = response.data;
+      onLoginSuccess(user);
+      navigate(
+        user.role?.toUpperCase() === "ADMIN"
+          ? "/admin/employees"
+          : "/dashboard",
+        { replace: true }
+      );
+    } catch (error) {
+      setErrorMessage(
+        error.response?.data?.message ||
+          "로그인에 실패했습니다. Backend 연결과 계정 정보를 확인해 주세요."
+      );
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -427,7 +432,7 @@ function LoginPage({ onLoginSuccess }) {
                     placeholder="사원번호를 입력하세요"
                    value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value)}
-                    autoComplete="off" // 자동완성 끄기
+                    autoComplete="username"
                     required
                   />
                 </div>
@@ -445,7 +450,7 @@ function LoginPage({ onLoginSuccess }) {
                     placeholder="비밀번호를 입력하세요"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    autoComplete="new-password" // "이것은 새로운 비밀번호다"라고 브라우저를 속여서 기존 비밀번호 채워넣기를 방지
+                    autoComplete="current-password"
                     required
                   />
                 </div>
