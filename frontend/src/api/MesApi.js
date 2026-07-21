@@ -13,6 +13,8 @@ const MesApi = {
 
   getMaterials: () => axios.get(`${HM_DOMAIN}/api/mes/material/stock`),
 
+  getEmployees: () => axios.get(`${HM_DOMAIN}/api/mes/employees`),
+
   inboundMaterial: (formData) =>
     axios.post(`${HM_DOMAIN}/api/mes/material/inbound`, formData),
 

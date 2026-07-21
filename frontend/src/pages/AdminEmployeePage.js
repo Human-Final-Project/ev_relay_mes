@@ -149,10 +149,18 @@ function AdminEmployeePage() {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
   };
 
-  const handleRefresh = () => {
-    // TODO: 백엔드 연동 시 서버에서 최신 사원 목록을 다시 조회하는 API 호출로 교체하세요.
-    // 예: const res = await MesApi.getEmployees(); setEmployees(res.data);
-    setEmployees(initialEmployees);
+  const handleRefresh = async () => {
+    try {
+      const res = await MesApi.getEmployees();
+      if (res.data && res.data.length > 0) {
+        setEmployees(res.data);
+      }
+      // 백엔드가 아직 없거나 응답이 비어있으면, 지금 화면의 목록(신규 등록분 포함)을 그대로 유지합니다.
+    } catch (e) {
+      // 백엔드 연동 전에는 여기로 빠지는 게 정상입니다.
+      // 이 경우에도 로컬에 이미 등록해둔 사원 목록은 그대로 유지됩니다.
+      console.error("사원 목록 새로고침 실패:", e);
+    }
     setSearchTerm("");
     setSelectedIds([]);
   };
