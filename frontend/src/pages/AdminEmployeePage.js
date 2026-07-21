@@ -1,21 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import MesApi from "../api/MesApi";
+import { getEmployees, saveEmployees, subscribeEmployees } from "../utils/employeeStore";
 
 // -------------------------------------------------------------
 // [데이터 정의]
 // -------------------------------------------------------------
 const DEPT_OPTIONS = ["경영지원", "생산관리", "생산1팀", "생산2팀", "품질관리", "자재관리"];
 const LINE_OPTIONS = ["사무실 (생산 외)", "Line A", "Line B", "Line C"];
-
-const initialEmployees = [
-  { id: "admin", name: "admin", email: "1234@gmail.com", dept: "경영지원", phone: "1234", status: "재직중", line: "사무실 (생산 외)", role: "admin" },
-  { id: "EMP26001", name: "강석진", email: "sj.kang@medisone.com", dept: "생산관리", phone: "010-1234-5678", status: "재직중", line: "사무실 (생산 외)", role: "admin" },
-  { id: "EMP26002", name: "이민아", email: "ma.lee@medisone.com", dept: "생산1팀", phone: "010-2345-6789", status: "재직중", line: "Line A", role: "user" },
-  { id: "EMP26003", name: "박지민", email: "jm.park@medisone.com", dept: "생산2팀", phone: "010-3456-7890", status: "재직중", line: "Line B", role: "user" },
-  { id: "EMP26004", name: "최유진", email: "yj.choi@medisone.com", dept: "품질관리", phone: "010-4567-8901", status: "재직중", line: "사무실 (생산 외)", role: "user" },
-  { id: "EMP26005", name: "김철수", email: "cs.kim@medisone.com", dept: "자재관리", phone: "010-5678-9012", status: "휴직", line: "사무실 (생산 외)", role: "user" },
-  { id: "EMP26006", name: "정수민", email: "sm.jung@medisone.com", dept: "생산1팀", phone: "010-6789-0123", status: "재직중", line: "Line A", role: "user" },
-];
 
 const STATUS_CLASS = { "재직중": "status-active", "휴직": "status-leave", "퇴직": "status-retired" };
 
@@ -45,8 +36,6 @@ const styles = `
   .admin-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .search-box { border: 1px solid #cbd5e1; padding: 9px 14px; border-radius: 8px; font-size: 13px; width: 240px; outline: none; transition: border-color 0.2s; }
   .search-box:focus { border-color: #0566d9; }
-  .btn-refresh { background: #ffffff; border: 1px solid #cbd5e1; padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; color: #475569; cursor: pointer; transition: 0.2s; }
-  .btn-refresh:hover { background-color: #f1f5f9; }
   .btn-primary { background: #0566d9; color: #ffffff; border: none; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; transition: 0.2s; white-space: nowrap; }
   .btn-primary:hover { opacity: 0.85; }
   .btn-bulk-delete { background: #fee2e2; color: #dc2626; border: none; padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; white-space: nowrap; }
@@ -111,7 +100,13 @@ const styles = `
 `;
 
 function AdminEmployeePage() {
-  const [employees, setEmployees] = useState(initialEmployees);
+  const [employees, setEmployees] = useState([]);
+
+  useEffect(() => {
+    setEmployees(getEmployees());
+    const unsubscribe = subscribeEmployees(setEmployees);
+    return unsubscribe;
+  }, []);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedIds, setSelectedIds] = useState([]);
   const [showModal, setShowModal] = useState(false);
@@ -147,22 +142,6 @@ function AdminEmployeePage() {
 
   const toggleSelectOne = (id) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((v) => v !== id) : [...prev, id]));
-  };
-
-  const handleRefresh = async () => {
-    try {
-      const res = await MesApi.getEmployees();
-      if (res.data && res.data.length > 0) {
-        setEmployees(res.data);
-      }
-      // 백엔드가 아직 없거나 응답이 비어있으면, 지금 화면의 목록(신규 등록분 포함)을 그대로 유지합니다.
-    } catch (e) {
-      // 백엔드 연동 전에는 여기로 빠지는 게 정상입니다.
-      // 이 경우에도 로컬에 이미 등록해둔 사원 목록은 그대로 유지됩니다.
-      console.error("사원 목록 새로고침 실패:", e);
-    }
-    setSearchTerm("");
-    setSelectedIds([]);
   };
 
   const openAddModal = () => {
@@ -204,10 +183,14 @@ function AdminEmployeePage() {
 
     if (modalMode === "add") {
       const newEmp = { ...form, id: generateNextId() };
-      setEmployees([...employees, newEmp]);
+      const next = [...employees, newEmp];
+      setEmployees(next);
+      saveEmployees(next);
       alert("신규 사원이 등록되었습니다.");
     } else {
-      setEmployees(employees.map((emp) => (emp.id === form.id ? { ...form } : emp)));
+      const next = employees.map((emp) => (emp.id === form.id ? { ...form } : emp));
+      setEmployees(next);
+      saveEmployees(next);
       alert("사원 정보가 수정되었습니다.");
     }
     setShowModal(false);
@@ -215,7 +198,9 @@ function AdminEmployeePage() {
 
   const handleDelete = (id) => {
     if (window.confirm(`사번 ${id}을(를) 삭제하시겠습니까?`)) {
-      setEmployees(employees.filter((emp) => emp.id !== id));
+      const next = employees.filter((emp) => emp.id !== id);
+      setEmployees(next);
+      saveEmployees(next);
       setSelectedIds(selectedIds.filter((v) => v !== id));
     }
   };
@@ -223,7 +208,9 @@ function AdminEmployeePage() {
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) return;
     if (window.confirm(`선택한 ${selectedIds.length}명의 사원을 삭제하시겠습니까?`)) {
-      setEmployees(employees.filter((emp) => !selectedIds.includes(emp.id)));
+      const next = employees.filter((emp) => !selectedIds.includes(emp.id));
+      setEmployees(next);
+      saveEmployees(next);
       setSelectedIds([]);
     }
   };
@@ -289,7 +276,6 @@ function AdminEmployeePage() {
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
-          <button className="btn-refresh" onClick={handleRefresh}>↻ 새로고침</button>
           <button className="btn-primary" onClick={openAddModal}>+ 신규 등록</button>
         </div>
       </div>
