@@ -310,6 +310,16 @@ static void run_connected_session(L1Socket socket,
     handlers.on_error = handle_runtime_error;
     handlers.context = &runtime;
 
+    {
+        L1RuntimeActions connection_actions;
+
+        if (l1_machine_runtime_connection_snapshot(
+                machine, &connection_actions) != 0
+            || execute_runtime_actions(&runtime, &connection_actions) != 0) {
+            return;
+        }
+    }
+
     for (;;) {
         uint64_t now = l1_net_monotonic_milliseconds();
         uint64_t wait_ms;

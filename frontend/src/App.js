@@ -10,7 +10,7 @@ import ProductionPage from "./pages/ProductionPage";
 import QualityPage from "./pages/QualityPage";
 import MaterialPage from "./pages/MaterialPage";
 import MasterDataPage from "./pages/MasterDataPage";
-import WorkerAssignmentPage from "./pages/WorkerAssignmentPage";
+import MachineManagementPage from "./pages/MachineManagementPage";
 import AdminEmployeePage from "./pages/AdminEmployeePage";
 import AccountPage from "./pages/AccountPage";
 
@@ -22,14 +22,15 @@ function App() {
   return <BrowserRouter><Routes>
     <Route path="/login" element={currentUser?<Navigate to="/dashboard" replace/>:<LoginPage onLoginSuccess={setCurrentUser}/>}/>
     <Route element={currentUser?<MesLayout currentUser={currentUser} onLogout={logout}/>:<Navigate to="/login" replace/>}>
-      <Route path="/dashboard" element={<DashboardPage/>}/>
+      <Route path="/dashboard" element={<DashboardPage currentUser={currentUser}/>}/>
       <Route path="/work-orders" element={<WorkOrderPage currentUser={currentUser}/>}/>
       <Route path="/lots" element={<LotPage currentUser={currentUser}/>}/>
       <Route path="/production" element={<ProductionPage currentUser={currentUser}/>}/>
       <Route path="/quality" element={<QualityPage currentUser={currentUser}/>}/>
       <Route path="/materials" element={<MaterialPage currentUser={currentUser}/>}/>
       <Route path="/master-data" element={<MasterDataPage currentUser={currentUser}/>}/>
-      <Route path="/workers" element={<WorkerAssignmentPage currentUser={currentUser}/>}/>
+      <Route path="/machines" element={<MachineManagementPage currentUser={currentUser}/>}/>
+      <Route path="/workers" element={<Navigate to="/machines?tab=assignments" replace/>}/>
       <Route path="/members" element={currentUser?.role==="ADMIN"?<AdminEmployeePage/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/account" element={<AccountPage currentUser={currentUser} onLoggedOut={()=>setCurrentUser(null)}/>}/>
     </Route>

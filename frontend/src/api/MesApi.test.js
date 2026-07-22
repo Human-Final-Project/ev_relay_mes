@@ -15,6 +15,12 @@ test("removes empty production search parameters",async()=>{
   expect(httpClient.get).toHaveBeenCalledWith("/api/production-logs",{params:{lotNo:"LOT-001"}});
 });
 
+test("loads L1 and L2 connection status",async()=>{
+  httpClient.get.mockResolvedValue({data:{}});
+  await MesApi.getSystemConnections();
+  expect(httpClient.get).toHaveBeenCalledWith("/api/mes/system-connections");
+});
+
 test("creates a lot through the work-order contract",async()=>{
   httpClient.request.mockResolvedValue({status:201});
   await MesApi.createLot(7,"100");

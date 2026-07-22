@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,6 +88,35 @@ class MachineAlarmServiceTest {
 
         assertThat(machine.getStatus()).isEqualTo(Machine.Status.ERROR);
         verify(workCommandService).pauseForMachineError("EQ-WIND-01");
+    }
+
+    @Test
+    void communicationAlarmMarksMachineErrorWithoutCancelingWork() {
+        Process process = process();
+        Machine machine = machine(process, Machine.Status.RUNNING);
+        AlarmCode communicationCode = AlarmCode.builder()
+                .alarmCode("COMM_DISCONNECTED")
+                .alarmName("communication disconnected")
+                .machineType("COMMON")
+                .build();
+        MachineAlarmReceiveRequestDto dto = new MachineAlarmReceiveRequestDto();
+        dto.setMachineId("EQ-WIND-01");
+        dto.setAlarmCode("COMM_DISCONNECTED");
+        dto.setAlarmLevel("ERROR");
+        dto.setOccurredAt(LocalDateTime.now());
+
+        when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
+        when(alarmCodeRepository.findById("COMM_DISCONNECTED"))
+                .thenReturn(Optional.of(communicationCode));
+        when(machineAlarmHistoryRepository.save(any(MachineAlarmHistory.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(machineStatusHistoryRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        machineAlarmService.createAlarm(dto);
+
+        assertThat(machine.getStatus()).isEqualTo(Machine.Status.ERROR);
+        verify(workCommandService, never()).pauseForMachineError("EQ-WIND-01");
     }
 
     @Test

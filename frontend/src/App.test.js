@@ -3,6 +3,7 @@ import App from "./App";
 import AuthApi from "./api/AuthApi";
 
 jest.mock("./api/AuthApi",()=>({__esModule:true,default:{getCurrentUser:jest.fn(),logout:jest.fn()}}));
+jest.mock("./api/MesApi",()=>({__esModule:true,default:{getSystemConnections:jest.fn().mockResolvedValue({data:{l2:{status:"OFFLINE"},l1:{status:"OFFLINE",connected:0,total:6}}})}}));
 jest.mock("./pages/DashboardPage",()=>()=> <div>생산 대시보드</div>);
 
 const adminUser={memberId:1,loginId:"admin",memberName:"시스템 관리자",role:"ADMIN",status:"ACTIVE"};

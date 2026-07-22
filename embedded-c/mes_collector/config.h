@@ -27,5 +27,7 @@
 #define MES_HTTP_RETRY_QUEUE_FILE "mes_http_retry.queue"
 #define MES_HTTP_DEAD_LETTER_FILE "mes_http_dead_letter.queue"
 #define COMMAND_POLL_INTERVAL_SECONDS 1
+#define COLLECTOR_STATUS_INTERVAL_SECONDS 5
+#define COLLECTOR_ID "L2-COLLECTOR-01"
 
 #endif

@@ -5,6 +5,8 @@ import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
+import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
+import com.human.ev_relay_mes.Entity.AlarmCode;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
@@ -13,6 +15,7 @@ import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
+import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
@@ -42,6 +45,7 @@ class MachineServiceTest {
     @Mock WorkCommandRepository workCommandRepository;
     @Mock ProductionLogRepository productionLogRepository;
     @Mock InspectionUnitResultRepository inspectionUnitResultRepository;
+    @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
 
     @InjectMocks MachineService machineService;
 
@@ -177,5 +181,40 @@ class MachineServiceTest {
         assertThat(lot.getStatus()).isEqualTo(Lot.Status.RUNNING);
         assertThat(result.getStatus()).isEqualTo("RUNNING");
         verify(workCommandService).completeResumeCommand(lot, process, machine);
+    }
+
+    @Test
+    void normalReconnectStatusClearsOnlyCommunicationAlarms() {
+        Process process = Process.builder()
+                .processCode("OP20").processName("winding").processOrder(20).build();
+        Machine machine = Machine.builder()
+                .machineId("EQ-WIND-01").machineName("winder").machineType("WINDER")
+                .process(process).status(Machine.Status.ERROR).build();
+        AlarmCode communicationCode = AlarmCode.builder()
+                .alarmCode("COMM_DISCONNECTED").alarmName("disconnected")
+                .machineType("COMMON").build();
+        MachineAlarmHistory communicationAlarm = MachineAlarmHistory.builder()
+                .machineAlarmHistoryId(21L).machine(machine).alarmCode(communicationCode)
+                .alarmLevel("ERROR").build();
+        MachineStatusReceiveRequestDto dto = new MachineStatusReceiveRequestDto();
+        dto.setMachineId("EQ-WIND-01");
+        dto.setStatus("IDLE");
+        dto.setProcessCode("OP20");
+        dto.setMessage("connection_ready");
+
+        when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
+        when(processRepository.findById("OP20")).thenReturn(Optional.of(process));
+        when(machineAlarmHistoryRepository
+                .findByMachine_MachineIdAndAlarmCode_AlarmCodeInAndClearedAtIsNullOrderByOccurredAtDesc(
+                        org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))
+                .thenReturn(List.of(communicationAlarm));
+        when(machineStatusHistoryRepository.save(any(MachineStatusHistory.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        machineService.updateStatus(dto);
+
+        assertThat(machine.getStatus()).isEqualTo(Machine.Status.IDLE);
+        assertThat(communicationAlarm.getClearedAt()).isNotNull();
+        assertThat(communicationAlarm.getClearedBy()).isNull();
     }
 }

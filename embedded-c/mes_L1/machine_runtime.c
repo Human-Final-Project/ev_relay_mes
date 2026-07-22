@@ -398,6 +398,43 @@ int l1_machine_runtime_tick(L1MachineRuntime *runtime,
     return 0;
 }
 
+int l1_machine_runtime_connection_snapshot(
+    const L1MachineRuntime *runtime,
+    L1RuntimeActions *out_actions)
+{
+    L1MachineStatus status;
+    const char *lot_no;
+    const char *message;
+
+    if (runtime == NULL || runtime->device == NULL || out_actions == NULL) {
+        return -1;
+    }
+    actions_init(out_actions);
+    lot_no = runtime->lot_no[0] == '\0' ? "-" : runtime->lot_no;
+    switch (runtime->state) {
+    case L1_RUNTIME_IDLE:
+        status = L1_MACHINE_IDLE;
+        lot_no = "-";
+        message = "connection_ready";
+        break;
+    case L1_RUNTIME_RUNNING:
+        status = L1_MACHINE_RUNNING;
+        message = "connection_restored";
+        break;
+    case L1_RUNTIME_ERROR_PAUSED:
+        status = L1_MACHINE_ERROR;
+        message = "connection_restored_error";
+        break;
+    case L1_RUNTIME_STOPPED:
+        status = L1_MACHINE_STOPPED;
+        message = "connection_restored_stopped";
+        break;
+    default:
+        return -1;
+    }
+    return append_status(out_actions, runtime, status, lot_no, message);
+}
+
 int l1_machine_runtime_mark_reported(L1MachineRuntime *runtime, int quantity)
 {
     if (runtime == NULL || quantity < 0

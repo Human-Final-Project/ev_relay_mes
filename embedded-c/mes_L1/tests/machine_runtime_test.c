@@ -163,12 +163,38 @@ static void test_error_and_resume(void)
     CHECK(runtime.state == L1_RUNTIME_RUNNING);
 }
 
+static void test_connection_snapshot_reports_current_state(void)
+{
+    const L1DeviceConfig *device = l1_device_config_find("EQ-WIND-01");
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command command;
+
+    CHECK(device != NULL);
+    l1_machine_runtime_init(&runtime, device, 0);
+    CHECK(l1_machine_runtime_connection_snapshot(&runtime, &actions) == 0);
+    CHECK(actions.count == 1);
+    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
+    CHECK(actions.actions[0].data.machine_status.status == L1_MACHINE_IDLE);
+    CHECK(strcmp(actions.actions[0].data.machine_status.lot_no, "-") == 0);
+
+    command = start_command(device, "LOT-RECONNECT-001", 10);
+    CHECK(l1_machine_runtime_handle_command(&runtime, &command, &actions) == 0);
+    CHECK(l1_machine_runtime_connection_snapshot(&runtime, &actions) == 0);
+    CHECK(actions.actions[0].data.machine_status.status == L1_MACHINE_RUNNING);
+    CHECK(strcmp(actions.actions[0].data.machine_status.lot_no,
+                 "LOT-RECONNECT-001") == 0);
+    CHECK(strcmp(actions.actions[0].data.machine_status.message,
+                 "connection_restored") == 0);
+}
+
 int main(void)
 {
     test_process_event_shapes();
     test_replays_unreported_unit();
     test_three_percent_combined_ng();
     test_error_and_resume();
+    test_connection_snapshot_reports_current_state();
     if (checks_failed != 0) {
         fprintf(stderr, "%d of %d machine runtime checks failed.\n",
                 checks_failed, checks_run);

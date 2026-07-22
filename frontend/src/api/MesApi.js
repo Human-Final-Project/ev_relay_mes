@@ -13,6 +13,7 @@ async function mutate(method, url, data, config) {
 
 const MesApi = {
   getDashboardSummary: () => httpClient.get("/api/mes/dashboard/summary"),
+  getSystemConnections: () => httpClient.get("/api/mes/system-connections"),
   getRecentProductionLogs: () => httpClient.get("/api/mes/production/recent-logs"),
 
   getWorkOrders: (params) => httpClient.get("/api/work-orders", query(params)),

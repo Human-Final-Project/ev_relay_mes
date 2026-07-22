@@ -1,45 +1,199 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
-import { DonutChart, StackedBarChart, summarizeByProcess } from "../components/MesCharts";
+import { DonutChart } from "../components/MesCharts";
+import { EmptyState, ErrorState, LoadingState, StatusBadge, formatDate } from "../components/MesComponents";
 
 const machineOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
+const canClearAlarm = (role) => ["ADMIN", "MANAGER", "OPERATOR"].includes(role);
 
-export default function DashboardPage() {
+function todayRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return { startAt: localDateTime(start), endAt: localDateTime(end) };
+}
+
+function localDateTime(value) {
+  const part = (number) => String(number).padStart(2, "0");
+  return `${value.getFullYear()}-${part(value.getMonth() + 1)}-${part(value.getDate())}T${part(value.getHours())}:${part(value.getMinutes())}:${part(value.getSeconds())}`;
+}
+
+function statusRank(status) {
+  return { ERROR: 0, RUNNING: 1, IDLE: 2, STOPPED: 3 }[status] ?? 4;
+}
+
+export default function DashboardPage({ currentUser }) {
   const summary = useApiData(MesApi.getDashboardSummary, []);
   const machines = useApiData(MesApi.getMachines, []);
-  const recent = useApiData(MesApi.getRecentProductionLogs, []);
-  const reload = () => { summary.reload(); machines.reload(); recent.reload(); };
-  if (summary.loading || machines.loading || recent.loading) return <LoadingState />;
-  if (summary.error || machines.error || recent.error) return <ErrorState error={summary.error || machines.error || recent.error} onRetry={reload} />;
+  const lots = useApiData(() => MesApi.getLots({ status: "RUNNING" }), []);
+  const logs = useApiData(() => MesApi.getProductionLogs({ ...todayRange(), status: "COMPLETED" }), []);
+  const alarms = useApiData(() => MesApi.getMachineAlarms({ cleared: false }), []);
+
+  useEffect(() => {
+    const machineTimer = setInterval(machines.reload, 1000);
+    const dashboardTimer = setInterval(() => {
+      summary.reload();
+      lots.reload();
+      logs.reload();
+      alarms.reload();
+    }, 5000);
+    const refresh = () => {
+      summary.reload();
+      machines.reload();
+      lots.reload();
+      logs.reload();
+      alarms.reload();
+    };
+    window.addEventListener("mes:refresh", refresh);
+    return () => {
+      clearInterval(machineTimer);
+      clearInterval(dashboardTimer);
+      window.removeEventListener("mes:refresh", refresh);
+    };
+  // reload functions are stable for the lifetime of each useApiData hook.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary.reload, machines.reload, lots.reload, logs.reload, alarms.reload]);
+
+  const initialLoading = [summary, machines, lots, logs, alarms].some((result) => result.loading && result.data === null);
+  const initialError = [summary, machines, lots, logs, alarms].find((result) => result.error && result.data === null)?.error;
+  const reloadAll = () => window.dispatchEvent(new Event("mes:refresh"));
+
   const s = summary.data || {};
-  const sortedMachines = [...(machines.data || [])].sort((a,b) => machineOrder.indexOf(a.processCode)-machineOrder.indexOf(b.processCode));
-  const processRows=summarizeByProcess(recent.data||[],machineOrder);
-  const productionTotal=(s.production?.okQty||0)+(s.production?.ngQty||0);
-  const yieldRate=productionTotal?`${(s.production.okQty/productionTotal*100).toFixed(1)}%`:"0%";
+  const sortedMachines = useMemo(() => [...(machines.data || [])].sort((left, right) => {
+    const processDifference = machineOrder.indexOf(left.processCode) - machineOrder.indexOf(right.processCode);
+    return processDifference || statusRank(left.status) - statusRank(right.status);
+  }), [machines.data]);
+  const completedLogs = useMemo(() => logs.data || [], [logs.data]);
+  const activeAlarms = alarms.data || [];
+  const hourly = useMemo(() => hourlyProduction(completedLogs), [completedLogs]);
+  const recentLogs = completedLogs.slice(0, 4);
+
+  if (initialLoading) return <LoadingState />;
+  if (initialError) return <ErrorState error={initialError} onRetry={reloadAll} />;
+
   const kpis = [
-    ["오늘 완료 LOT", s.production?.completedLots || 0, "생산 완료"],
-    ["오늘 생산 OK", s.production?.okQty || 0, `NG ${s.production?.ngQty || 0}`],
-    ["진행 중 작업지시", s.workOrders?.running || 0, `전체 ${s.workOrders?.total || 0}`],
-    ["가동 중 설비", `${s.machines?.running || 0} / ${s.machines?.total || 0}`, `이상 ${s.machines?.error || 0}`],
-    ["활성 알람", s.alarms?.active || 0, `오늘 발생 ${s.alarms?.occurredToday || 0}`],
-    ["부족 자재", s.materials?.lowStockItemCount || 0, `기준 ${s.materials?.lowStockThreshold ?? 100} 이하`],
+    { label: "오늘 생산 OK", value: s.production?.okQty || 0, unit: "EA", tone: "success" },
+    { label: "오늘 생산 NG", value: s.production?.ngQty || 0, unit: "EA", tone: "danger" },
+    { label: "진행 중 LOT", value: (lots.data || []).length, unit: "LOTS", tone: "primary" },
+    { label: "가동 설비", value: `${s.machines?.running || 0}/${s.machines?.total || 0}`, unit: "RUN", tone: "info" },
+    { label: "활성 알람", value: s.alarms?.active || 0, unit: "ACTIVE", tone: "warning" },
+    { label: "자재 부족 품목", value: s.materials?.lowStockItemCount || 0, unit: "SKUS", tone: "danger" },
   ];
-  return <div className="mes-page">
-    <PageHeader title="생산 대시보드" description={`Backend 집계 기준 · ${formatDate(s.generatedAt)}`} actions={<button className="btn secondary" onClick={reload}>새로고침</button>} />
-    <div className="mes-grid kpis">{kpis.map(([label,value,hint]) => <div className="mes-card mes-kpi" key={label}><span className="label">{label}</span><strong className="value">{value}</strong><span className="hint">{hint}</span></div>)}</div>
-    <div className="dashboard-charts">
-      <section className="mes-card chart-card chart-wide"><div className="chart-heading"><div><h2>최근 공정별 생산량</h2><p>최근 생산 실적의 OK·NG 누적 비교</p></div><div className="chart-key"><span className="ok">OK</span><span className="ng">NG</span></div></div><StackedBarChart rows={processRows}/></section>
-      <section className="mes-card chart-card"><div className="chart-heading"><div><h2>오늘 양품률</h2><p>완료 LOT 집계 기준</p></div></div><DonutChart ariaLabel="오늘 OK 및 NG 생산 비율" centerValue={yieldRate} centerLabel="양품률" segments={[{label:"OK",value:s.production?.okQty||0,color:"#0ea5a4"},{label:"NG",value:s.production?.ngQty||0,color:"#f43f5e"}]}/></section>
-      <section className="mes-card chart-card"><div className="chart-heading"><div><h2>설비 상태</h2><p>등록 설비 실시간 상태</p></div></div><DonutChart ariaLabel="설비 상태 분포" centerValue={s.machines?.total||0} centerLabel="전체 설비" segments={[{label:"가동",value:s.machines?.running||0,color:"#22c55e"},{label:"대기",value:s.machines?.idle||0,color:"#38bdf8"},{label:"정지",value:s.machines?.stopped||0,color:"#f59e0b"},{label:"이상",value:s.machines?.error||0,color:"#ef4444"}]}/></section>
+
+  return <div className="mes-page stitch-dashboard">
+    <div className="dashboard-title-row">
+      <div>
+        <h1>생산 대시보드</h1>
+        <p>공정, 설비, 생산 및 품질 현황을 실시간으로 확인합니다.</p>
+      </div>
+      <div className="live-indicator"><span /> 실시간 데이터 · 설비 1초 / 집계 5초</div>
     </div>
-    <section className="mes-card"><h2>공정·설비 흐름</h2><div className="process-flow">
-      <div className="parallel-processes">{sortedMachines.filter(m=>["OP20","OP30"].includes(m.processCode)).map(m=><MachineMini key={m.machineId} machine={m}/>)}</div>
-      <div style={{textAlign:"center",color:"#94a3b8"}}>합류 →</div>
-      {sortedMachines.filter(m=>!["OP20","OP30"].includes(m.processCode)).map(m=><MachineMini key={m.machineId} machine={m}/>)}</div></section>
-    <section className="mes-card"><h2>최근 생산 실적</h2><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>공정</th><th>설비</th><th>투입</th><th>OK</th><th>NG</th><th>상태</th><th>수집 시각</th></tr></thead><tbody>{(recent.data || []).map(log=><tr key={log.productionLogId}><td className="mono">{log.lotNo}</td><td>{log.processName}<br/><span className="mono">{log.processCode}</span></td><td className="mono">{log.machineId}</td><td>{log.inputQty}</td><td>{log.okQty}</td><td>{log.ngQty}</td><td><StatusBadge value={log.status}/></td><td>{formatDate(log.createdAt)}</td></tr>)}</tbody></table></div></section>
+
+    <div className="dashboard-kpis">
+      {kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
+    </div>
+
+    <section className="dashboard-panel process-overview">
+      <div className="dashboard-section-heading">
+        <div><h2><span className="material-symbols-outlined">precision_manufacturing</span>실시간 생산 공정 현황</h2><p>{formatDate(s.generatedAt)} 기준</p></div>
+        <div className="machine-legend"><Legend tone="running" label="RUNNING"/><Legend tone="idle" label="IDLE"/><Legend tone="error" label="ERROR"/></div>
+      </div>
+      <div className="dashboard-process-flow">
+        <div className="dashboard-parallel-machines">
+          {sortedMachines.filter((machine) => ["OP20", "OP30"].includes(machine.processCode)).map((machine) => <DashboardMachine key={machine.machineId} machine={machine}/>) }
+        </div>
+        <ProcessArrow label="병렬 공정 합류" />
+        {sortedMachines.filter((machine) => !["OP20", "OP30"].includes(machine.processCode)).map((machine, index) => <React.Fragment key={machine.machineId}>
+          {index > 0 && <ProcessArrow />}
+          <DashboardMachine machine={machine}/>
+        </React.Fragment>)}
+      </div>
+    </section>
+
+    <div className="dashboard-analysis-grid">
+      <section className="dashboard-panel hourly-panel">
+        <h3>시간대별 완제품 생산 추이 <small>(EA)</small></h3>
+        <HourlyChart rows={hourly}/>
+      </section>
+      <section className="dashboard-panel compact-donut">
+        <h3>설비 상태 분포</h3>
+        <DonutChart ariaLabel="설비 상태 분포" centerValue={s.machines?.total || 0} centerLabel="EQUIP" segments={[
+          { label: "RUN", value: s.machines?.running || 0, color: "#009b55" },
+          { label: "IDLE", value: s.machines?.idle || 0, color: "#78909c" },
+          { label: "STOP", value: s.machines?.stopped || 0, color: "#e59a00" },
+          { label: "ERR", value: s.machines?.error || 0, color: "#d92d20" },
+        ]}/>
+      </section>
+      <section className="dashboard-panel compact-donut">
+        <h3>작업지시 상태 분포</h3>
+        <DonutChart ariaLabel="작업지시 상태 분포" centerValue={s.workOrders?.total || 0} centerLabel="ORDERS" segments={[
+          { label: "COMP", value: s.workOrders?.completed || 0, color: "#0566d9" },
+          { label: "RUN", value: s.workOrders?.running || 0, color: "#009b55" },
+          { label: "NEW", value: (s.workOrders?.created || 0) + (s.workOrders?.released || 0), color: "#78909c" },
+        ]}/>
+      </section>
+    </div>
+
+    <div className="dashboard-bottom-grid">
+      <section className="dashboard-panel dashboard-table-panel">
+        <div className="dashboard-section-heading"><h3><span className="material-symbols-outlined">receipt_long</span>최근 생산 실적</h3><Link to="/production">전체보기</Link></div>
+        {!recentLogs.length ? <EmptyState message="오늘 완료된 생산 실적이 없습니다."/> : <div className="dashboard-table-scroll"><table className="dashboard-table"><thead><tr><th>LOT 번호</th><th>공정</th><th>설비</th><th>OK / NG</th><th>종료 시각</th></tr></thead><tbody>
+          {recentLogs.map((log) => <tr key={log.productionLogId}><td className="mono dashboard-lot">{log.lotNo}</td><td>{log.processCode}<br/><small>{log.processName}</small></td><td className="mono">{log.machineId}</td><td><strong className="ok-count">{log.okQty}</strong><span className="quantity-divider">/</span><strong className={Number(log.ngQty) > 0 ? "ng-count" : "muted-count"}>{log.ngQty}</strong></td><td className="mono">{formatDate(log.endedAt)}</td></tr>)}
+        </tbody></table></div>}
+      </section>
+      <section className="dashboard-panel dashboard-table-panel alarm-panel">
+        <div className="dashboard-section-heading"><h3><span className="material-symbols-outlined">warning</span>미해제 알람 목록</h3><span className="active-alarm-count">{activeAlarms.length} ACTIVE</span></div>
+        {!activeAlarms.length ? <EmptyState message="활성 알람이 없습니다."/> : <div className="dashboard-table-scroll"><table className="dashboard-table"><thead><tr><th>설비</th><th>메시지</th><th>발생 시각</th><th></th></tr></thead><tbody>
+          {activeAlarms.slice(0, 4).map((alarm) => <tr key={alarm.machineAlarmHistoryId}><td><strong className="ng-count mono">{alarm.machineId}</strong><br/><small>{alarm.alarmCode}</small></td><td>{alarm.message || alarm.alarmName}</td><td className="mono">{formatDate(alarm.occurredAt)}</td><td>{canClearAlarm(currentUser?.role) && <button className="alarm-clear-button" onClick={async () => { await MesApi.clearMachineAlarm(alarm.machineAlarmHistoryId); alarms.reload(); machines.reload(); summary.reload(); }}>해제</button>}</td></tr>)}
+        </tbody></table></div>}
+      </section>
+    </div>
   </div>;
 }
 
-function MachineMini({ machine }) { return <div className="mes-card machine-card"><span className="machine-code">{machine.processCode} · {machine.machineId}</span><div className="machine-title">{machine.processName || machine.machineName}</div><StatusBadge value={machine.status}/></div>; }
+function KpiCard({ label, value, unit, tone }) {
+  return <div className={`dashboard-kpi tone-${tone}`}><span>{label}</span><div><strong>{Number.isFinite(value) ? value.toLocaleString() : value}</strong><small>{unit}</small></div></div>;
+}
+
+function Legend({ tone, label }) {
+  return <span><i className={`legend-${tone}`}/>{label}</span>;
+}
+
+function ProcessArrow({ label }) {
+  return <div className="dashboard-process-arrow" aria-hidden="true">{label && <span>{label}</span>}<i/><b>›</b></div>;
+}
+
+function DashboardMachine({ machine }) {
+  const hasProgress = Number(machine.targetQty) > 0;
+  const progress = Math.min(100, Math.max(0, Number(machine.progressPercent) || 0));
+  return <article className={`dashboard-machine machine-${String(machine.status || "IDLE").toLowerCase()}`}>
+    <div className="dashboard-machine-head"><span>{machine.processCode}</span><i/></div>
+    <strong>{machine.machineId}</strong>
+    <small>{machine.processName || machine.machineName}</small>
+    {hasProgress ? <div className="dashboard-machine-progress"><div><span>{machine.currentLotNo || "-"}</span><b>{machine.processedQty || 0}/{machine.targetQty}</b></div><div className="progress-track"><span style={{ width: `${progress}%` }}/></div></div> : <div className="dashboard-machine-empty">대기 중</div>}
+    <StatusBadge value={machine.status}/>
+  </article>;
+}
+
+function hourlyProduction(logs) {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const firstHour = Math.max(0, currentHour - 7);
+  const buckets = Array.from({ length: currentHour - firstHour + 1 }, (_, index) => ({ hour: firstHour + index, quantity: 0 }));
+  logs.filter((log) => log.processCode === "OP80").forEach((log) => {
+    const endedAt = new Date(log.endedAt || log.createdAt);
+    const bucket = buckets.find((row) => row.hour === endedAt.getHours());
+    if (bucket) bucket.quantity += (Number(log.okQty) || 0) + (Number(log.ngQty) || 0);
+  });
+  return buckets;
+}
+
+function HourlyChart({ rows }) {
+  const max = Math.max(1, ...rows.map((row) => row.quantity));
+  return <div className="hourly-chart" role="img" aria-label="시간대별 완제품 생산량">
+    {rows.map((row, index) => <div className="hourly-column" key={row.hour}><span className="hourly-value">{row.quantity || ""}</span><i style={{ height: `${Math.max(row.quantity ? 8 : 2, row.quantity / max * 100)}%` }} className={index === rows.length - 1 ? "current" : ""}/><b>{String(row.hour).padStart(2, "0")}</b></div>)}
+  </div>;
+}

@@ -62,6 +62,13 @@ ApiClientResult api_client_release_command(int64_t command_id,
                                            const char *machine_id,
                                            int *http_status);
 
+/* Reports the transient L2 and L1 connection state to Backend. */
+ApiClientResult api_client_send_connection_status(
+    const char *collector_id,
+    size_t connected_l1,
+    size_t total_l1,
+    int *http_status);
+
 const char *api_client_result_name(ApiClientResult result);
 
 #endif

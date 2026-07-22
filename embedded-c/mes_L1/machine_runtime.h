@@ -65,6 +65,10 @@ int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
                                       L1RuntimeActions *out_actions);
 int l1_machine_runtime_tick(L1MachineRuntime *runtime,
                             L1RuntimeActions *out_actions);
+/* Emits the authoritative current machine status after each TCP reconnect. */
+int l1_machine_runtime_connection_snapshot(
+    const L1MachineRuntime *runtime,
+    L1RuntimeActions *out_actions);
 int l1_machine_runtime_mark_reported(L1MachineRuntime *runtime,
                                      int quantity);
 int l1_machine_runtime_remaining_qty(const L1MachineRuntime *runtime);

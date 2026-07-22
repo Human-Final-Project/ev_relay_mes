@@ -29,6 +29,7 @@
 #define API_PATH_COMMAND_ACK "/api/collector/command-acks"
 #define API_PATH_PENDING_COMMANDS "/api/collector/commands/pending"
 #define API_PATH_RELEASE_COMMAND_PREFIX "/api/collector/commands/"
+#define API_PATH_CONNECTION_STATUS "/api/collector/status"
 #define API_QUEUE_LINE_CAPACITY (API_CLIENT_PATH_CAPACITY + API_CLIENT_JSON_CAPACITY + 16)
 #define API_EVENT_ID_CAPACITY 100
 
@@ -1140,6 +1141,33 @@ ApiClientResult api_client_release_command(int64_t command_id,
         return API_CLIENT_BUFFER_TOO_SMALL;
     }
     return api_client_post_with_retries(path, "{}", http_status);
+}
+
+ApiClientResult api_client_send_connection_status(
+    const char *collector_id,
+    size_t connected_l1,
+    size_t total_l1,
+    int *http_status)
+{
+    char json[256];
+    int length;
+
+    if (collector_id == NULL || collector_id[0] == '\0'
+        || total_l1 == 0 || connected_l1 > total_l1) {
+        return API_CLIENT_INVALID_ARGUMENT;
+    }
+    length = snprintf(json,
+                      sizeof(json),
+                      "{\"collectorId\":\"%s\",\"connectedL1\":%lu,"
+                      "\"totalL1\":%lu}",
+                      collector_id,
+                      (unsigned long)connected_l1,
+                      (unsigned long)total_l1);
+    if (length < 0 || (size_t)length >= sizeof(json)) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
+    return api_client_post_with_retries(
+        API_PATH_CONNECTION_STATUS, json, http_status);
 }
 
 

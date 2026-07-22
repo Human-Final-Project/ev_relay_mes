@@ -266,6 +266,14 @@ int collector_is_machine_connected(const char *machine_id)
         &connection_registry, machine_id);
 }
 
+size_t collector_connected_machine_count(void)
+{
+    if (!connection_registry_ready) {
+        return 0;
+    }
+    return connection_registry_registered_count(&connection_registry);
+}
+
 int collector_build_communication_failure_events(
     const char *machine_id,
     CollectorCommunicationFailure failure,

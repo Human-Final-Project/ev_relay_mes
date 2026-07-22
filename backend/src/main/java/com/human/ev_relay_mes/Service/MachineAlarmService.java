@@ -65,9 +65,16 @@ public class MachineAlarmService {
             if (machine.getStatus() != Machine.Status.ERROR) {
                 changeMachineStatus(machine, Machine.Status.ERROR, "ERROR 알람 발생: " + alarmCode.getAlarmCode());
             }
-            workCommandService.pauseForMachineError(machine.getMachineId());
+            if (!isCommunicationAlarm(alarmCode.getAlarmCode())) {
+                workCommandService.pauseForMachineError(machine.getMachineId());
+            }
         }
         return toResponse(savedHistory);
+    }
+
+    private boolean isCommunicationAlarm(String alarmCode) {
+        return "COMM_DISCONNECTED".equals(alarmCode)
+                || "COMM_TIMEOUT".equals(alarmCode);
     }
 
     // 알람 관리 화면에서 설비·알람 코드·등급·해제 여부·기간 조건으로 이력을 조회할 때 사용한다.

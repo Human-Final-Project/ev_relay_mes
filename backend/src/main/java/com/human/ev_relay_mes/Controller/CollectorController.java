@@ -7,6 +7,7 @@ import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
+import com.human.ev_relay_mes.Dto.Request.CollectorStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
@@ -20,6 +21,7 @@ import com.human.ev_relay_mes.Service.MachineAlarmService;
 import com.human.ev_relay_mes.Service.MachineService;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.Service.SystemConnectionStatusService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -39,6 +41,14 @@ public class CollectorController {
     private final MachineService machineService;
     private final MachineAlarmService machineAlarmService;
     private final WorkCommandService workCommandService;
+    private final SystemConnectionStatusService systemConnectionStatusService;
+
+    @PostMapping("/status")
+    public ResponseEntity<Void> receiveCollectorStatus(
+            @Valid @RequestBody CollectorStatusRequestDto dto) {
+        systemConnectionStatusService.report(dto);
+        return ResponseEntity.noContent().build();
+    }
 
     @PostMapping("/production-logs")
     public ResponseEntity<ProductionLogResponseDto> receiveProductionResult(

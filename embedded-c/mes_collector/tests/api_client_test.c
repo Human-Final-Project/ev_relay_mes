@@ -546,6 +546,39 @@ static void test_http_post_receives_created_response(void)
     collector_mutex_destroy(&server.mutex);
 }
 
+static void test_http_posts_connection_status(void)
+{
+    MockHttpServer server;
+    int http_status = 0;
+    ApiClientResult result;
+
+    memset(&server, 0, sizeof(server));
+    CHECK(collector_mutex_init(&server.mutex) == 0);
+    server.server_socket = net_tcp_server_create(MES_BACKEND_ADDRESS,
+                                                 MES_BACKEND_PORT,
+                                                 1);
+    CHECK(server.server_socket != NET_INVALID_SOCKET);
+    if (server.server_socket == NET_INVALID_SOCKET) {
+        collector_mutex_destroy(&server.mutex);
+        return;
+    }
+    CHECK(collector_thread_start_detached(run_mock_http_server, &server) == 0);
+    result = api_client_send_connection_status(
+        "L2-COLLECTOR-01", 4, 6, &http_status);
+    CHECK(result == API_CLIENT_OK);
+    CHECK(http_status == 201);
+
+    collector_mutex_lock(&server.mutex);
+    CHECK(strstr(server.request,
+                 "POST /api/collector/status HTTP/1.1\r\n")
+          == server.request);
+    CHECK(strstr(server.request,
+                 "\r\n\r\n{\"collectorId\":\"L2-COLLECTOR-01\","
+                 "\"connectedL1\":4,\"totalL1\":6}") != NULL);
+    collector_mutex_unlock(&server.mutex);
+    collector_mutex_destroy(&server.mutex);
+}
+
 int main(void)
 {
     if (net_runtime_init() != 0) {
@@ -564,6 +597,7 @@ int main(void)
     test_small_buffer_is_rejected();
     test_command_response_parser();
     test_http_post_receives_created_response();
+    test_http_posts_connection_status();
     test_http_release_command_request();
     test_http_get_fetches_chunked_commands();
 

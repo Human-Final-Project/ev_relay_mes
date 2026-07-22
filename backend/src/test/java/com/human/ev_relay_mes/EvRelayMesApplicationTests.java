@@ -87,6 +87,29 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
+	void acceptsCollectorConnectionStatusWithoutAuthentication() throws Exception {
+		mockMvc.perform(post("/api/collector/status")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"collectorId\":\"L2-COLLECTOR-01\",\"connectedL1\":4,\"totalL1\":6}"))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	@WithMockUser(roles = "VIEWER")
+	void returnsSystemConnectionStatusToAuthenticatedUser() throws Exception {
+		mockMvc.perform(post("/api/collector/status")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{\"collectorId\":\"L2-COLLECTOR-01\",\"connectedL1\":4,\"totalL1\":6}"))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(get("/api/mes/system-connections"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.l2.status").value("ONLINE"))
+				.andExpect(jsonPath("$.l1.status").value("PARTIAL"))
+				.andExpect(jsonPath("$.l1.connected").value(4))
+				.andExpect(jsonPath("$.l1.total").value(6));
+	}
+
+	@Test
 	@WithMockUser(roles = "VIEWER")
 	void bindsOptionalWorkOrderAndLotFilters() throws Exception {
 		mockMvc.perform(get("/api/work-orders"))

@@ -147,6 +147,7 @@ V1,HELLO,EQ-WIND-01\n
 - 같은 `MACHINE_ID`가 이미 연결되어 있으면 L2는 새 연결을 거부한다.
 - 등록이 끝난 뒤 다른 `MACHINE_ID`를 보내면 메시지를 폐기하고 오류를 기록한다.
 - `HELLO`는 Backend로 전달하지 않는다.
+- L1은 `HELLO` 전송 직후 현재 런타임의 `MACHINE_STATUS`를 전송한다. 최초 연결은 `IDLE`, 생산 중 재연결은 해당 LOT의 `RUNNING`, 실제 오류 중 재연결은 `ERROR`를 유지한다.
 
 ### 5.2 연결 확인 `HEARTBEAT`
 
@@ -455,6 +456,7 @@ L1 연결 종료 감지
 - 정상 연결에서 Timeout 상태로 바뀌는 순간 `COMM_TIMEOUT`을 한 번만 생성한다.
 - Timeout 처리 과정에서 L2가 소켓을 닫아 발생한 연결 종료에 대해서는 `COMM_DISCONNECTED`를 추가 생성하지 않는다.
 - L1이 정상적으로 재접속하고 `HELLO` 등록을 완료하면 통신 장애 플래그를 초기화한다.
+- `COMM_DISCONNECTED`, `COMM_TIMEOUT`은 일시적인 통신 장애이므로 진행 중 작업명령을 취소하지 않는다. Backend가 재연결된 L1의 `IDLE` 또는 `RUNNING` 상태를 받으면 해당 통신 알람만 자동 해제한다.
 
 ## 7. L2에서 Backend로 보내는 JSON 예시
 

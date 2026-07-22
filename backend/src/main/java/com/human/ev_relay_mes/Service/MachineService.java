@@ -6,6 +6,7 @@ import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
+import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
@@ -15,6 +16,7 @@ import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.EnumSet;
+import java.util.Set;
+import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -39,6 +43,10 @@ public class MachineService {
     private final WorkCommandRepository workCommandRepository;
     private final ProductionLogRepository productionLogRepository;
     private final InspectionUnitResultRepository inspectionUnitResultRepository;
+    private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
+
+    private static final Set<String> COMMUNICATION_ALARM_CODES = Set.of(
+            "COMM_DISCONNECTED", "COMM_TIMEOUT");
 
     // 설비 현황 화면에 전체 설비의 기본 정보와 현재 상태를 표시할 때 사용한다.
     public List<MachineResponseDto> getMachines() {
@@ -68,6 +76,9 @@ public class MachineService {
                         .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
 
         machine.setStatus(status);
+        if (status == Machine.Status.IDLE || status == Machine.Status.RUNNING) {
+            clearRecoveredCommunicationAlarms(machine.getMachineId());
+        }
         if (status == Machine.Status.RUNNING && lot != null && process != null
                 && lot.getStatus() == Lot.Status.HOLD
                 && workCommandService.completeResumeCommand(lot, process, machine)) {
@@ -82,6 +93,14 @@ public class MachineService {
                 .message(dto.getMessage())
                 .build();
         return toHistoryResponse(machineStatusHistoryRepository.save(history));
+    }
+
+    private void clearRecoveredCommunicationAlarms(String machineId) {
+        LocalDateTime recoveredAt = LocalDateTime.now();
+        List<MachineAlarmHistory> alarms = machineAlarmHistoryRepository
+                .findByMachine_MachineIdAndAlarmCode_AlarmCodeInAndClearedAtIsNullOrderByOccurredAtDesc(
+                        machineId, COMMUNICATION_ALARM_CODES);
+        alarms.forEach(alarm -> alarm.setClearedAt(recoveredAt));
     }
 
     // 설비 상세 화면에서 특정 설비의 상태 변화 이력을 최신순으로 표시할 때 사용한다.

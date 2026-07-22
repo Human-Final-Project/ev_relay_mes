@@ -26,6 +26,27 @@ static volatile int scheduler_running;
 static volatile int scheduler_worker_active;
 static int scheduler_initialized;
 
+static void report_connection_status(void)
+{
+    size_t connected = collector_connected_machine_count();
+    int http_status = 0;
+    ApiClientResult result = api_client_send_connection_status(
+        COLLECTOR_ID,
+        connected,
+        COLLECTOR_MAX_L1_CONNECTIONS,
+        &http_status);
+
+    if (result != API_CLIENT_OK) {
+        fprintf(stderr,
+                "[L2 Status] report failed result=%s http=%d connected=%u/%d\n",
+                api_client_result_name(result),
+                http_status,
+                (unsigned int)connected,
+                COLLECTOR_MAX_L1_CONNECTIONS);
+        fflush(stderr);
+    }
+}
+
 static void command_id_to_text(int64_t value, char output[21])
 {
     char reversed[20];
@@ -153,10 +174,19 @@ static void dispatch_commands_for_machine(const char *machine_id)
 
 static void scheduler_worker(void *context)
 {
+    time_t last_status_report = 0;
+
     (void)context;
     while (scheduler_running) {
         size_t index;
         unsigned int waited = 0;
+        time_t now = time(NULL);
+
+        if (last_status_report == 0
+            || now - last_status_report >= COLLECTOR_STATUS_INTERVAL_SECONDS) {
+            report_connection_status();
+            last_status_report = now;
+        }
 
         for (index = 0;
              scheduler_running && index < COLLECTOR_MAX_L1_CONNECTIONS;

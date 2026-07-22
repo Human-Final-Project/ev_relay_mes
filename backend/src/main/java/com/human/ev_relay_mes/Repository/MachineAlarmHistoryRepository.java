@@ -11,6 +11,7 @@ import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Collection;
 
 public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlarmHistory, Long> {
 
@@ -34,6 +35,9 @@ public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlar
 
     // 조치가 완료된 알람과 최근 해제 내역을 확인할 때 사용한다.
     List<MachineAlarmHistory> findByClearedAtIsNotNullOrderByClearedAtDesc();
+
+    List<MachineAlarmHistory> findByMachine_MachineIdAndAlarmCode_AlarmCodeInAndClearedAtIsNullOrderByOccurredAtDesc(
+            String machineId, Collection<String> alarmCodes);
 
     // 기간별 설비 장애 현황과 알람 발생 추이를 조회할 때 사용한다.
     List<MachineAlarmHistory> findByOccurredAtBetweenOrderByOccurredAtDesc(LocalDateTime startAt, LocalDateTime endAt);
