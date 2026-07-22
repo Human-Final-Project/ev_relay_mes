@@ -17,6 +17,7 @@ public class DefectHistoryResponseDto {
     private String processName;
     private String defectCode;
     private String defectName;
+    private String defectDescription;
     private Integer defectQty;
     private LocalDateTime occurredAt;
     private String message;

@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.*;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,16 +19,13 @@ import java.util.List;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class InspectionStandardService {
-    public static final String INSPECTION_PROCESS_CODE = "OP70";
-
     private final InspectionStandardRepository standardRepository;
     private final LotInspectionStandardSnapshotRepository snapshotRepository;
     private final ProcessRepository processRepository;
 
     public List<InspectionStandardResponseDto> getAll() {
-        Process process = inspectionProcess();
-        ensureDefaultStandards(process);
-        return standardRepository.findByProcess_ProcessCodeOrderByStandardIdAsc(INSPECTION_PROCESS_CODE)
+        ensureDefaultsForKnownProcesses();
+        return standardRepository.findAll(Sort.by("process.processOrder", "standardId"))
                 .stream().map(this::toResponse).toList();
     }
 
@@ -83,23 +81,42 @@ public class InspectionStandardService {
                 lot.getLotNo(), process.getProcessCode());
     }
 
+    public static boolean supportsMeasurements(String processCode) {
+        return List.of("OP20", "OP30", "OP60", "OP70").contains(processCode);
+    }
+
     @Transactional
     public void ensureDefaultStandards(Process process) {
-        if (!INSPECTION_PROCESS_CODE.equals(process.getProcessCode())
-                || standardRepository.countByProcess_ProcessCode(process.getProcessCode()) > 0) return;
-        standardRepository.save(defaultStandard(process, "OPERATION_VOLTAGE", "동작 전압", "V", "10.000", "14.000"));
-        standardRepository.save(defaultStandard(process, "COIL_RESISTANCE", "코일 저항", "OHM", "80.000", "120.000"));
-        standardRepository.save(defaultStandard(process, "CONTACT_RESISTANCE", "접촉 저항", "mOHM", "0.000", "50.000"));
+        if (standardRepository.countByProcess_ProcessCode(process.getProcessCode()) > 0) return;
+        switch (process.getProcessCode()) {
+            case "OP20" -> standardRepository.save(defaultStandard(process, "COIL_RESISTANCE", "코일 저항", "OHM", "80.000", "120.000"));
+            case "OP30" -> {
+                standardRepository.save(defaultStandard(process, "WELD_STRENGTH", "용접 강도", "N", "40.000", "80.000"));
+                standardRepository.save(defaultStandard(process, "CONTACT_RESISTANCE", "접촉 저항", "mOHM", "0.000", "50.000"));
+                standardRepository.save(defaultStandard(process, "CONTACT_POSITION", "접점 위치 편차", "MM", "0.000", "0.200"));
+            }
+            case "OP60" -> {
+                standardRepository.save(defaultStandard(process, "GAS_PRESSURE", "가스 압력", "BAR", "2.500", "3.500"));
+                standardRepository.save(defaultStandard(process, "LEAK_RATE", "누설률", "SCCM", "0.000", "0.500"));
+            }
+            case "OP70" -> {
+                standardRepository.save(defaultStandard(process, "INSULATION_RESISTANCE", "절연 저항", "MOHM", "100.000", "1000.000"));
+                standardRepository.save(defaultStandard(process, "WITHSTAND_VOLTAGE", "내전압", "V", "1500.000", "2000.000"));
+                standardRepository.save(defaultStandard(process, "OPERATION_VOLTAGE", "동작 전압", "V", "10.000", "14.000"));
+                standardRepository.save(defaultStandard(process, "CONTACT_BOUNCE", "접점 바운스 시간", "MS", "0.000", "5.000"));
+            }
+            default -> { }
+        }
+    }
+
+    private void ensureDefaultsForKnownProcesses() {
+        List.of("OP20", "OP30", "OP60", "OP70").forEach(code ->
+                processRepository.findById(code).ifPresent(this::ensureDefaultStandards));
     }
 
     private InspectionStandard defaultStandard(Process p, String item, String name, String unit, String low, String high) {
         return InspectionStandard.builder().process(p).inspectionItem(item).itemName(name).unit(unit)
                 .lowerLimit(new BigDecimal(low)).upperLimit(new BigDecimal(high)).standardVersion(1).build();
-    }
-
-    private Process inspectionProcess() {
-        return processRepository.findById(INSPECTION_PROCESS_CODE)
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
     }
 
     private void validateLimits(BigDecimal lower, BigDecimal upper) {

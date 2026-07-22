@@ -169,6 +169,12 @@ static L1ProtocolResult build_runtime_action(
             output_capacity,
             &action->data.inspection,
             output_length);
+    case L1_RUNTIME_ACTION_JUDGMENT:
+        return l1_protocol_build_judgment(
+            output,
+            output_capacity,
+            &action->data.judgment,
+            output_length);
     case L1_RUNTIME_ACTION_ALARM:
         return l1_protocol_build_alarm(output,
                                        output_capacity,
@@ -214,7 +220,8 @@ static int execute_runtime_actions(RuntimeContext *runtime,
               && l1_machine_runtime_mark_reported(
                      runtime->machine,
                      action->reported_quantity) != 0)
-             || (action->type == L1_RUNTIME_ACTION_INSPECTION
+             || ((action->type == L1_RUNTIME_ACTION_INSPECTION
+                  || action->type == L1_RUNTIME_ACTION_JUDGMENT)
                  && action->completes_unit
                  && l1_machine_runtime_mark_reported(runtime->machine, 1) != 0))) {
             fprintf(stderr, "[L1] Failed to update reported quantity.\n");

@@ -28,7 +28,6 @@ import java.util.EnumSet;
 @Transactional(readOnly = true)
 public class MachineService {
 
-    private static final String INSPECTION_PROCESS = "OP70";
     private static final EnumSet<WorkCommand.Status> ACTIVE_COMMAND_STATUSES = EnumSet.of(
             WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED);
 
@@ -147,13 +146,14 @@ public class MachineService {
             WorkCommand command) {
         String lotNo = command.getLot().getLotNo();
         String processCode = command.getProcess().getProcessCode();
-        int processedQty = INSPECTION_PROCESS.equals(processCode)
-                ? Math.toIntExact(inspectionUnitResultRepository
-                        .countByLot_LotNoAndProcess_ProcessCode(lotNo, processCode))
-                : productionLogRepository
-                        .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                                lotNo, processCode)
-                        .stream().mapToInt(log -> log.getInputQty()).sum();
+        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
+                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+                        lotNo, processCode,
+                        com.human.ev_relay_mes.Entity.InspectionUnitResult.EvaluationStatus.COMPLETED));
+        int productionQty = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(lotNo, processCode)
+                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int processedQty = Math.max(evaluatedQty, productionQty);
         int targetQty = command.getCommandType() == WorkCommand.CommandType.RESUME
                 ? workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo).stream()
                         .filter(item -> item.getCommandType() == WorkCommand.CommandType.START)

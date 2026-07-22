@@ -70,6 +70,12 @@ typedef enum {
     L1_ACK_REJECTED
 } L1CommandAckStatus;
 
+typedef enum {
+    L1_JUDGMENT_UNKNOWN = 0,
+    L1_JUDGMENT_OK,
+    L1_JUDGMENT_NG
+} L1JudgmentResult;
+
 typedef struct {
     char machine_id[L1_MACHINE_ID_CAPACITY];
     char process_code[L1_PROCESS_CODE_CAPACITY];
@@ -89,6 +95,16 @@ typedef struct {
     double value;
     char unit[L1_UNIT_CAPACITY];
 } L1InspectionEvent;
+
+typedef struct {
+    char machine_id[L1_MACHINE_ID_CAPACITY];
+    char process_code[L1_PROCESS_CODE_CAPACITY];
+    char lot_no[L1_LOT_NO_CAPACITY];
+    int unit_seq;
+    L1JudgmentResult result;
+    char defect_code[L1_CODE_CAPACITY];
+    char message[L1_MESSAGE_CAPACITY];
+} L1JudgmentEvent;
 
 typedef struct {
     char machine_id[L1_MACHINE_ID_CAPACITY];
@@ -153,6 +169,11 @@ L1ProtocolResult l1_protocol_build_inspection(
     char *out_buffer,
     size_t buffer_size,
     const L1InspectionEvent *event,
+    size_t *out_length);
+L1ProtocolResult l1_protocol_build_judgment(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1JudgmentEvent *event,
     size_t *out_length);
 L1ProtocolResult l1_protocol_build_defect(char *out_buffer,
                                           size_t buffer_size,

@@ -603,3 +603,34 @@ L2와 현재 Backend DTO 사이의 값 변환 규칙:
 12. 오류 주입 L1을 실행하고 부분 `PRODUCTION(RUNNING)`이 `ALARM(ERROR)`와 `MACHINE_STATUS(ERROR)`보다 먼저 저장되는지 확인한다.
 13. Backend가 생성한 남은 수량 `RESUME`을 L1이 수락하고 `COMMAND_ACK`, `MACHINE_STATUS(RUNNING)` 순서로 전송하는지 확인한다.
 14. 재개 후 최종 `PRODUCTION(COMPLETED)`과 기존 부분 실적의 누적 수량이 최초 목표 수량과 같은지 확인한다.
+## 혼합 품질 판정 (2026-07-22)
+
+모든 공정은 제품 한 개를 처리할 때 L1 비측정 판정을 전송한다.
+
+```text
+V1,JUDGMENT,MACHINE_ID,PROCESS_CODE,LOT_NO,UNIT_SEQ,RESULT,DEFECT_CODE,MESSAGE\n
+```
+
+- `RESULT`는 `OK` 또는 `NG`다.
+- `OK`이면 `DEFECT_CODE`는 `-`를 사용한다.
+- `NG`이면 해당 공정에 등록된 불량 코드를 반드시 전송한다.
+- Collector는 `/api/collector/judgments`로 전달한다.
+
+측정이 필요한 공정은 같은 `LOT_NO + PROCESS_CODE + UNIT_SEQ`에 대해 다음
+`INSPECTION` 메시지도 항목별로 전송한다.
+
+```text
+V1,INSPECTION,MACHINE_ID,PROCESS_CODE,LOT_NO,UNIT_SEQ,ITEM,VALUE,UNIT\n
+```
+
+| 공정 | Backend 판정 측정 항목 |
+|---|---|
+| OP20 | `COIL_RESISTANCE` |
+| OP30 | `WELD_STRENGTH`, `CONTACT_RESISTANCE`, `CONTACT_POSITION` |
+| OP60 | `GAS_PRESSURE`, `LEAK_RATE` |
+| OP70 | `INSULATION_RESISTANCE`, `WITHSTAND_VOLTAGE`, `OPERATION_VOLTAGE`, `CONTACT_BOUNCE` |
+
+Backend는 필수 L1 판정과 필수 측정 항목이 모두 도착하기 전까지 제품 판정을
+`PENDING`으로 유지한다. 모든 항목이 OK일 때만 최종 OK이며 하나라도 NG이면
+최종 NG다. 측정값 NG는 Backend가 항목별 불량 코드로 변환해
+`defect_histories`에 저장하고, L1 판정 NG도 L1이 보낸 불량 코드로 저장한다.

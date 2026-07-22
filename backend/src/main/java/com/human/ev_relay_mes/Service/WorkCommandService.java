@@ -165,17 +165,14 @@ public class WorkCommandService {
         }
 
         int targetQty = originalTargetQty(interrupted);
-        int processedQty;
-        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(process.getProcessCode())) {
-            processedQty = Math.toIntExact(inspectionUnitResultRepository
-                    .countByLot_LotNoAndProcess_ProcessCode(
-                            lot.getLotNo(), process.getProcessCode()));
-        } else {
-            processedQty = productionLogRepository
-                    .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                            lot.getLotNo(), process.getProcessCode())
-                    .stream().mapToInt(log -> log.getInputQty()).sum();
-        }
+        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
+                .countByLot_LotNoAndProcess_ProcessCode(
+                        lot.getLotNo(), process.getProcessCode()));
+        int productionQty = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        lot.getLotNo(), process.getProcessCode())
+                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int processedQty = Math.max(evaluatedQty, productionQty);
         int remainingQty = targetQty - processedQty;
         if (remainingQty <= 0) {
             return Optional.empty();
@@ -272,7 +269,7 @@ public class WorkCommandService {
         }
         lotProcessResponsibleService.captureIfAbsent(
                 command.getLot(), command.getProcess(), command.getMachine());
-        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(
+        if (InspectionStandardService.supportsMeasurements(
                 command.getProcess().getProcessCode())) {
             inspectionStandardService.captureStandardsIfAbsent(
                     command.getLot(), command.getProcess());

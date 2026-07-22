@@ -146,3 +146,19 @@ L1 machine runtime      234 checks
 - OP70 오류 후 `unitSeq` 연속성
 - 전송이 끝나지 않은 검사 제품 재전송
 - 동일 `commandId` 중복 실행 방지
+## Hybrid quality events (2026-07-22)
+
+The simulator now sends one `JUDGMENT` event per unit for every process. OP20,
+OP30, OP60, and OP70 additionally send raw `INSPECTION` measurements. L1 does
+not send final OK/NG production totals for these unit events; Backend combines
+the L1 judgment and all required measurement judgments and creates the single
+completed `production_logs` row.
+
+```text
+V1,JUDGMENT,machineId,processCode,lotNo,unitSeq,OK,-,automatic_judgment_ok
+V1,INSPECTION,machineId,processCode,lotNo,unitSeq,item,value,unit
+```
+
+An L1-side NG includes its process defect code. A measurement-side NG is mapped
+to a defect code by Backend. Across each 100-unit sequence, the combined final
+NG selection remains approximately 3% (three selected units).

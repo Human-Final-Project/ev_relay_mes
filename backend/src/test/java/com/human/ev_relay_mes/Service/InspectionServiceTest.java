@@ -1,7 +1,9 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.InspectionResultReceiveRequestDto;
+import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.Entity.Inspection;
+import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.Entity.Machine;
@@ -37,6 +39,7 @@ class InspectionServiceTest {
     @Mock LotRepository lotRepository;
     @Mock InspectionStandardService inspectionStandardService;
     @Mock ProductionService productionService;
+    @Mock DefectService defectService;
 
     @InjectMocks InspectionService inspectionService;
 
@@ -126,9 +129,12 @@ class InspectionServiceTest {
         when(inspectionStandardService.snapshotCount(lot, process)).thenReturn(3L);
         when(inspectionRepository.countByLot_LotNoAndProcess_ProcessCodeAndUnitSeq(
                 "LOT-070", "OP70", 1)).thenReturn(3L);
+        InspectionUnitResult unitResult = InspectionUnitResult.builder()
+                .lot(lot).machine(machine).process(process).unitSeq(1)
+                .l1Result(Inspection.Result.OK).build();
         when(inspectionUnitResultRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeq("LOT-070", "OP70", 1))
-                .thenReturn(Optional.empty());
+                .thenReturn(Optional.of(unitResult));
         when(inspectionRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqOrderByInspectionIdAsc(
                         "LOT-070", "OP70", 1))
@@ -138,7 +144,8 @@ class InspectionServiceTest {
         when(inspectionUnitResultRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCode("LOT-070", "OP70"))
+                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+                        "LOT-070", "OP70", InspectionUnitResult.EvaluationStatus.COMPLETED))
                 .thenReturn(1L);
         when(inspectionUnitResultRepository
                 .countByLot_LotNoAndProcess_ProcessCodeAndResult(
@@ -152,8 +159,51 @@ class InspectionServiceTest {
         var response = inspectionService.saveResult(dto);
 
         assertThat(response.getResult()).isEqualTo("OK");
-        verify(productionService).completeInspectionProcess(
+        verify(productionService).completeEvaluatedProcess(
                 lot, machine, process, 1, 1, 0);
+    }
+
+    @Test
+    void l1NgJudgmentCreatesDefectAndCompletesUnitWithoutMeasurements() {
+        Process process = Process.builder()
+                .processCode("OP40_OP50").processName("assembly").processOrder(40).build();
+        Machine machine = Machine.builder()
+                .machineId("EQ-ASSY-01").machineName("assembler")
+                .machineType("ASSY").process(process).build();
+        Lot lot = Lot.builder().lotNo("LOT-040").inputQty(2)
+                .status(Lot.Status.RUNNING).currentProcess(process).build();
+        UnitJudgmentReceiveRequestDto dto = new UnitJudgmentReceiveRequestDto();
+        dto.setLotNo("LOT-040");
+        dto.setMachineId("EQ-ASSY-01");
+        dto.setProcessCode("OP40_OP50");
+        dto.setUnitSeq(1);
+        dto.setResult("NG");
+        dto.setDefectCode("SPRING_MISSING_NG");
+
+        when(lotRepository.findByLotNoForUpdate("LOT-040")).thenReturn(Optional.of(lot));
+        when(machineRepository.findById("EQ-ASSY-01")).thenReturn(Optional.of(machine));
+        when(processRepository.findById("OP40_OP50")).thenReturn(Optional.of(process));
+        when(productionService.expectedInputQtyFor(lot, process)).thenReturn(2);
+        InspectionUnitResult persisted = InspectionUnitResult.builder()
+                .lot(lot).machine(machine).process(process).unitSeq(1)
+                .l1Result(Inspection.Result.NG).build();
+        when(inspectionUnitResultRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeq("LOT-040", "OP40_OP50", 1))
+                .thenReturn(Optional.empty(), Optional.of(persisted));
+        when(inspectionUnitResultRepository.save(any()))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(inspectionStandardService.snapshotCount(lot, process)).thenReturn(0L);
+        when(inspectionRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqOrderByInspectionIdAsc(
+                        "LOT-040", "OP40_OP50", 1)).thenReturn(List.of());
+
+        var response = inspectionService.saveJudgment(dto);
+
+        assertThat(response.getL1Result()).isEqualTo("NG");
+        assertThat(response.getMeasurementResult()).isEqualTo("OK");
+        assertThat(response.getResult()).isEqualTo("NG");
+        assertThat(response.getEvaluationStatus()).isEqualTo("COMPLETED");
+        verify(defectService).createDefect(any());
     }
 
     private Inspection measurement(

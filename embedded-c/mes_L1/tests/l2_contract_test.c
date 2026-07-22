@@ -164,6 +164,16 @@ static L1ProtocolResult build_runtime_action(
                                             output_capacity,
                                             &action->data.production,
                                             output_length);
+    case L1_RUNTIME_ACTION_INSPECTION:
+        return l1_protocol_build_inspection(output,
+                                            output_capacity,
+                                            &action->data.inspection,
+                                            output_length);
+    case L1_RUNTIME_ACTION_JUDGMENT:
+        return l1_protocol_build_judgment(output,
+                                          output_capacity,
+                                          &action->data.judgment,
+                                          output_length);
     case L1_RUNTIME_ACTION_ALARM:
         return l1_protocol_build_alarm(output,
                                        output_capacity,
@@ -220,24 +230,25 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
 
     for (index = 0; index < 4; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
-    CHECK(actions.count == 3);
+    CHECK(actions.count == 4);
 
     message = parse_runtime_action(&actions.actions[0]);
-    CHECK(message.type == PROTOCOL_EVENT_PRODUCTION);
-    CHECK(message.data.production.input_qty == 4);
-    CHECK(strcmp(message.data.production.status, "RUNNING") == 0);
-    CHECK(l1_machine_runtime_mark_reported(
-              &runtime,
-              actions.actions[0].data.production.input_qty) == 0);
+    CHECK(message.type == PROTOCOL_EVENT_JUDGMENT);
+    CHECK(message.data.judgment.unit_seq == 4);
 
     message = parse_runtime_action(&actions.actions[1]);
+    CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
+    CHECK(message.data.inspection.unit_seq == 4);
+
+    message = parse_runtime_action(&actions.actions[2]);
     CHECK(message.type == PROTOCOL_EVENT_ALARM);
     CHECK(strcmp(message.data.alarm.alarm_code, "WIRE_BREAK") == 0);
     CHECK(strcmp(message.data.alarm.alarm_level, "ERROR") == 0);
 
-    message = parse_runtime_action(&actions.actions[2]);
+    message = parse_runtime_action(&actions.actions[3]);
     CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
     CHECK(strcmp(message.data.machine_status.status, "ERROR") == 0);
 
@@ -257,13 +268,17 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
 
     for (index = 0; index < 6; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(runtime.state == L1_RUNTIME_IDLE);
-    CHECK(actions.count == 2);
+    CHECK(actions.count == 3);
     message = parse_runtime_action(&actions.actions[0]);
-    CHECK(message.type == PROTOCOL_EVENT_PRODUCTION);
-    CHECK(message.data.production.input_qty == 10);
-    CHECK(strcmp(message.data.production.status, "COMPLETED") == 0);
+    CHECK(message.type == PROTOCOL_EVENT_JUDGMENT);
+    CHECK(message.data.judgment.unit_seq == 10);
+    message = parse_runtime_action(&actions.actions[1]);
+    CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
+    message = parse_runtime_action(&actions.actions[2]);
+    CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
 }
 
 int main(void)

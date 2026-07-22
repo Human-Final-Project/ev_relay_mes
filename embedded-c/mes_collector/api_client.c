@@ -22,6 +22,7 @@
 
 #define API_PATH_PRODUCTION "/api/collector/production-logs"
 #define API_PATH_INSPECTION "/api/collector/inspections"
+#define API_PATH_JUDGMENT "/api/collector/judgments"
 #define API_PATH_DEFECT "/api/collector/defects"
 #define API_PATH_ALARM "/api/collector/machine-alarms"
 #define API_PATH_MACHINE_STATUS "/api/collector/machine-statuses"
@@ -303,6 +304,19 @@ static ApiClientResult api_client_build_event_request_internal(
         json_append_string_field(&builder, "inspectionItem", event->item, &first);
         json_append_double_field(&builder, "measuredValue", event->value, &first);
         json_append_optional_string_field(&builder, "unit", event->unit, &first);
+        break;
+    }
+    case PROTOCOL_EVENT_JUDGMENT: {
+        const ProtocolJudgmentEvent *event = &message->data.judgment;
+
+        path_result = copy_path(path, path_capacity, API_PATH_JUDGMENT);
+        json_append_string_field(&builder, "lotNo", event->lot_no, &first);
+        json_append_string_field(&builder, "machineId", event->machine_id, &first);
+        json_append_string_field(&builder, "processCode", event->process_code, &first);
+        json_append_int_field(&builder, "unitSeq", event->unit_seq, &first);
+        json_append_string_field(&builder, "result", event->result, &first);
+        json_append_optional_string_field(&builder, "defectCode", event->defect_code, &first);
+        json_append_optional_string_field(&builder, "message", event->message, &first);
         break;
     }
     case PROTOCOL_EVENT_DEFECT: {
@@ -1334,6 +1348,8 @@ static const char *api_message_machine_id(const ProtocolMessage *message)
         return message->data.production.machine_id;
     case PROTOCOL_EVENT_INSPECTION:
         return message->data.inspection.machine_id;
+    case PROTOCOL_EVENT_JUDGMENT:
+        return message->data.judgment.machine_id;
     case PROTOCOL_EVENT_DEFECT:
         return message->data.defect.machine_id;
     case PROTOCOL_EVENT_ALARM:

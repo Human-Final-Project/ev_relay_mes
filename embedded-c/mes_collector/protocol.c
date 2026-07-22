@@ -176,6 +176,9 @@ static ProtocolEventType event_type_from_name(const char *name)
     if (strcmp(name, "INSPECTION") == 0) {
         return PROTOCOL_EVENT_INSPECTION;
     }
+    if (strcmp(name, "JUDGMENT") == 0) {
+        return PROTOCOL_EVENT_JUDGMENT;
+    }
     if (strcmp(name, "DEFECT") == 0) {
         return PROTOCOL_EVENT_DEFECT;
     }
@@ -203,6 +206,8 @@ static size_t expected_field_count(ProtocolEventType type)
     case PROTOCOL_EVENT_PRODUCTION:
         return 9;
     case PROTOCOL_EVENT_INSPECTION:
+        return 9;
+    case PROTOCOL_EVENT_JUDGMENT:
         return 9;
     case PROTOCOL_EVENT_DEFECT:
         return 8;
@@ -442,6 +447,34 @@ static ProtocolResult parse_inspection(char **fields, ProtocolMessage *message)
     return PROTOCOL_RESULT_OK;
 }
 
+static ProtocolResult parse_judgment(char **fields, ProtocolMessage *message)
+{
+    ProtocolJudgmentEvent *event = &message->data.judgment;
+    ProtocolResult result = validate_machine_process(fields[2], fields[3]);
+    if (result != PROTOCOL_RESULT_OK) return result;
+    if ((result = validate_required_lot(fields[4])) != PROTOCOL_RESULT_OK
+        || (result = parse_nonnegative_int(fields[5], &event->unit_seq)) != PROTOCOL_RESULT_OK) {
+        return result;
+    }
+    if (event->unit_seq <= 0
+        || !string_is_one_of(fields[6], "OK", "NG", NULL, NULL)
+        || (strcmp(fields[6], "NG") == 0 && !is_upper_code(fields[7]))) {
+        return PROTOCOL_RESULT_INVALID_VALUE;
+    }
+    if (strcmp(fields[6], "OK") == 0 && strcmp(fields[7], "-") != 0) {
+        return PROTOCOL_RESULT_INVALID_VALUE;
+    }
+    if ((result = copy_field(event->machine_id, sizeof(event->machine_id), fields[2])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->process_code, sizeof(event->process_code), fields[3])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->lot_no, sizeof(event->lot_no), fields[4])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->result, sizeof(event->result), fields[6])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->defect_code, sizeof(event->defect_code), fields[7])) != PROTOCOL_RESULT_OK
+        || (result = copy_field(event->message, sizeof(event->message), fields[8])) != PROTOCOL_RESULT_OK) {
+        return result;
+    }
+    return PROTOCOL_RESULT_OK;
+}
+
 static ProtocolResult parse_defect(char **fields, ProtocolMessage *message)
 {
     ProtocolDefectEvent *event = &message->data.defect;
@@ -556,6 +589,8 @@ const char *protocol_event_type_name(ProtocolEventType type)
         return "PRODUCTION";
     case PROTOCOL_EVENT_INSPECTION:
         return "INSPECTION";
+    case PROTOCOL_EVENT_JUDGMENT:
+        return "JUDGMENT";
     case PROTOCOL_EVENT_DEFECT:
         return "DEFECT";
     case PROTOCOL_EVENT_ALARM:
@@ -717,6 +752,9 @@ ProtocolResult protocol_parse_message(const char *line, ProtocolMessage *out_mes
         break;
     case PROTOCOL_EVENT_INSPECTION:
         result = parse_inspection(fields, &parsed);
+        break;
+    case PROTOCOL_EVENT_JUDGMENT:
+        result = parse_judgment(fields, &parsed);
         break;
     case PROTOCOL_EVENT_DEFECT:
         result = parse_defect(fields, &parsed);

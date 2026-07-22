@@ -96,6 +96,22 @@ static void test_inspection(void)
     CHECK(strcmp(message.data.inspection.item, "COIL_RESISTANCE") == 0);
 }
 
+static void test_judgment(void)
+{
+    ProtocolMessage message;
+    CHECK(protocol_parse_message(
+              "V1,JUDGMENT,EQ-ASSY-01,OP40_OP50,EVR-LOT-001,7,NG,SPRING_MISSING_NG,automatic_judgment_ng\n",
+              &message) == PROTOCOL_RESULT_OK);
+    CHECK(message.type == PROTOCOL_EVENT_JUDGMENT);
+    CHECK(message.data.judgment.unit_seq == 7);
+    CHECK(strcmp(message.data.judgment.result, "NG") == 0);
+    CHECK(strcmp(message.data.judgment.defect_code, "SPRING_MISSING_NG") == 0);
+
+    expect_parse_result(
+        "V1,JUDGMENT,EQ-ASSY-01,OP40_OP50,EVR-LOT-001,8,NG,-,missing_code\n",
+        PROTOCOL_RESULT_INVALID_VALUE);
+}
+
 static void test_error_and_status_events(void)
 {
     ProtocolMessage message;
@@ -277,6 +293,7 @@ int main(void)
     test_connection_events();
     test_production();
     test_inspection();
+    test_judgment();
     test_error_and_status_events();
     test_command_ack();
     test_invalid_messages();

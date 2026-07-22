@@ -109,14 +109,17 @@ public class ProductionService {
     public ProductionLogResponseDto completeInspectionProcess(
             Lot lot, Machine machine, Process process,
             int inputQty, int okQty, int ngQty) {
-        if (!INSPECTION_PROCESS.equals(process.getProcessCode())) {
-            throw new CustomException(ErrorCode.INVALID_PROCESS_ORDER,
-                    "검사 집계 실적은 OP70에서만 생성할 수 있습니다.");
-        }
+        return completeEvaluatedProcess(lot, machine, process, inputQty, okQty, ngQty);
+    }
+
+    @Transactional
+    public ProductionLogResponseDto completeEvaluatedProcess(
+            Lot lot, Machine machine, Process process,
+            int inputQty, int okQty, int ngQty) {
         if (inputQty != okQty + ngQty) {
             throw new CustomException(ErrorCode.PRODUCTION_QUANTITY_MISMATCH);
         }
-        String eventId = "INSPECTION-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
+        String eventId = "QUALITY-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
         Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
         if (existing.isPresent()) {
             return toResponse(existing.get());
@@ -126,7 +129,7 @@ public class ProductionService {
                         lot.getLotNo(), process.getProcessCode())
                 .isEmpty()) {
             throw new CustomException(ErrorCode.DUPLICATE_RESOURCE,
-                    "OP70 검사 집계 실적이 이미 존재합니다.");
+                    "해당 공정의 생산 실적이 이미 존재합니다.");
         }
 
         ProductionLog log = ProductionLog.builder()

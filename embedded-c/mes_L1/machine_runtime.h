@@ -6,7 +6,7 @@
 #include "device_config.h"
 #include "protocol.h"
 
-#define L1_RUNTIME_MAX_ACTIONS 6
+#define L1_RUNTIME_MAX_ACTIONS 8
 
 typedef enum {
     L1_RUNTIME_IDLE = 0,
@@ -19,6 +19,7 @@ typedef enum {
     L1_RUNTIME_ACTION_COMMAND_ACK = 0,
     L1_RUNTIME_ACTION_PRODUCTION,
     L1_RUNTIME_ACTION_INSPECTION,
+    L1_RUNTIME_ACTION_JUDGMENT,
     L1_RUNTIME_ACTION_ALARM,
     L1_RUNTIME_ACTION_MACHINE_STATUS
 } L1RuntimeActionType;
@@ -31,6 +32,7 @@ typedef struct {
         L1CommandAckEvent command_ack;
         L1ProductionEvent production;
         L1InspectionEvent inspection;
+        L1JudgmentEvent judgment;
         L1AlarmEvent alarm;
         L1MachineStatusEvent machine_status;
     } data;

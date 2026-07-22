@@ -242,6 +242,29 @@ static void test_defect_json_escapes_message(void)
     CHECK(strstr(json, "quote_\\\"_slash_\\\\") != NULL);
 }
 
+static void test_judgment_json(void)
+{
+    ProtocolMessage message;
+    char path[API_CLIENT_PATH_CAPACITY];
+    char json[API_CLIENT_JSON_CAPACITY];
+
+    memset(&message, 0, sizeof(message));
+    message.type = PROTOCOL_EVENT_JUDGMENT;
+    strcpy(message.data.judgment.lot_no, "EVR-LOT-001");
+    strcpy(message.data.judgment.machine_id, "EQ-ASSY-01");
+    strcpy(message.data.judgment.process_code, "OP40_OP50");
+    message.data.judgment.unit_seq = 7;
+    strcpy(message.data.judgment.result, "NG");
+    strcpy(message.data.judgment.defect_code, "SPRING_MISSING_NG");
+    strcpy(message.data.judgment.message, "automatic_judgment_ng");
+
+    CHECK(build(&message, path, json) == API_CLIENT_OK);
+    CHECK(strcmp(path, "/api/collector/judgments") == 0);
+    CHECK(strstr(json, "\"unitSeq\":7") != NULL);
+    CHECK(strstr(json, "\"result\":\"NG\"") != NULL);
+    CHECK(strstr(json, "\"defectCode\":\"SPRING_MISSING_NG\"") != NULL);
+}
+
 static void test_alarm_warning_maps_to_backend_warn(void)
 {
     ProtocolMessage message;
@@ -532,6 +555,7 @@ int main(void)
     CHECK(api_client_init() == 0);
     test_production_json();
     test_inspection_measurement_json();
+    test_judgment_json();
     test_defect_json_escapes_message();
     test_alarm_warning_maps_to_backend_warn();
     test_machine_status_hyphen_becomes_null();

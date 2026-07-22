@@ -382,8 +382,11 @@ CREATE TABLE inspection_unit_results (
     machine_id VARCHAR(50) NOT NULL,
     process_code VARCHAR(30) NOT NULL,
     unit_seq INT NOT NULL,
-    result VARCHAR(10) NOT NULL,
-    evaluated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    l1_result VARCHAR(10) NULL,
+    measurement_result VARCHAR(10) NULL,
+    result VARCHAR(10) NULL,
+    evaluation_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+    evaluated_at DATETIME NULL,
     PRIMARY KEY (unit_result_id),
     UNIQUE KEY uk_inspection_unit_result (lot_no, process_code, unit_seq),
     CONSTRAINT fk_inspection_unit_results_lot
@@ -603,9 +606,16 @@ INSERT INTO inspection_standards (
     process_code, inspection_item, item_name, unit,
     lower_limit, upper_limit, standard_version
 ) VALUES
+('OP20', 'COIL_RESISTANCE', '코일 저항', 'OHM', 80.000, 120.000, 1),
+('OP30', 'WELD_STRENGTH', '용접 강도', 'N', 40.000, 80.000, 1),
+('OP30', 'CONTACT_RESISTANCE', '접촉 저항', 'mOHM', 0.000, 50.000, 1),
+('OP30', 'CONTACT_POSITION', '접점 위치 편차', 'MM', 0.000, 0.200, 1),
+('OP60', 'GAS_PRESSURE', '가스 압력', 'BAR', 2.500, 3.500, 1),
+('OP60', 'LEAK_RATE', '누설률', 'SCCM', 0.000, 0.500, 1),
+('OP70', 'INSULATION_RESISTANCE', '절연 저항', 'MOHM', 100.000, 1000.000, 1),
+('OP70', 'WITHSTAND_VOLTAGE', '내전압', 'V', 1500.000, 2000.000, 1),
 ('OP70', 'OPERATION_VOLTAGE', '동작 전압', 'V', 10.000, 14.000, 1),
-('OP70', 'COIL_RESISTANCE', '코일 저항', 'OHM', 80.000, 120.000, 1),
-('OP70', 'CONTACT_RESISTANCE', '접촉 저항', 'mOHM', 0.000, 50.000, 1);
+('OP70', 'CONTACT_BOUNCE', '접점 바운스 시간', 'MS', 0.000, 5.000, 1);
 ```
 
 ## Backend Enum 값
