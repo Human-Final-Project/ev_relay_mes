@@ -21,7 +21,11 @@ OP20, OP30, OP40_OP50, OP60, OP80은 다음 생산실적을 전송한다.
 V1,PRODUCTION,machineId,processCode,lotNo,inputQty,okQty,ngQty,status
 ```
 
-오류가 없으면 목표 수량을 처리한 후 `PRODUCTION(COMPLETED)`와 `MACHINE_STATUS(IDLE)`을 전송한다.
+제품을 1초마다 한 개씩 처리하며, 처리 중에는 현재까지의 누적 수량을
+`PRODUCTION(RUNNING)`으로 전송한다. 목표 수량을 처리한 후에는 최종 누적
+`PRODUCTION(COMPLETED)`와 `MACHINE_STATUS(IDLE)`을 전송한다.
+LOT·설비·제품 순번 기반의 결정적 의사난수로 제품별 NG를 약 3% 발생시키며,
+재전송 시에도 같은 제품은 항상 같은 판정을 유지한다.
 
 ## OP70 검사 공정
 
@@ -39,7 +43,7 @@ TCP 형식:
 V1,INSPECTION,machineId,processCode,lotNo,unitSeq,inspectionItem,measuredValue,unit
 ```
 
-`unitSeq`는 같은 LOT 안에서 검사한 제품 순번이다. Backend가 검사 기준으로 판정하고 OP70의 최종 OK/NG 수량을 집계한다.
+`unitSeq`는 같은 LOT 안에서 검사한 제품 순번이다. Backend가 검사 기준으로 판정하고 OP70의 최종 OK/NG 수량을 집계한다. 정상 측정값은 검사 기준 안에서 생성하고, 약 3%의 제품은 한 측정값을 기준 밖으로 생성한다.
 
 한 제품의 세 번째 측정값까지 L2 전송이 완료되지 않은 상태에서 TCP 연결이 끊어지면, 재접속 후 같은 `unitSeq`의 세 측정값을 다시 보낸다. Backend의 업무 키 중복 방지로 이미 저장된 항목은 중복 등록되지 않는다.
 
@@ -48,7 +52,7 @@ V1,INSPECTION,machineId,processCode,lotNo,unitSeq,inspectionItem,measuredValue,u
 일반 공정 오류:
 
 ```text
-부분 PRODUCTION(RUNNING)
+최신 누적 PRODUCTION(RUNNING)
 → ALARM(ERROR)
 → MACHINE_STATUS(ERROR)
 → RESUME

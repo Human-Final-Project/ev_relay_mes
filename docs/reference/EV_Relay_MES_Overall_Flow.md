@@ -109,15 +109,16 @@ Backend는 OP20과 OP30의 `START` 명령을 각각 생성하고 L2는 두 L1에
 ```text
 MACHINE_STATUS RUNNING
 → 공정 수행
+→ 1초마다 누적 PRODUCTION(RUNNING)으로 같은 실적 행 갱신
 → DEFECT (제품 불량이 있을 때만)
-→ PRODUCTION(COMPLETED) (공정 완료 실적, 항상)
+→ 누적 PRODUCTION(COMPLETED) (공정 완료 실적, 항상)
 → MACHINE_STATUS IDLE
 ```
 
 설비 오류가 발생하면 프로세스와 TCP 연결은 유지하고 생산만 중단한다.
 
 ```text
-미전송 부분 PRODUCTION(RUNNING)
+현재까지의 누적 PRODUCTION(RUNNING)
 → ALARM(ERROR)
 → MACHINE_STATUS ERROR
 → 현재 LOT·공정·진행 수량 메모리 유지
@@ -125,11 +126,11 @@ MACHINE_STATUS RUNNING
 → COMMAND_ACK ACCEPTED
 → MACHINE_STATUS RUNNING
 → 남은 수량부터 재개
-→ 잔여 PRODUCTION(COMPLETED)
+→ 최종 누적 PRODUCTION(COMPLETED)
 → MACHINE_STATUS IDLE
 ```
 
-Backend는 부분 실적을 저장한 뒤 `최초 목표 수량 - 누적 처리 수량`으로 RESUME 수량을 계산한다. L1은 같은 LOT·공정과 정확한 남은 수량의 RESUME만 수락한다.
+Backend는 LOT·공정별 실적 한 행을 최신 누적값으로 갱신한 뒤 `최초 목표 수량 - 누적 처리 수량`으로 RESUME 수량을 계산한다. L1은 같은 LOT·공정과 정확한 남은 수량의 RESUME만 수락한다.
 
 L2 처리:
 

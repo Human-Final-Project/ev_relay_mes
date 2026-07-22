@@ -162,7 +162,7 @@ INSERT INTO inspection_standards (
 ('OP70', 'COIL_RESISTANCE', '코일 저항', 'OHM', 80.000, 120.000, 1),
 ('OP70', 'CONTACT_RESISTANCE', '접촉 저항', 'mOHM', 0.000, 50.000, 1);
 
--- Give every active raw material an initial available stock of 100 units.
+-- Give every active raw material an initial available stock of 1,000 units.
 -- Example LOT number: INIT-RM-CU-001-001
 INSERT INTO material_lots (
     material_lot_no, item_code, received_qty, current_qty,
@@ -171,8 +171,8 @@ INSERT INTO material_lots (
 SELECT
     CONCAT('INIT-', item_code, '-001'),
     item_code,
-    100,
-    100,
+    1000,
+    1000,
     'AVAILABLE',
     CURRENT_TIMESTAMP(6),
     (SELECT member_id FROM members WHERE login_id = 'admin')

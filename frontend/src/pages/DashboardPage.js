@@ -24,7 +24,7 @@ export default function DashboardPage() {
     ["진행 중 작업지시", s.workOrders?.running || 0, `전체 ${s.workOrders?.total || 0}`],
     ["가동 중 설비", `${s.machines?.running || 0} / ${s.machines?.total || 0}`, `이상 ${s.machines?.error || 0}`],
     ["활성 알람", s.alarms?.active || 0, `오늘 발생 ${s.alarms?.occurredToday || 0}`],
-    ["부족 자재", s.materials?.lowStockItemCount || 0, `기준 ${s.materials?.lowStockThreshold ?? 10} 이하`],
+    ["부족 자재", s.materials?.lowStockItemCount || 0, `기준 ${s.materials?.lowStockThreshold ?? 100} 이하`],
   ];
   return <div className="mes-page">
     <PageHeader title="생산 대시보드" description={`Backend 집계 기준 · ${formatDate(s.generatedAt)}`} actions={<button className="btn secondary" onClick={reload}>새로고침</button>} />

@@ -262,7 +262,7 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
     CHECK(actions.count == 2);
     message = parse_runtime_action(&actions.actions[0]);
     CHECK(message.type == PROTOCOL_EVENT_PRODUCTION);
-    CHECK(message.data.production.input_qty == 6);
+    CHECK(message.data.production.input_qty == 10);
     CHECK(strcmp(message.data.production.status, "COMPLETED") == 0);
 }
 

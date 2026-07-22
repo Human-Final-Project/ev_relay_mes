@@ -26,6 +26,7 @@ typedef enum {
 typedef struct {
     L1RuntimeActionType type;
     int completes_unit;
+    int reported_quantity;
     union {
         L1CommandAckEvent command_ack;
         L1ProductionEvent production;

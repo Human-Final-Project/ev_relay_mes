@@ -213,7 +213,7 @@ static int execute_runtime_actions(RuntimeContext *runtime,
         if (((action->type == L1_RUNTIME_ACTION_PRODUCTION
               && l1_machine_runtime_mark_reported(
                      runtime->machine,
-                     action->data.production.input_qty) != 0)
+                     action->reported_quantity) != 0)
              || (action->type == L1_RUNTIME_ACTION_INSPECTION
                  && action->completes_unit
                  && l1_machine_runtime_mark_reported(runtime->machine, 1) != 0))) {

@@ -56,6 +56,9 @@
 .machine-card .machine-code { color:#64748b; font-size:11px; }
 .machine-card .machine-title { margin:7px 0; font-weight:800; }
 .machine-card .machine-meta { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-top:14px; }
+.machine-progress { display:grid; gap:6px; margin-top:12px; }
+.machine-progress>div:first-child { display:flex; justify-content:space-between; gap:8px; color:#64748b; font-size:10px; }
+.machine-progress strong { color:#0f172a; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .progress-track { height:8px; background:#e2e8f0; border-radius:999px; overflow:hidden; }
 .progress-track>span { display:block; height:100%; background:#0284c7; }
 .tabs { display:flex; gap:4px; border-bottom:1px solid #cbd5e1; }

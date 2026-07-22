@@ -6,6 +6,8 @@
 #define L1_RECEIVE_BUFFER_SIZE 2048
 #define L1_HEARTBEAT_INTERVAL_MS 5000U
 #define L1_RECONNECT_DELAY_MS 3000U
-#define L1_PRODUCTION_TICK_MS 100U
+/* Keep each process visible across the frontend's 5-second polling cycle. */
+#define L1_PRODUCTION_TICK_MS 1000U
+#define L1_NG_RATE_PERCENT 3U
 
 #endif

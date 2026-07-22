@@ -75,7 +75,8 @@ lots.ngQty = 최초 LOT inputQty - OP80 okQty
 
 - OP20과 OP30 설비를 동시에 실행할 수 있어야 한다.
 - 공정 완료 시 `PRODUCTION(COMPLETED)`를 반드시 전송한다.
-- 오류·정지 시 미전송 부분 `PRODUCTION(RUNNING)`을 먼저 전송하고 현재 LOT·공정·진행 수량을 메모리에 유지한다.
+- 일반 공정은 1초마다 누적 `PRODUCTION(RUNNING)`을 전송하고 Backend는 LOT·공정별 실적 한 행을 갱신한다.
+- 오류·정지 시 최신 누적 `PRODUCTION(RUNNING)`을 전송하고 현재 LOT·공정·진행 수량을 메모리에 유지한다.
 - 오류 시 `ALARM(ERROR)`, `MACHINE_STATUS(ERROR)` 순서로 전송하고 `RESUME` 전까지 생산을 중단한다.
 - `RESUME` 수신 시 `COMMAND_ACK(ACCEPTED)`, `MACHINE_STATUS(RUNNING)`을 전송하고 남은 수량부터 재개한다.
 - `inputQty = okQty + ngQty`를 만족해야 한다.

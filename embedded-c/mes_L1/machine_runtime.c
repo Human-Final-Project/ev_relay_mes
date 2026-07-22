@@ -2,6 +2,8 @@
 
 #include <string.h>
 
+#include "config.h"
+
 #define OP70_PROCESS_CODE "OP70"
 
 static void actions_init(L1RuntimeActions *actions)
@@ -27,6 +29,26 @@ static int is_inspection_runtime(const L1MachineRuntime *runtime)
 {
     return runtime != NULL && runtime->device != NULL
         && strcmp(runtime->device->process_code, OP70_PROCESS_CODE) == 0;
+}
+
+static unsigned int text_seed(const char *text)
+{
+    unsigned int seed = 0U;
+
+    while (text != NULL && *text != '\0') {
+        seed = (seed * 31U + (unsigned char)*text) % 100U;
+        ++text;
+    }
+    return seed;
+}
+
+static int unit_is_ng(const L1MachineRuntime *runtime, int unit_seq)
+{
+    unsigned int seed = text_seed(runtime->lot_no)
+        + text_seed(runtime->device->machine_id);
+    unsigned int score = ((unsigned int)unit_seq * 37U + seed) % 100U;
+
+    return score < L1_NG_RATE_PERCENT;
 }
 
 static int append_ack(L1RuntimeActions *actions,
@@ -65,6 +87,8 @@ static int append_unreported_production(L1RuntimeActions *actions,
                                         L1ProductionStatus status)
 {
     int quantity;
+    int unit_seq;
+    int ng_qty = 0;
     L1RuntimeAction *action;
 
     if (is_inspection_runtime(runtime)) return 0;
@@ -75,22 +99,35 @@ static int append_unreported_production(L1RuntimeActions *actions,
     strcpy(action->data.production.machine_id, runtime->device->machine_id);
     strcpy(action->data.production.process_code, runtime->device->process_code);
     strcpy(action->data.production.lot_no, runtime->lot_no);
-    action->data.production.input_qty = quantity;
-    action->data.production.ok_qty = quantity;
-    action->data.production.ng_qty = 0;
+    for (unit_seq = 1;
+         unit_seq <= runtime->processed_qty;
+         ++unit_seq) {
+        if (unit_is_ng(runtime, unit_seq)) {
+            ++ng_qty;
+        }
+    }
+    action->reported_quantity = quantity;
+    action->data.production.input_qty = runtime->processed_qty;
+    action->data.production.ok_qty = runtime->processed_qty - ng_qty;
+    action->data.production.ng_qty = ng_qty;
     action->data.production.status = status;
     return 0;
 }
 
-static double inspection_value(int unit_seq, int item_index)
+static double inspection_value(const L1MachineRuntime *runtime,
+                               int unit_seq,
+                               int item_index)
 {
+    if (unit_is_ng(runtime, unit_seq) && item_index == 0) {
+        return 15.0;
+    }
     switch (item_index) {
     case 0:
-        return 9.5 + (double)((unit_seq * 7) % 51) / 10.0;
+        return 11.0 + (double)((unit_seq * 7) % 21) / 10.0;
     case 1:
-        return 75.0 + (double)((unit_seq * 11) % 51);
+        return 90.0 + (double)((unit_seq * 11) % 21);
     default:
-        return 30.0 + (double)((unit_seq * 13) % 31);
+        return 20.0 + (double)((unit_seq * 13) % 21);
     }
 }
 
@@ -121,13 +158,13 @@ static int append_inspection_measurements(L1RuntimeActions *actions,
 {
     return append_inspection(actions, runtime, seq,
                              "OPERATION_VOLTAGE", "V",
-                             inspection_value(seq, 0), 0) != 0
+                             inspection_value(runtime, seq, 0), 0) != 0
         || append_inspection(actions, runtime, seq,
                              "COIL_RESISTANCE", "OHM",
-                             inspection_value(seq, 1), 0) != 0
+                             inspection_value(runtime, seq, 1), 0) != 0
         || append_inspection(actions, runtime, seq,
                              "CONTACT_RESISTANCE", "mOHM",
-                             inspection_value(seq, 2), 1) != 0
+                             inspection_value(runtime, seq, 2), 1) != 0
         ? -1 : 0;
 }
 
@@ -293,6 +330,10 @@ int l1_machine_runtime_tick(L1MachineRuntime *runtime,
                              inspection_runtime ? "inspection_finished" : "production_finished") != 0) {
             return -1;
         }
+    } else if (!inspection_runtime
+               && append_unreported_production(
+                       out_actions, runtime, L1_PRODUCTION_RUNNING) != 0) {
+        return -1;
     }
     return 0;
 }

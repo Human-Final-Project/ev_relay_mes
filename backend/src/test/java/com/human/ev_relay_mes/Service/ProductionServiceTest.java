@@ -97,7 +97,9 @@ class ProductionServiceTest {
         var response = productionService.saveResult(request);
 
         assertThat(response.getStatus()).isEqualTo("COMPLETED");
+        assertThat(response.getEndedAt()).isNotNull();
         assertThat(fixture.lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
+        assertThat(fixture.lot.getCompletedAt()).isEqualTo(response.getEndedAt());
         assertThat(fixture.lot.getOkQty()).isEqualTo(10);
         assertThat(fixture.lot.getNgQty()).isZero();
         assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.COMPLETED);
@@ -159,7 +161,7 @@ class ProductionServiceTest {
     @Test
     void rejectsQuantityOverLotInput() {
         Fixture fixture = fixture();
-        ProductionResultReceiveRequestDto request = request(5, 5, 0, "RUNNING");
+        ProductionResultReceiveRequestDto request = request(11, 11, 0, "RUNNING");
         mockBase(fixture);
         ProductionLog previous = ProductionLog.builder()
                 .lot(fixture.lot)
@@ -175,6 +177,62 @@ class ProductionServiceTest {
 
         assertThatThrownBy(() -> productionService.saveResult(request))
                 .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void updatesExistingProcessLogWithLatestCumulativeQuantity() {
+        Fixture fixture = fixture();
+        ProductionLog current = ProductionLog.builder()
+                .productionLogId(20L)
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(4)
+                .okQty(4)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+        ProductionResultReceiveRequestDto request = request(7, 6, 1, "RUNNING");
+        mockBase(fixture);
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of(current));
+        when(productionLogRepository.save(current)).thenReturn(current);
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getProductionLogId()).isEqualTo(20L);
+        assertThat(response.getInputQty()).isEqualTo(7);
+        assertThat(response.getOkQty()).isEqualTo(6);
+        assertThat(response.getNgQty()).isEqualTo(1);
+        assertThat(response.getStatus()).isEqualTo("RUNNING");
+        verify(productionLogRepository).save(current);
+    }
+
+    @Test
+    void ignoresOlderCumulativeProgressWithoutRegressingTheLog() {
+        Fixture fixture = fixture();
+        ProductionLog current = ProductionLog.builder()
+                .productionLogId(21L)
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(6)
+                .okQty(6)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+        ProductionResultReceiveRequestDto request = request(5, 5, 0, "RUNNING");
+        when(lotRepository.findByLotNoForUpdate("LOT-001"))
+                .thenReturn(Optional.of(fixture.lot));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of(current));
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getInputQty()).isEqualTo(6);
+        verifyNoInteractions(machineRepository, processRepository, workCommandService);
     }
 
     @Test

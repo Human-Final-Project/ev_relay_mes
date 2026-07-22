@@ -56,39 +56,50 @@ public class ProductionService {
                 return toResponse(existing.get());
             }
         }
-        validateLot(lot, dto.getProcessCode());
 
+        List<ProductionLog> processLogs = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        dto.getLotNo(), dto.getProcessCode());
+        ProductionLog currentLog = processLogs.stream().findFirst().orElse(null);
+        if (currentLog != null && dto.getInputQty() <= currentLog.getInputQty()) {
+            return toResponse(currentLog);
+        }
+
+        validateLot(lot, dto.getProcessCode());
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
         Process process = processRepository.findById(dto.getProcessCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
         validateMachineAndProcess(machine, process);
 
-        List<ProductionLog> previousLogs = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        dto.getLotNo(), dto.getProcessCode());
-        int totalInputQty = sumInput(previousLogs) + dto.getInputQty();
-        int totalOkQty = sumOk(previousLogs) + dto.getOkQty();
         int expectedInputQty = expectedInputQty(lot, process);
-        validateCumulativeQuantity(expectedInputQty, dto.getStatus(), totalInputQty);
-        String logStatus = totalInputQty == expectedInputQty ? "COMPLETED" : "RUNNING";
+        validateCumulativeQuantity(expectedInputQty, dto.getStatus(), dto.getInputQty());
+        String logStatus = dto.getInputQty() == expectedInputQty ? "COMPLETED" : "RUNNING";
 
-        ProductionLog log = ProductionLog.builder()
-                .eventId(eventId)
-                .lot(lot)
-                .machine(machine)
-                .process(process)
-                .inputQty(dto.getInputQty())
-                .okQty(dto.getOkQty())
-                .ngQty(dto.getNgQty())
-                .status(logStatus)
-                .startedAt(dto.getStartedAt())
-                .endedAt(dto.getEndedAt())
-                .build();
-        ProductionLog savedLog = productionLogRepository.save(log);
+        if (currentLog == null) {
+            currentLog = ProductionLog.builder()
+                    .eventId(eventId)
+                    .lot(lot)
+                    .machine(machine)
+                    .process(process)
+                    .startedAt(dto.getStartedAt())
+                    .build();
+        }
+        currentLog.setInputQty(dto.getInputQty());
+        currentLog.setOkQty(dto.getOkQty());
+        currentLog.setNgQty(dto.getNgQty());
+        currentLog.setStatus(logStatus);
+        if (currentLog.getStartedAt() == null) {
+            currentLog.setStartedAt(dto.getStartedAt());
+        }
+        LocalDateTime completedAt = "COMPLETED".equals(logStatus)
+                ? (dto.getEndedAt() == null ? LocalDateTime.now() : dto.getEndedAt())
+                : null;
+        currentLog.setEndedAt(completedAt);
+        ProductionLog savedLog = productionLogRepository.save(currentLog);
 
-        if (totalInputQty == expectedInputQty) {
-            completeCurrentProcess(lot, machine, process, totalOkQty, dto.getEndedAt());
+        if (dto.getInputQty() == expectedInputQty) {
+            completeCurrentProcess(lot, machine, process, dto.getOkQty(), completedAt);
         }
         return toResponse(savedLog);
     }

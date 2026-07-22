@@ -72,9 +72,15 @@ static void test_error_flushes_partial_before_alarm_and_status(void)
 
     start_runtime(&runtime, 3, 10, &actions);
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 0);
+    CHECK(actions.count == 1);
+    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
+    CHECK(actions.actions[0].data.production.input_qty == 1);
+    CHECK(actions.actions[0].data.production.status == L1_PRODUCTION_RUNNING);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 0);
+    CHECK(actions.count == 1);
+    CHECK(actions.actions[0].data.production.input_qty == 2);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
 
     CHECK(actions.count == 3);
@@ -92,11 +98,11 @@ static void test_error_flushes_partial_before_alarm_and_status(void)
     CHECK(actions.actions[2].data.machine_status.status == L1_MACHINE_ERROR);
     CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
     CHECK(runtime.processed_qty == 3);
-    CHECK(runtime.reported_qty == 0);
+    CHECK(runtime.reported_qty == 2);
     CHECK(l1_machine_runtime_remaining_qty(&runtime) == 7);
     CHECK(strcmp(runtime.lot_no, "EVR-LOT-001") == 0);
 
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 3) == 0);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     CHECK(runtime.reported_qty == 3);
     CHECK(l1_machine_runtime_unreported_qty(&runtime) == 0);
 
@@ -116,8 +122,10 @@ static void test_resume_rejects_wrong_quantity_then_finishes_remaining(void)
     start_runtime(&runtime, 3, 10, &actions);
     for (index = 0; index < 3; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
+        CHECK(actions.actions[0].data.production.input_qty == index + 1);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 3) == 0);
 
     wrong_resume = make_command(L1_COMMAND_RESUME,
                                 201,
@@ -151,12 +159,16 @@ static void test_resume_rejects_wrong_quantity_then_finishes_remaining(void)
 
     for (index = 0; index < 6; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-        CHECK(actions.count == 0);
+        CHECK(actions.count == 1);
+        CHECK(actions.actions[0].data.production.status
+              == L1_PRODUCTION_RUNNING);
+        CHECK(actions.actions[0].data.production.input_qty == index + 4);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
     CHECK(actions.count == 2);
     CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[0].data.production.input_qty == 7);
+    CHECK(actions.actions[0].data.production.input_qty == 10);
     CHECK(actions.actions[0].data.production.status
           == L1_PRODUCTION_COMPLETED);
     CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
@@ -164,7 +176,7 @@ static void test_resume_rejects_wrong_quantity_then_finishes_remaining(void)
     CHECK(strcmp(actions.actions[1].data.machine_status.lot_no, "-") == 0);
     CHECK(runtime.state == L1_RUNTIME_IDLE);
     CHECK(runtime.processed_qty == 10);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 7) == 0);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     CHECK(runtime.reported_qty == 10);
 }
 
@@ -203,7 +215,10 @@ static void test_error_threshold_at_target_completes_without_error(void)
     start_runtime(&runtime, 5, 5, &actions);
     for (index = 0; index < 4; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-        CHECK(actions.count == 0);
+        CHECK(actions.count == 1);
+        CHECK(actions.actions[0].data.production.status
+              == L1_PRODUCTION_RUNNING);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
     CHECK(actions.count == 2);
@@ -223,21 +238,18 @@ static void test_stop_flushes_progress_and_can_resume(void)
 
     start_runtime(&runtime, 0, 5, &actions);
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     stop = make_command(L1_COMMAND_STOP, 301, "EVR-LOT-001", 0);
     CHECK(l1_machine_runtime_handle_command(&runtime,
                                             &stop,
                                             &actions) == 0);
-    CHECK(actions.count == 3);
+    CHECK(actions.count == 2);
     CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[1].data.production.input_qty == 2);
-    CHECK(actions.actions[1].data.production.status
-          == L1_PRODUCTION_RUNNING);
-    CHECK(actions.actions[2].data.machine_status.status
+    CHECK(actions.actions[1].data.machine_status.status
           == L1_MACHINE_STOPPED);
     CHECK(runtime.state == L1_RUNTIME_STOPPED);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 2) == 0);
 
     resume = make_command(L1_COMMAND_RESUME,
                           302,
@@ -384,6 +396,62 @@ static void test_op70_resume_continues_unit_sequence(void)
     CHECK(actions.actions[0].data.inspection.unit_seq == 3);
 }
 
+static void test_general_process_generates_three_percent_ng(void)
+{
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    int index;
+    int ng_qty = 0;
+
+    start_runtime(&runtime, 0, 100, &actions);
+    for (index = 0; index < 100; ++index) {
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
+        CHECK(actions.actions[0].data.production.input_qty
+              == actions.actions[0].data.production.ok_qty
+               + actions.actions[0].data.production.ng_qty);
+        ng_qty = actions.actions[0].data.production.ng_qty;
+        CHECK(actions.actions[0].reported_quantity == 1);
+        CHECK(l1_machine_runtime_mark_reported(
+                  &runtime,
+                  actions.actions[0].reported_quantity) == 0);
+    }
+    CHECK(ng_qty == 3);
+    CHECK(runtime.state == L1_RUNTIME_IDLE);
+}
+
+static void test_inspection_process_generates_three_percent_ng(void)
+{
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command start;
+    int index;
+    int ng_units = 0;
+
+    memset(&start, 0, sizeof(start));
+    start.command_id = 720;
+    start.type = L1_COMMAND_START;
+    strcpy(start.machine_id, "EQ-TEST-01");
+    strcpy(start.process_code, "OP70");
+    strcpy(start.lot_no, "EVR-LOT-NG-070");
+    start.input_qty = 100;
+
+    l1_machine_runtime_init(&runtime,
+                            l1_device_config_find("EQ-TEST-01"),
+                            0);
+    CHECK(l1_machine_runtime_handle_command(&runtime, &start, &actions) == 0);
+    for (index = 0; index < 100; ++index) {
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_INSPECTION);
+        if (actions.actions[0].data.inspection.value > 14.0) {
+            ++ng_units;
+        }
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
+    }
+    CHECK(ng_units == 3);
+    CHECK(runtime.state == L1_RUNTIME_IDLE);
+}
+
 static void test_six_devices_have_registered_error_codes(void)
 {
     const char *expected[] = {
@@ -418,6 +486,8 @@ int main(void)
     test_op70_sends_measurements_without_production();
     test_op70_replays_unreported_measurement_unit();
     test_op70_resume_continues_unit_sequence();
+    test_general_process_generates_three_percent_ng();
+    test_inspection_process_generates_three_percent_ng();
     test_six_devices_have_registered_error_codes();
 
     if (checks_failed != 0) {
