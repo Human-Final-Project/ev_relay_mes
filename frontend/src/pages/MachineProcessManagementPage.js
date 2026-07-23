@@ -1,11 +1,15 @@
 import React, { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
 import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge } from "../components/MesComponents";
+import AlarmHistoryPage from "./AlarmHistoryPage";
 
 const EDIT_ROLES = ["ADMIN", "MANAGER"];
 
 export function MachineManagementPage({ currentUser }) {
+  const [searchParams,setSearchParams]=useSearchParams();
+  const activeTab=searchParams.get("tab")==="alarms"?"alarms":"machines";
   const machines = useApiData(MesApi.getMachines, []);
   const processes = useApiData(MesApi.getProcesses, []);
   const [form, setForm] = useState(null);
@@ -27,7 +31,12 @@ export function MachineManagementPage({ currentUser }) {
   )};
   return <div className="mes-page management-page">
     <PageHeader title="설비 관리" description="생산 설비의 기본정보, 담당 공정과 사용 여부를 관리합니다."
-      actions={<><button className="btn secondary" onClick={()=>{machines.reload();processes.reload()}}>새로고침</button>{canEdit&&<button className="btn" onClick={()=>setForm({machineId:"",machineName:"",machineType:"",processCode:""})}>설비 등록</button>}</>}/>
+      actions={activeTab==="machines"?<><button className="btn secondary" onClick={()=>{machines.reload();processes.reload()}}>새로고침</button>{canEdit&&<button className="btn" onClick={()=>setForm({machineId:"",machineName:"",machineType:"",processCode:""})}>설비 등록</button>}</>:null}/>
+    <div className="tabs">
+      <button className={`tab ${activeTab==="machines"?"active":""}`} onClick={()=>setSearchParams({})}>설비 목록</button>
+      <button className={`tab ${activeTab==="alarms"?"active":""}`} onClick={()=>setSearchParams({tab:"alarms"})}>알람 이력</button>
+    </div>
+    {activeTab==="alarms"?<AlarmHistoryPage currentUser={currentUser} embedded/>:<>
     {error&&<ErrorState error={error}/>}
     {machines.loading?<LoadingState/>:machines.error?<ErrorState error={machines.error} onRetry={machines.reload}/>:!(machines.data||[]).length?<EmptyState/>:
       <div className="ops-panel"><div className="compact-table-wrap"><table className="compact-dashboard-table management-table">
@@ -48,6 +57,7 @@ export function MachineManagementPage({ currentUser }) {
         <Field label="담당 공정"><select value={form.processCode} onChange={e=>setForm({...form,processCode:e.target.value})}><option value="">공정 선택</option>{(processes.data||[]).filter(p=>p.useYn==="Y"||p.processCode===form.processCode).map(p=><option key={p.processCode} value={p.processCode}>{p.processCode} · {p.processName}</option>)}</select></Field>
       </div>{error&&<ErrorState error={error}/>}
     </Modal>}
+    </>}
   </div>;
 }
 

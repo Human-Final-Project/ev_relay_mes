@@ -14,6 +14,7 @@ public class MachineAlarmResponseDto {
     private String machineName;
     private String alarmCode;
     private String alarmName;
+    private String description;
     private String alarmLevel;
     private String lotNo;
     private String processCode;

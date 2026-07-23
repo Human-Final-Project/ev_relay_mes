@@ -7,7 +7,6 @@ import DashboardPage from "./pages/DashboardPage";
 import WorkOrderPage from "./pages/WorkOrderPage";
 import LotPage from "./pages/LotPage";
 import ProductionPage from "./pages/ProductionPage";
-import AlarmHistoryPage from "./pages/AlarmHistoryPage";
 import QualityPage from "./pages/QualityPage";
 import MaterialPage from "./pages/MaterialPage";
 import MasterDataPage from "./pages/MasterDataPage";
@@ -30,7 +29,7 @@ function App() {
       <Route path="/work-orders" element={<Navigate to="/production/work-orders" replace/>}/>
       <Route path="/lots" element={<Navigate to="/production/lots" replace/>}/>
       <Route path="/production" element={<ProductionPage currentUser={currentUser}/>}/>
-      <Route path="/alarms" element={<AlarmHistoryPage currentUser={currentUser}/>}/>
+      <Route path="/alarms" element={<Navigate to="/master/machines?tab=alarms" replace/>}/>
       <Route path="/quality" element={<QualityPage currentUser={currentUser}/>}/>
       <Route path="/materials" element={<Navigate to="/inventory/material-lots" replace/>}/>
       <Route path="/master-data" element={<MasterDataPage currentUser={currentUser}/>}/>

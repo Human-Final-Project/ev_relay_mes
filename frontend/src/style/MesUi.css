@@ -110,6 +110,14 @@
 .management-table .mes-actions { flex-wrap:nowrap; }
 .inventory-kpis { grid-template-columns:repeat(3,minmax(160px,1fr)); margin-bottom:14px; }
 .inventory-kpis .dashboard-kpi-card { min-height:104px; }
+.alarm-history-embedded { display:grid; gap:14px; padding-top:14px; }
+.alarm-history-embedded .mes-table td { padding-top:9px; padding-bottom:9px; }
+.alarm-inline-cell { display:flex; align-items:center; gap:7px; max-width:190px; white-space:nowrap; overflow:hidden; }
+.alarm-inline-cell strong,.alarm-inline-cell span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.alarm-inline-cell span { color:#64748b; font-size:11px; }
+.alarm-name-cell { max-width:220px; }
+.alarm-time { white-space:nowrap; font-variant-numeric:tabular-nums; }
+.alarm-description { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 @media(max-width:1200px){.dashboard-charts{grid-template-columns:1fr 1fr}.chart-wide{grid-column:1/-1}}
 @media(max-width:1000px){.mes-grid.two,.split-detail{grid-template-columns:1fr}.process-flow{grid-template-columns:1fr 1fr}.mes-form-grid{grid-template-columns:1fr}.production-analytics{grid-template-columns:1fr}}
 @media(max-width:640px){.dashboard-charts{grid-template-columns:1fr}.chart-wide{grid-column:auto}.stacked-row{grid-template-columns:82px minmax(90px,1fr) 72px}.stacked-scale{margin-left:94px}}

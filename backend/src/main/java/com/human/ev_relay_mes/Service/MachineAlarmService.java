@@ -217,6 +217,7 @@ public class MachineAlarmService {
                 .machineName(history.getMachine().getMachineName())
                 .alarmCode(history.getAlarmCode().getAlarmCode())
                 .alarmName(history.getAlarmCode().getAlarmName())
+                .description(history.getAlarmCode().getDescription())
                 .alarmLevel(history.getAlarmLevel())
                 .lotNo(history.getLot() == null ? null : history.getLot().getLotNo())
                 .processCode(history.getProcess() == null ? null : history.getProcess().getProcessCode())

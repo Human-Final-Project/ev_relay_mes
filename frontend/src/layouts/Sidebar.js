@@ -4,7 +4,6 @@ import { Link, NavLink, useLocation } from "react-router-dom";
 const GROUPS = [
   { label:"모니터링", icon:"monitoring", items:[
     ["/dashboard","dashboard","대시보드"],
-    ["/alarms","warning","설비 알람"],
   ]},
   { label:"기준 정보 관리", icon:"database", items:[
     ["/master/machines","precision_manufacturing","설비 관리"],

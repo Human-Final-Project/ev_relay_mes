@@ -8,7 +8,6 @@ import {
   LoadingState,
   PageHeader,
   StatusBadge,
-  formatDate,
 } from "../components/MesComponents";
 
 const EMPTY_FILTERS = {
@@ -20,7 +19,7 @@ const EMPTY_FILTERS = {
   endAt: "",
 };
 
-export default function AlarmHistoryPage({ currentUser }) {
+export default function AlarmHistoryPage({ currentUser, embedded = false }) {
   const [filters, setFilters] = useState(EMPTY_FILTERS);
   const [applied, setApplied] = useState({});
   const [clearingId, setClearingId] = useState(null);
@@ -57,12 +56,12 @@ export default function AlarmHistoryPage({ currentUser }) {
   const loading = alarms.loading && alarms.data === null;
   const error = alarms.data === null ? alarms.error : null;
 
-  return <div className="mes-page">
-    <PageHeader
+  return <div className={embedded ? "alarm-history-embedded" : "mes-page"}>
+    {!embedded && <PageHeader
       title="설비 알람 이력"
       description="설비별 WARNING·ERROR 발생 및 해제 상태를 조회합니다. 해제자는 화면에 표시하지 않습니다."
       actions={<button className="btn secondary" onClick={alarms.reload}>새로고침</button>}
-    />
+    />}
 
     <section className="mes-card">
       <div className="mes-filter">
@@ -96,6 +95,7 @@ export default function AlarmHistoryPage({ currentUser }) {
         <Field label="종료 시각"><input type="datetime-local" value={filters.endAt} onChange={(e) => setFilters({ ...filters, endAt: e.target.value })}/></Field>
         <button className="btn" onClick={applyFilters}>조회</button>
         <button className="btn secondary" onClick={resetFilters}>초기화</button>
+        {embedded && <button className="btn secondary" onClick={alarms.reload}>새로고침</button>}
       </div>
     </section>
 
@@ -103,19 +103,27 @@ export default function AlarmHistoryPage({ currentUser }) {
     <section className="mes-card">
       {loading ? <LoadingState/> : error ? <ErrorState error={error} onRetry={alarms.reload}/> : !(alarms.data || []).length ? <EmptyState/> :
         <div className="mes-table-wrap"><table className="mes-table">
-          <thead><tr><th>설비</th><th>공정/LOT</th><th>알람</th><th>레벨</th><th>발생 시각</th><th>상태</th><th>해제 시각</th><th>메시지</th><th></th></tr></thead>
+          <thead><tr><th>설비</th><th>공정/LOT</th><th>알람</th><th>레벨</th><th>발생 시각</th><th>상태</th><th>해제 시각</th><th>내용</th><th></th></tr></thead>
           <tbody>{alarms.data.map((alarm) => <tr key={alarm.machineAlarmHistoryId}>
-            <td>{alarm.machineName}<br/><span className="mono">{alarm.machineId}</span></td>
-            <td>{alarm.processName || alarm.processCode || "-"}<br/><span className="mono">{alarm.lotNo || "-"}</span></td>
-            <td><strong>{alarm.alarmName || alarm.alarmCode}</strong><br/><span className="mono">{alarm.alarmCode}</span></td>
+            <td><div className="alarm-inline-cell" title={`${alarm.machineName || ""} ${alarm.machineId || ""}`}><strong className="mono">{alarm.machineId}</strong><span>{alarm.machineName}</span></div></td>
+            <td><div className="alarm-inline-cell" title={`${alarm.processName || alarm.processCode || "-"} / ${alarm.lotNo || "-"}`}><strong className="mono">{alarm.processCode || "-"}</strong><span className="mono">{alarm.lotNo || "-"}</span></div></td>
+            <td><div className="alarm-inline-cell alarm-name-cell" title={`${alarm.alarmName || alarm.alarmCode} (${alarm.alarmCode})`}><strong>{alarm.alarmName || alarm.alarmCode}</strong><span className="mono">{alarm.alarmCode}</span></div></td>
             <td><StatusBadge value={alarm.alarmLevel}/></td>
-            <td>{formatDate(alarm.occurredAt)}</td>
+            <td className="alarm-time">{formatAlarmDate(alarm.occurredAt)}</td>
             <td><span className={`mes-status ${alarm.cleared ? "status-completed" : "status-stopped"}`}>{alarm.cleared ? "해제됨" : "발생 중"}</span></td>
-            <td>{formatDate(alarm.clearedAt)}</td>
-            <td>{alarm.message || "-"}</td>
+            <td className="alarm-time">{formatAlarmDate(alarm.clearedAt)}</td>
+            <td><div className="alarm-description" title={alarm.description || alarm.message || "-"}>{alarm.description || alarm.message || "-"}</div></td>
             <td>{canClear && !alarm.cleared && <button className="btn small" disabled={clearingId === alarm.machineAlarmHistoryId} onClick={() => clearAlarm(alarm.machineAlarmHistoryId)}>{clearingId === alarm.machineAlarmHistoryId ? "처리 중" : "해제"}</button>}</td>
           </tr>)}</tbody>
         </table></div>}
     </section>
   </div>;
+}
+
+function formatAlarmDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth()+1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
