@@ -26,6 +26,33 @@ static volatile int scheduler_running;
 static volatile int scheduler_worker_active;
 static int scheduler_initialized;
 
+static void send_collector_heartbeat(void)
+{
+    const char *connected_machines[COLLECTOR_MAX_L1_CONNECTIONS];
+    size_t connected_count = 0;
+    size_t index;
+    int http_status = 0;
+    ApiClientResult result;
+
+    for (index = 0; index < COLLECTOR_MAX_L1_CONNECTIONS; ++index) {
+        if (collector_is_machine_connected(configured_machines[index])) {
+            connected_machines[connected_count++] = configured_machines[index];
+        }
+    }
+    result = api_client_send_collector_heartbeat(
+        connected_machines,
+        connected_count,
+        COLLECTOR_MAX_L1_CONNECTIONS,
+        &http_status);
+    if (result != API_CLIENT_OK) {
+        fprintf(stderr,
+                "[L2 Heartbeat] Backend report failed result=%s http=%d\n",
+                api_client_result_name(result),
+                http_status);
+        fflush(stderr);
+    }
+}
+
 static void command_id_to_text(int64_t value, char output[21])
 {
     char reversed[20];
@@ -158,6 +185,7 @@ static void scheduler_worker(void *context)
         size_t index;
         unsigned int waited = 0;
 
+        send_collector_heartbeat();
         for (index = 0;
              scheduler_running && index < COLLECTOR_MAX_L1_CONNECTIONS;
              ++index) {

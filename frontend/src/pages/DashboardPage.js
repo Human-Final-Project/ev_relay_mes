@@ -1,45 +1,260 @@
-import React from "react";
+import React, { useEffect, useMemo } from "react";
+import { Link } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
-import { DonutChart, StackedBarChart, summarizeByProcess } from "../components/MesCharts";
+import { ErrorState, LoadingState, StatusBadge, formatDate, statusLabel } from "../components/MesComponents";
 
 const machineOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
+const machineColors = {
+  RUNNING: "#08a85a",
+  IDLE: "#8b9bad",
+  STOPPED: "#ef7d00",
+  ERROR: "#e31b23",
+};
 
 export default function DashboardPage() {
   const summary = useApiData(MesApi.getDashboardSummary, []);
   const machines = useApiData(MesApi.getMachines, []);
   const recent = useApiData(MesApi.getRecentProductionLogs, []);
-  const reload = () => { summary.reload(); machines.reload(); recent.reload(); };
-  if (summary.loading || machines.loading || recent.loading) return <LoadingState />;
-  if (summary.error || machines.error || recent.error) return <ErrorState error={summary.error || machines.error || recent.error} onRetry={reload} />;
-  const s = summary.data || {};
-  const sortedMachines = [...(machines.data || [])].sort((a,b) => machineOrder.indexOf(a.processCode)-machineOrder.indexOf(b.processCode));
-  const processRows=summarizeByProcess(recent.data||[],machineOrder);
-  const productionTotal=(s.production?.okQty||0)+(s.production?.ngQty||0);
-  const yieldRate=productionTotal?`${(s.production.okQty/productionTotal*100).toFixed(1)}%`:"0%";
+  const pipeline = useApiData(MesApi.getPipelineLots, []);
+  const alarms = useApiData(() => MesApi.getMachineAlarms({ cleared: false }), []);
+  const assignments = useApiData(MesApi.getAllMachineAssignments, []);
+  const reloadSummary = summary.reload;
+  const reloadMachines = machines.reload;
+  const reloadRecent = recent.reload;
+  const reloadPipeline = pipeline.reload;
+  const reloadAlarms = alarms.reload;
+  const reloadAssignments = assignments.reload;
+
+  useEffect(() => {
+    const machineTimer = setInterval(() => {
+      reloadMachines();
+      reloadPipeline();
+    }, 1000);
+    const aggregateTimer = setInterval(() => {
+      reloadSummary();
+      reloadRecent();
+      reloadAlarms();
+      reloadAssignments();
+    }, 5000);
+    return () => {
+      clearInterval(machineTimer);
+      clearInterval(aggregateTimer);
+    };
+  }, [reloadSummary, reloadMachines, reloadRecent, reloadPipeline, reloadAlarms, reloadAssignments]);
+
+  const reload = () => {
+    reloadSummary();
+    reloadMachines();
+    reloadRecent();
+    reloadPipeline();
+    reloadAlarms();
+    reloadAssignments();
+  };
+  const initialLoading = [summary, machines, recent, pipeline, alarms, assignments]
+    .some((resource) => resource.loading && resource.data === null);
+  const initialError = [summary, machines, recent, pipeline, alarms, assignments]
+    .find((resource) => resource.error && resource.data === null)?.error;
+
+  const sortedMachines = useMemo(() => [...(machines.data || [])].sort((left, right) =>
+    machineOrder.indexOf(left.processCode) - machineOrder.indexOf(right.processCode)
+  ), [machines.data]);
+  const assignmentsByMachine = useMemo(() => (assignments.data || []).reduce((grouped, assignment) => {
+    const rows = grouped[assignment.machineId] || [];
+    rows.push(assignment);
+    grouped[assignment.machineId] = rows;
+    return grouped;
+  }, {}), [assignments.data]);
+
+  if (initialLoading) return <LoadingState />;
+  if (initialError) return <ErrorState error={initialError} onRetry={reload} />;
+
+  const data = summary.data || {};
+  const production = data.production || {};
+  const machineSummary = data.machines || {};
+  const alarmRows = alarms.data || [];
+  const activeLots = pipeline.data || [];
   const kpis = [
-    ["오늘 완료 LOT", s.production?.completedLots || 0, "생산 완료"],
-    ["오늘 생산 OK", s.production?.okQty || 0, `NG ${s.production?.ngQty || 0}`],
-    ["진행 중 작업지시", s.workOrders?.running || 0, `전체 ${s.workOrders?.total || 0}`],
-    ["가동 중 설비", `${s.machines?.running || 0} / ${s.machines?.total || 0}`, `이상 ${s.machines?.error || 0}`],
-    ["활성 알람", s.alarms?.active || 0, `오늘 발생 ${s.alarms?.occurredToday || 0}`],
-    ["부족 자재", s.materials?.lowStockItemCount || 0, `기준 ${s.materials?.lowStockThreshold ?? 100} 이하`],
+    { label: "오늘 생산 OK", value: production.okQty || 0, unit: "EA", tone: "green", icon: "check_circle" },
+    { label: "오늘 생산 NG", value: production.ngQty || 0, unit: "EA", tone: "red", icon: "cancel" },
+    { label: "진행 중 LOT", value: activeLots.length, unit: "LOTS", tone: "blue", icon: "deployed_code" },
+    { label: "가동 설비", value: `${machineSummary.running || 0}/${machineSummary.total || 0}`, unit: "RUN", tone: "blue", icon: "monitoring" },
+    { label: "활성 알람", value: data.alarms?.active || 0, unit: "ACTIVE", tone: "orange", icon: "notifications" },
+    { label: "자재 부족 품목", value: data.materials?.lowStockItemCount || 0, unit: "SKUS", tone: "red", icon: "inventory_2" },
   ];
-  return <div className="mes-page">
-    <PageHeader title="생산 대시보드" description={`Backend 집계 기준 · ${formatDate(s.generatedAt)}`} actions={<button className="btn secondary" onClick={reload}>새로고침</button>} />
-    <div className="mes-grid kpis">{kpis.map(([label,value,hint]) => <div className="mes-card mes-kpi" key={label}><span className="label">{label}</span><strong className="value">{value}</strong><span className="hint">{hint}</span></div>)}</div>
-    <div className="dashboard-charts">
-      <section className="mes-card chart-card chart-wide"><div className="chart-heading"><div><h2>최근 공정별 생산량</h2><p>최근 생산 실적의 OK·NG 누적 비교</p></div><div className="chart-key"><span className="ok">OK</span><span className="ng">NG</span></div></div><StackedBarChart rows={processRows}/></section>
-      <section className="mes-card chart-card"><div className="chart-heading"><div><h2>오늘 양품률</h2><p>완료 LOT 집계 기준</p></div></div><DonutChart ariaLabel="오늘 OK 및 NG 생산 비율" centerValue={yieldRate} centerLabel="양품률" segments={[{label:"OK",value:s.production?.okQty||0,color:"#0ea5a4"},{label:"NG",value:s.production?.ngQty||0,color:"#f43f5e"}]}/></section>
-      <section className="mes-card chart-card"><div className="chart-heading"><div><h2>설비 상태</h2><p>등록 설비 실시간 상태</p></div></div><DonutChart ariaLabel="설비 상태 분포" centerValue={s.machines?.total||0} centerLabel="전체 설비" segments={[{label:"가동",value:s.machines?.running||0,color:"#22c55e"},{label:"대기",value:s.machines?.idle||0,color:"#38bdf8"},{label:"정지",value:s.machines?.stopped||0,color:"#f59e0b"},{label:"이상",value:s.machines?.error||0,color:"#ef4444"}]}/></section>
+
+  return <div className="operations-dashboard">
+    <div className="dashboard-kpi-grid">
+      {kpis.map((kpi) => <KpiCard key={kpi.label} {...kpi} />)}
     </div>
-    <section className="mes-card"><h2>공정·설비 흐름</h2><div className="process-flow">
-      <div className="parallel-processes">{sortedMachines.filter(m=>["OP20","OP30"].includes(m.processCode)).map(m=><MachineMini key={m.machineId} machine={m}/>)}</div>
-      <div style={{textAlign:"center",color:"#94a3b8"}}>합류 →</div>
-      {sortedMachines.filter(m=>!["OP20","OP30"].includes(m.processCode)).map(m=><MachineMini key={m.machineId} machine={m}/>)}</div></section>
-    <section className="mes-card"><h2>최근 생산 실적</h2><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>공정</th><th>설비</th><th>투입</th><th>OK</th><th>NG</th><th>상태</th><th>수집 시각</th></tr></thead><tbody>{(recent.data || []).map(log=><tr key={log.productionLogId}><td className="mono">{log.lotNo}</td><td>{log.processName}<br/><span className="mono">{log.processCode}</span></td><td className="mono">{log.machineId}</td><td>{log.inputQty}</td><td>{log.okQty}</td><td>{log.ngQty}</td><td><StatusBadge value={log.status}/></td><td>{formatDate(log.createdAt)}</td></tr>)}</tbody></table></div></section>
+
+    <div className="dashboard-overview-grid">
+      <section className="ops-panel production-trend-panel">
+        <div className="ops-panel-heading">
+          <div className="ops-title"><span className="material-symbols-outlined">list_alt</span><h2>시간대별 완제품 생산 추이 (EA)</h2></div>
+          <button type="button" className="dashboard-refresh" onClick={reload}><span className="material-symbols-outlined">refresh</span> 갱신</button>
+        </div>
+        <div className="trend-legend"><span className="ok">OK</span><span className="ng">NG</span></div>
+        <HourlyLineChart rows={data.hourlyProduction || []} />
+      </section>
+
+      <section className="ops-panel equipment-assignment-panel">
+        <div className="ops-panel-heading">
+          <div className="ops-title"><span className="material-symbols-outlined">engineering</span><h2>설비별 책임자 배정</h2></div>
+          <Link to="/workers">배정 관리</Link>
+        </div>
+        <div className="assignment-card-grid">
+          {sortedMachines.map((machine) => <EquipmentAssignmentCard
+            key={machine.machineId}
+            machine={machine}
+            assignments={assignmentsByMachine[machine.machineId] || []}
+          />)}
+        </div>
+      </section>
+    </div>
+
+    <section className="ops-panel realtime-process-panel">
+      <div className="ops-panel-heading">
+        <div className="ops-title"><h2>실시간 생산 공정 현황</h2></div>
+        <span className="panel-timestamp"><span className="material-symbols-outlined">refresh</span>{formatDate(data.generatedAt)} 기준</span>
+      </div>
+      <ProcessFlow machines={sortedMachines} />
+    </section>
+
+    <div className="dashboard-bottom-grid">
+      <section className="ops-panel recent-production-panel">
+        <div className="ops-panel-heading">
+          <div className="ops-title"><span className="material-symbols-outlined">event_note</span><h2>최근 생산 실적</h2></div>
+          <a href="/production">전체보기</a>
+        </div>
+        <div className="compact-table-wrap">
+          <table className="compact-dashboard-table">
+            <thead><tr><th>LOT 번호</th><th>공정</th><th>설비</th><th>OK / NG</th><th>종료 시각</th></tr></thead>
+            <tbody>{(recent.data || []).slice(0, 5).map((log) => <tr key={log.productionLogId}>
+              <td><strong className="lot-link">{log.lotNo}</strong></td>
+              <td>{log.processCode}<small>{log.processName}</small></td>
+              <td>{log.machineId}</td>
+              <td><b className="ok-number">{log.okQty || 0}</b><span> / </span><b className="ng-number">{log.ngQty || 0}</b></td>
+              <td>{formatDate(log.endedAt || log.createdAt)}</td>
+            </tr>)}
+            {!(recent.data || []).length && <tr><td colSpan="5" className="table-empty">최근 생산 실적이 없습니다.</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="ops-panel active-alarm-panel">
+        <div className="ops-panel-heading alarm-heading">
+          <div className="ops-title"><span className="material-symbols-outlined">warning</span><h2>미해제 알람 목록</h2></div>
+          <span className="active-count">{alarmRows.length} ACTIVE</span>
+        </div>
+        {!alarmRows.length
+          ? <div className="dashboard-empty"><span className="material-symbols-outlined">notifications</span><strong>활성 알람이 없습니다.</strong></div>
+          : <div className="alarm-list">{alarmRows.slice(0, 5).map((alarm) => <div className="alarm-list-row" key={alarm.machineAlarmHistoryId}>
+              <span className="material-symbols-outlined">error</span>
+              <div><strong>{alarm.alarmName || alarm.alarmCode}</strong><small>{alarm.machineId} · {alarm.processCode || "-"} · {formatDate(alarm.occurredAt)}</small></div>
+              <StatusBadge value={alarm.alarmLevel}/>
+            </div>)}</div>}
+      </section>
+    </div>
   </div>;
 }
 
-function MachineMini({ machine }) { return <div className="mes-card machine-card"><span className="machine-code">{machine.processCode} · {machine.machineId}</span><div className="machine-title">{machine.processName || machine.machineName}</div><StatusBadge value={machine.status}/></div>; }
+function KpiCard({ label, value, unit, tone, icon }) {
+  return <article className={`dashboard-kpi-card ${tone}`}>
+    <span className="kpi-label">{label}</span>
+    <div className="kpi-value-row"><strong>{value}</strong><span>{unit}</span></div>
+    <span className="kpi-icon"><span className="material-symbols-outlined">{icon}</span></span>
+  </article>;
+}
+
+function HourlyLineChart({ rows }) {
+  const width = 760;
+  const height = 236;
+  const padding = { left: 42, right: 18, top: 12, bottom: 30 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const values = rows.flatMap((row) => [Number(row.okQty) || 0, Number(row.ngQty) || 0]);
+  const rawMax = Math.max(10, ...values);
+  const max = Math.ceil(rawMax / 20) * 20;
+  const point = (value, index) => {
+    const x = padding.left + (rows.length <= 1 ? 0 : index / (rows.length - 1) * chartWidth);
+    const y = padding.top + chartHeight - (Number(value) || 0) / max * chartHeight;
+    return [x, y];
+  };
+  const pathFor = (key) => rows.map((row, index) => {
+    const [x, y] = point(row[key], index);
+    return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+  }).join(" ");
+  const okArea = rows.length
+    ? `${pathFor("okQty")} L ${padding.left + chartWidth} ${padding.top + chartHeight} L ${padding.left} ${padding.top + chartHeight} Z`
+    : "";
+  return <svg className="hourly-line-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="시간대별 누적 완제품 OK 및 NG 생산량">
+    <defs><linearGradient id="ok-area" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#34ba77" stopOpacity=".28"/><stop offset="100%" stopColor="#34ba77" stopOpacity=".02"/></linearGradient></defs>
+    {[0, 1, 2, 3, 4].map((step) => {
+      const y = padding.top + chartHeight * step / 4;
+      const value = Math.round(max * (4 - step) / 4);
+      return <g key={step}><line x1={padding.left} x2={padding.left + chartWidth} y1={y} y2={y} stroke="#dce5ef" strokeDasharray="3 3"/><text x={padding.left - 10} y={y + 4} textAnchor="end">{value}</text></g>;
+    })}
+    {okArea && <path d={okArea} fill="url(#ok-area)"/>}
+    {rows.length > 0 && <path d={pathFor("okQty")} fill="none" stroke="#08a85a" strokeWidth="2.5"/>}
+    {rows.length > 0 && <path d={pathFor("ngQty")} fill="none" stroke="#ef2b2d" strokeWidth="2"/>}
+    {rows.map((row, index) => {
+      const [okX, okY] = point(row.okQty, index);
+      const [ngX, ngY] = point(row.ngQty, index);
+      return <g key={row.hour}>
+        <circle cx={okX} cy={okY} r="3.5" fill="#08a85a"/>
+        <circle cx={ngX} cy={ngY} r="3" fill="#fff" stroke="#ef2b2d" strokeWidth="2"/>
+        <text x={okX} y={height - 7} textAnchor="middle">{row.hour}</text>
+      </g>;
+    })}
+  </svg>;
+}
+
+function EquipmentAssignmentCard({ machine, assignments }) {
+  const responsible = assignments.find((assignment) => assignment.assignmentRole === "RESPONSIBLE");
+  const workerCount = assignments.filter((assignment) => assignment.assignmentRole === "WORKER").length;
+  const initial = responsible?.workerName?.trim()?.slice(0, 1) || "?";
+  return <article className="equipment-assignment-card">
+    <div className="assignment-machine">
+      <span className="assignment-process">{machine.processCode}</span>
+      <strong>{machine.machineId}</strong>
+      <i title={statusLabel(machine.status)} style={{background:machineColors[machine.status] || "#8b9bad"}}/>
+    </div>
+    <div className={`responsible-person ${responsible ? "" : "unassigned"}`}>
+      <span className="responsible-avatar">{responsible ? initial : <span className="material-symbols-outlined">person_off</span>}</span>
+      <div>
+        <span>{responsible ? "책임자" : "책임자 미배정"}</span>
+        <strong>{responsible?.workerName || "배정 필요"}</strong>
+        <small>{responsible ? [responsible.department, responsible.position].filter(Boolean).join(" · ") || responsible.workerNo : machine.processName}</small>
+      </div>
+    </div>
+    <span className="assigned-worker-count">작업자 {workerCount}명</span>
+  </article>;
+}
+
+function ProcessFlow({ machines }) {
+  const parallel = machines.filter((machine) => ["OP20", "OP30"].includes(machine.processCode));
+  const serial = machines.filter((machine) => !["OP20", "OP30"].includes(machine.processCode));
+  return <div className="dashboard-process-flow">
+    <div className="parallel-machine-stack">{parallel.map((machine) => <MachineProcessCard key={machine.machineId} machine={machine}/>)}</div>
+    {serial.map((machine) => <React.Fragment key={machine.machineId}><span className="process-arrow">→</span><MachineProcessCard machine={machine}/></React.Fragment>)}
+    {!machines.length && <div className="dashboard-empty"><strong>등록된 설비가 없습니다.</strong></div>}
+  </div>;
+}
+
+function MachineProcessCard({ machine }) {
+  const hasProgress = Number(machine.targetQty) > 0;
+  return <article className={`process-machine-card ${String(machine.status || "").toLowerCase()}`}>
+    <i className="machine-state-dot" style={{background:machineColors[machine.status] || "#8b9bad"}}/>
+    <span className="process-code">{machine.processCode}</span>
+    <strong>{machine.machineId}</strong>
+    <small>{machine.processName || machine.machineName}</small>
+    <span className={`machine-state state-${String(machine.status || "").toLowerCase()}`}>{statusLabel(machine.status)}</span>
+    {hasProgress && <div className="flow-progress">
+      <span>{machine.currentLotNo || "-"}</span>
+      <div><i style={{width:`${Math.min(100, machine.progressPercent || 0)}%`}}/></div>
+      <strong>{machine.processedQty || 0}/{machine.targetQty}</strong>
+    </div>}
+  </article>;
+}

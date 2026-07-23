@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
+import MesApi from "../api/MesApi";
 import "../style/MesUi.css";
 
 // 폰트 및 핵심 레이아웃 디자인 전체 저장
@@ -40,15 +41,37 @@ const layoutStyles = `
   .mesdash .dashboard-layout { display: flex; height: 100%; width: 100%; }
   
   /* 사이드바 스타일 */
-  .mesdash .sidebar { width: 256px; background-color: var(--surface-container-low); border-right: 1px solid var(--outline-variant); display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; }
-  .mesdash .sidebar-brand { padding: var(--md) var(--lg) var(--xl); }
-  .mesdash .sidebar-brand h1 { margin: 0; font-size: 20px; font-weight: 700; color: var(--primary); line-height: 28px; }
-  .mesdash .sidebar-brand p { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--on-surface-variant); }
-  .mesdash .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: var(--xs); padding: 0 var(--sm); }
-  .mesdash .nav-item { display: flex; align-items: center; gap: var(--md); padding: var(--sm) var(--md); text-decoration: none; color: var(--on-surface-variant); font-size: 16px; transition: all 0.2s; cursor: pointer; border-right: 4px solid transparent; }
-  .mesdash .nav-item:hover { background-color: var(--surface-container-high); }
-  .mesdash .nav-item.active { color: var(--primary); font-weight: 700; background-color: var(--primary-container); border-right-color: var(--primary); }
-  .mesdash .sidebar-footer { padding: var(--md) var(--sm) 0; border-top: 1px solid rgba(197, 198, 205, 0.3); margin-top: auto; margin-bottom: 40px; }
+  .mesdash .sidebar { width: 270px; background:linear-gradient(180deg,#06264b 0%,#032046 100%); border-right:1px solid #163e69; display:flex; flex-direction:column; flex-shrink:0; z-index:50; color:#fff; transition:width .2s ease; overflow:hidden; }
+  .mesdash .sidebar.collapsed { width:72px; }
+  .mesdash .sidebar-brand { min-height:102px; padding:18px; border-bottom:1px solid rgba(255,255,255,.12); }
+  .mesdash .sidebar-brand-row { display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+  .mesdash .sidebar-brand-link { min-width:0; color:#fff; text-decoration:none; }
+  .mesdash .sidebar-brand h1 { margin:8px 0 2px; font-size:20px; font-weight:800; line-height:24px; white-space:nowrap; }
+  .mesdash .sidebar-brand p { margin:0; font-size:11px; font-weight:500; color:#d8e8fa; white-space:nowrap; }
+  .mesdash .sidebar-toggle { width:30px; height:30px; border:1px solid rgba(255,255,255,.25); border-radius:7px; background:rgba(0,0,0,.12); color:#dcecff; cursor:pointer; flex:0 0 auto; }
+  .mesdash .sidebar-nav { flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 18px; }
+  .mesdash .nav-item { min-height:44px; display:flex; align-items:center; gap:14px; padding:9px 15px; border-radius:7px; text-decoration:none; color:#f1f7ff; font-size:14px; font-weight:650; transition:all .18s; white-space:nowrap; }
+  .mesdash .nav-item .material-symbols-outlined { font-size:22px; flex:0 0 22px; }
+  .mesdash .nav-item:hover { background:rgba(255,255,255,.09); }
+  .mesdash .nav-item.active { color:#fff; background:linear-gradient(135deg,#0874ed,#1554c5); box-shadow:0 5px 14px rgba(0,91,219,.35); }
+  .mesdash .sidebar-footer { display:grid; gap:10px; padding:14px 18px 18px; margin-top:auto; }
+  .mesdash .connection-tile { min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 13px; border:1px solid rgba(153,196,241,.24); border-radius:8px; color:#eaf4ff; font-size:12px; font-weight:700; white-space:nowrap; }
+  .mesdash .connection-name { display:flex; align-items:center; gap:9px; }
+  .mesdash .connection-short-label { display:none; color:#eaf4ff; font-size:10px; font-weight:850; letter-spacing:.02em; }
+  .mesdash .connection-value { color:#17db79; font-size:11px; }
+  .mesdash .connection-value.offline { color:#ff6570; }
+  .mesdash .connection-dot { width:11px; height:11px; border-radius:50%; background:#17d87a; box-shadow:0 0 10px rgba(23,216,122,.55); }
+  .mesdash .connection-dot.offline { background:#ff5964; box-shadow:0 0 10px rgba(255,89,100,.45); }
+  .mesdash .sidebar.collapsed .sidebar-brand { padding:18px 14px; }
+  .mesdash .sidebar.collapsed .sidebar-brand-link,.mesdash .sidebar.collapsed .nav-label,.mesdash .sidebar.collapsed .connection-name span:last-child,.mesdash .sidebar.collapsed .connection-value { display:none; }
+  .mesdash .sidebar.collapsed .connection-short-label { display:inline; }
+  .mesdash .sidebar.collapsed .sidebar-brand-row { justify-content:center; }
+  .mesdash .sidebar.collapsed .sidebar-nav { padding:12px 9px; }
+  .mesdash .sidebar.collapsed .nav-item { justify-content:center; padding:9px; }
+  .mesdash .sidebar.collapsed .sidebar-footer { padding:14px 10px 18px; }
+  .mesdash .sidebar.collapsed .connection-tile { justify-content:center; padding:0; }
+  .mesdash .sidebar.collapsed .connection-name { flex-direction:column; gap:4px; }
+  .mesdash .sidebar.collapsed .connection-dot { width:8px; height:8px; }
   
   /* 우측 프레임 및 본문 영역 */
   .mesdash .main-container { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 0; }
@@ -58,10 +81,16 @@ const layoutStyles = `
   .mesdash .custom-scrollbar::-webkit-scrollbar-thumb { background: var(--outline-variant); border-radius: 2px; }
   
   /* 상단 헤더 스타일 */
-  .mesdash .top-header { height: 56px; background-color: var(--surface-container-lowest); border-bottom: 1px solid var(--outline-variant); display: flex; justify-content: space-between; align-items: center; padding: 0 var(--lg); z-index: 40; }
+  .mesdash .top-header { height:68px; background-color:var(--surface-container-lowest); border-bottom:1px solid #dbe4ef; display:flex; justify-content:space-between; align-items:center; padding:0 26px; z-index:40; }
   .mesdash .header-left { display: flex; align-items: center; gap: var(--xl); }
-  .mesdash .header-left h2 { margin: 0; font-size: 20px; font-weight: 900; color: var(--on-surface); }
+  .mesdash .header-left h2 { margin:0; font-size:20px; font-weight:850; color:#0e1f3a; white-space:nowrap; }
+  .mesdash .header-breadcrumb { color:#4d607d; font-size:13px; font-weight:700; }
+  .mesdash .header-divider { color:#9cabc0; }
   .mesdash .header-right { display: flex; align-items: center; gap: var(--md); }
+  .mesdash .live-copy { display:flex; align-items:center; gap:7px; color:#263c5e; font-size:12px; font-weight:700; white-space:nowrap; }
+  .mesdash .header-separator { width:1px; height:34px; background:#e0e6ee; }
+  .mesdash .profile-link { display:flex; align-items:center; gap:9px; color:#132746; text-decoration:none; }
+  .mesdash .profile-avatar { width:34px; height:34px; display:grid; place-items:center; border-radius:50%; background:#f2f6fb; border:1px solid #e1e8f1; }
   .mesdash .tcp-status { display: flex; align-items: center; gap: var(--xs); background-color: var(--surface-container); padding: 4px var(--sm); border-radius: 9999px; border: 1px solid rgba(197, 198, 205, 0.2); flex-shrink: 0; }
   .mesdash .status-dot { width: 6px; height: 6px; border-radius: 50%; background-color: var(--tertiary); }
   .mesdash .glow-pulse { animation: mesdash-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
@@ -113,14 +142,28 @@ const layoutStyles = `
 
 const MesLayout = ({ onLogout, currentUser }) => {
   const [currentTime, setCurrentTime] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [collectorStatus, setCollectorStatus] = useState(null);
 
   useEffect(() => {
     const updateTime = () => {
-      setCurrentTime(new Date().toTimeString().split(" ")[0]);
+      const now = new Date();
+      const pad = (value) => String(value).padStart(2, "0");
+      setCurrentTime(`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`);
     };
     updateTime();
     const timer = setInterval(updateTime, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadStatus = () => MesApi.getCollectorStatus()
+      .then((response) => active && setCollectorStatus(response.data))
+      .catch(() => active && setCollectorStatus((previous) => previous ? {...previous,l2Online:false,connectedL1Count:0} : null));
+    loadStatus();
+    const timer = setInterval(loadStatus, 1000);
+    return () => { active = false; clearInterval(timer); };
   }, []);
 
   return (
@@ -129,7 +172,12 @@ const MesLayout = ({ onLogout, currentUser }) => {
       <style>{layoutStyles}</style>
       <div className="mesdash">
         <div className="dashboard-layout">
-          <Sidebar currentUser={currentUser} />
+          <Sidebar
+            collapsed={sidebarCollapsed}
+            onToggle={() => setSidebarCollapsed((value) => !value)}
+            collectorStatus={collectorStatus}
+            currentUser={currentUser}
+          />
           <div className="main-container">
             <Header currentTime={currentTime} onLogout={onLogout} currentUser={currentUser} />
             <main className="content-area custom-scrollbar">
