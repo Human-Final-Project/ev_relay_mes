@@ -12,8 +12,6 @@ public interface MachineWorkerAssignmentRepository
     List<MachineWorkerAssignment> findByMachine_MachineIdOrderByAssignmentRoleAscAssignedAtAsc(
             String machineId);
 
-    List<MachineWorkerAssignment> findAllByOrderByMachine_MachineIdAscAssignmentRoleAscAssignedAtAsc();
-
     Optional<MachineWorkerAssignment> findByMachine_MachineIdAndAssignmentRole(
             String machineId,
             MachineWorkerAssignment.AssignmentRole assignmentRole);

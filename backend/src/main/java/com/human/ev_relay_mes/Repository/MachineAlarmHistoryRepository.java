@@ -38,6 +38,15 @@ public interface MachineAlarmHistoryRepository extends JpaRepository<MachineAlar
     // 기간별 설비 장애 현황과 알람 발생 추이를 조회할 때 사용한다.
     List<MachineAlarmHistory> findByOccurredAtBetweenOrderByOccurredAtDesc(LocalDateTime startAt, LocalDateTime endAt);
 
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select h from MachineAlarmHistory h where h.machine.machineId = :machineId "
+            + "and h.clearedAt is null order by h.occurredAt asc, h.machineAlarmHistoryId asc")
+    List<MachineAlarmHistory> findActiveByMachineForUpdate(@Param("machineId") String machineId);
+
+    List<MachineAlarmHistory> findByMachine_MachineIdAndClearedAtIsNullOrderByOccurredAtAsc(
+            String machineId);
+
     boolean existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
             String machineId, String alarmLevel, Long historyId);
 }

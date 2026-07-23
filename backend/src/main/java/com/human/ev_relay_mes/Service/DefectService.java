@@ -84,6 +84,11 @@ public class DefectService {
                 .toList();
     }
 
+    private Lot findLot(String lotNo) {
+        return lotRepository.findByLotNo(lotNo)
+                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+    }
+
     private void validateRelations(Machine machine, Process process, DefectCode defectCode) {
         if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
             throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,

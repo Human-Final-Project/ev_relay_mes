@@ -22,6 +22,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -150,10 +151,9 @@ class MachineAlarmServiceTest {
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(history));
         when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
-        when(machineAlarmHistoryRepository
-                .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
-                        "EQ-WIND-01", "ERROR", 1L)).thenReturn(false);
-        when(workCommandService.createResumeCommand("EQ-WIND-01"))
+        when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
+                .thenReturn(List.of());
+        when(workCommandService.createResumeCommand("EQ-WIND-01", null, null))
                 .thenReturn(Optional.of(mock(WorkCommandResponseDto.class)));
 
         machineAlarmService.clearAlarm(1L, 10L);
@@ -161,7 +161,7 @@ class MachineAlarmServiceTest {
         assertThat(history.getClearedAt()).isNotNull();
         assertThat(history.getClearedBy()).isEqualTo(member);
         assertThat(machine.getStatus()).isEqualTo(Machine.Status.ERROR);
-        verify(workCommandService).createResumeCommand("EQ-WIND-01");
+        verify(workCommandService).createResumeCommand("EQ-WIND-01", null, null);
         verifyNoInteractions(machineStatusHistoryRepository);
     }
 
@@ -181,10 +181,9 @@ class MachineAlarmServiceTest {
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(history));
         when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
-        when(machineAlarmHistoryRepository
-                .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
-                        "EQ-WIND-01", "ERROR", 2L)).thenReturn(false);
-        when(workCommandService.createResumeCommand("EQ-WIND-01")).thenReturn(Optional.empty());
+        when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
+                .thenReturn(List.of());
+        when(workCommandService.createResumeCommand("EQ-WIND-01", null, null)).thenReturn(Optional.empty());
         when(machineStatusHistoryRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
         machineAlarmService.clearAlarm(2L, 10L);
@@ -214,10 +213,9 @@ class MachineAlarmServiceTest {
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(history));
         when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
-        when(machineAlarmHistoryRepository
-                .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
-                        "EQ-WIND-01", "ERROR", 3L)).thenReturn(false);
-        when(workCommandService.createResumeCommand("EQ-WIND-01")).thenReturn(Optional.empty());
+        when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
+                .thenReturn(List.of());
+        when(workCommandService.createResumeCommand("EQ-WIND-01", null, null)).thenReturn(Optional.empty());
 
         machineAlarmService.clearAlarm(3L, 10L);
 

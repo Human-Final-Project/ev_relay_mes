@@ -12,6 +12,7 @@ import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
@@ -35,6 +36,7 @@ import static org.mockito.Mockito.when;
 class MachineServiceTest {
 
     @Mock MachineRepository machineRepository;
+    @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
     @Mock ProcessRepository processRepository;
     @Mock LotRepository lotRepository;

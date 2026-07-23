@@ -7,7 +7,6 @@ import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
 import com.human.ev_relay_mes.Security.CustomUserDetails;
 import com.human.ev_relay_mes.Service.DashboardService;
-import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.MaterialLotService;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkOrderService;
@@ -38,16 +37,10 @@ public class MesController {
     private final MaterialLotService materialLotService;
     private final ProductionService productionService;
     private final DashboardService dashboardService;
-    private final CollectorStatusService collectorStatusService;
 
     @GetMapping("/dashboard/summary")
     public DashboardService.DashboardSummary getDashboardSummary() {
         return dashboardService.getSummary();
-    }
-
-    @GetMapping("/collector-status")
-    public CollectorStatusService.CollectorStatus getCollectorStatus() {
-        return collectorStatusService.getStatus();
     }
 
     @PostMapping("/order")

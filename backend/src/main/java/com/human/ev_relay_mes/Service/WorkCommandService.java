@@ -196,10 +196,21 @@ public class WorkCommandService {
 
     @Transactional
     public Optional<WorkCommandResponseDto> createResumeCommand(String machineId) {
-        WorkCommand interrupted = workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
-                        machineId, WorkCommand.Status.CANCELED)
-                .orElse(null);
+        return createResumeCommand(machineId, null, null);
+    }
+
+    /**
+     * 알람 이력의 LOT·공정 컨텍스트를 우선 사용해 정확히 중단된 명령만 재개한다.
+     * 동일 RESUME이 이미 PENDING/DISPATCHED/ACCEPTED이면 새 명령을 만들지 않고
+     * 기존 명령을 반환하므로 알람 해제 중복 요청에도 멱등하게 동작한다.
+     */
+    @Transactional
+    public Optional<WorkCommandResponseDto> createResumeCommand(
+            String machineId, String lotNo, String processCode) {
+        Machine lockedMachine = machineRepository.findByIdForUpdate(machineId)
+                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+
+        WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
         if (interrupted == null || interrupted.getLot().getStatus() != Lot.Status.HOLD) {
             return Optional.empty();
         }
@@ -207,16 +218,23 @@ public class WorkCommandService {
         Lot lot = interrupted.getLot();
         Process process = interrupted.getProcess();
         Machine machine = interrupted.getMachine();
-        if (hasActiveExecution(lot.getLotNo(), process.getProcessCode())
-                || workCommandRepository.existsByMachine_MachineIdAndStatusIn(
-                        machineId, ACTIVE_STATUSES)) {
+        Optional<WorkCommand> existingResume = workCommandRepository
+                .findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusInOrderByCreatedAtDescCommandIdDesc(
+                        machineId, lot.getLotNo(), process.getProcessCode(),
+                        WorkCommand.CommandType.RESUME, ACTIVE_STATUSES);
+        if (existingResume.isPresent()) {
+            return Optional.of(WorkCommandResponseDto.fromEntity(existingResume.get()));
+        }
+        if (workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                machineId, ACTIVE_STATUSES)) {
             return Optional.empty();
         }
 
         int targetQty = originalTargetQty(interrupted);
         int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCode(
-                        lot.getLotNo(), process.getProcessCode()));
+                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+                        lot.getLotNo(), process.getProcessCode(),
+                        com.human.ev_relay_mes.Entity.InspectionUnitResult.EvaluationStatus.COMPLETED));
         int productionQty = productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
                         lot.getLotNo(), process.getProcessCode())
@@ -227,6 +245,13 @@ public class WorkCommandService {
             return Optional.empty();
         }
 
+        // L1은 ERROR_PAUSED/STOPPED 상태에서만 RESUME을 받는다. Backend 상태가
+        // 지연된 IDLE/RUNNING 스냅샷으로 덮였더라도 HOLD LOT이 있으면 ERROR로 정렬한다.
+        if (lockedMachine.getStatus() != Machine.Status.ERROR
+                && lockedMachine.getStatus() != Machine.Status.STOPPED) {
+            lockedMachine.setStatus(Machine.Status.ERROR);
+        }
+
         WorkCommand resume = WorkCommand.builder()
                 .commandType(WorkCommand.CommandType.RESUME)
                 .machine(machine)
@@ -235,6 +260,26 @@ public class WorkCommandService {
                 .inputQty(remainingQty)
                 .build();
         return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(resume)));
+    }
+
+    public boolean hasHeldInterruptedWork(String machineId, String lotNo, String processCode) {
+        WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
+        return interrupted != null && interrupted.getLot().getStatus() == Lot.Status.HOLD;
+    }
+
+    private WorkCommand findInterruptedCommand(
+            String machineId, String lotNo, String processCode) {
+        if (lotNo != null && !lotNo.isBlank()
+                && processCode != null && !processCode.isBlank()) {
+            return workCommandRepository
+                    .findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndStatusOrderByCreatedAtDescCommandIdDesc(
+                            machineId, lotNo, processCode, WorkCommand.Status.CANCELED)
+                    .orElse(null);
+        }
+        return workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
+                        machineId, WorkCommand.Status.CANCELED)
+                .orElse(null);
     }
 
     @Transactional
@@ -286,7 +331,6 @@ public class WorkCommandService {
                 WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase());
         boolean acceptedAlreadyProcessed =
                 acknowledgedStatus == WorkCommand.Status.ACCEPTED
-                        && command.getAcknowledgedAt() != null
                         && EnumSet.of(
                                 WorkCommand.Status.ACCEPTED,
                                 WorkCommand.Status.COMPLETED,
@@ -295,6 +339,12 @@ public class WorkCommandService {
         if (command.getStatus() == acknowledgedStatus || acceptedAlreadyProcessed) {
             if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
                 captureStartContext(command);
+            }
+            if (command.getAcknowledgedAt() == null) {
+                command.setAcknowledgedAt(LocalDateTime.now());
+            }
+            if (command.getAckMessage() == null || command.getAckMessage().isBlank()) {
+                command.setAckMessage(dto.getMessage());
             }
             return WorkCommandResponseDto.fromEntity(command);
         }

@@ -19,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.HashMap;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -88,32 +87,7 @@ public class DashboardService {
 
         return new DashboardSummary(
                 production, workOrderSummary, machineSummary, quality, alarms, materials,
-                summarizeHourlyProduction(completedLots),
                 LocalDateTime.now());
-    }
-
-    private List<HourlyProduction> summarizeHourlyProduction(List<Lot> completedLots) {
-        Map<Integer, int[]> quantitiesByHour = new HashMap<>();
-        for (Lot lot : completedLots) {
-            int hour = Math.max(9, Math.min(16, lot.getCompletedAt().getHour()));
-            int[] quantities = quantitiesByHour.computeIfAbsent(hour, ignored -> new int[2]);
-            quantities[0] += valueOrZero(lot.getOkQty());
-            quantities[1] += valueOrZero(lot.getNgQty());
-        }
-
-        List<HourlyProduction> result = new ArrayList<>();
-        int cumulativeOk = 0;
-        int cumulativeNg = 0;
-        for (int hour = 9; hour <= 16; hour++) {
-            int[] quantities = quantitiesByHour.getOrDefault(hour, new int[2]);
-            cumulativeOk += quantities[0];
-            cumulativeNg += quantities[1];
-            result.add(new HourlyProduction(
-                    String.format("%02d시", hour),
-                    cumulativeOk,
-                    cumulativeNg));
-        }
-        return result;
     }
 
     private MaterialSummary summarizeMaterials(List<MaterialLot> lots) {
@@ -156,7 +130,6 @@ public class DashboardService {
             QualitySummary quality,
             AlarmSummary alarms,
             MaterialSummary materials,
-            List<HourlyProduction> hourlyProduction,
             LocalDateTime generatedAt) {
     }
 
@@ -182,8 +155,5 @@ public class DashboardService {
             int availableQty,
             int heldQty,
             int lowStockThreshold) {
-    }
-
-    public record HourlyProduction(String hour, int okQty, int ngQty) {
     }
 }

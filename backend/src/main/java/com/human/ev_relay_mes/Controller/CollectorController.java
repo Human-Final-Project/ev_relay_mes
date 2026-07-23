@@ -20,11 +20,7 @@ import com.human.ev_relay_mes.Service.MachineAlarmService;
 import com.human.ev_relay_mes.Service.MachineService;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
-import com.human.ev_relay_mes.Service.CollectorStatusService;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,16 +39,6 @@ public class CollectorController {
     private final MachineService machineService;
     private final MachineAlarmService machineAlarmService;
     private final WorkCommandService workCommandService;
-    private final CollectorStatusService collectorStatusService;
-
-    @PostMapping("/heartbeat")
-    public ResponseEntity<Void> receiveHeartbeat(
-            @Valid @RequestBody CollectorHeartbeatRequest request) {
-        collectorStatusService.receiveHeartbeat(
-                request.connectedMachineIds(),
-                request.totalCapacity());
-        return ResponseEntity.noContent().build();
-    }
 
     @PostMapping("/production-logs")
     public ResponseEntity<ProductionLogResponseDto> receiveProductionResult(
@@ -107,10 +93,5 @@ public class CollectorController {
     public WorkCommandResponseDto acknowledgeCommand(
             @Valid @RequestBody WorkCommandAckRequestDto dto) {
         return workCommandService.acknowledge(dto);
-    }
-
-    public record CollectorHeartbeatRequest(
-            @NotNull List<@NotBlank String> connectedMachineIds,
-            @Min(0) int totalCapacity) {
     }
 }

@@ -59,6 +59,16 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
     Optional<WorkCommand> findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
             String machineId, Collection<WorkCommand.Status> statuses);
 
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<WorkCommand> findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndStatusOrderByCreatedAtDescCommandIdDesc(
+            String machineId, String lotNo, String processCode, WorkCommand.Status status);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<WorkCommand> findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusInOrderByCreatedAtDescCommandIdDesc(
+            String machineId, String lotNo, String processCode, WorkCommand.CommandType commandType,
+            Collection<WorkCommand.Status> statuses);
+
     boolean existsByMachine_MachineIdAndStatusIn(
             String machineId, Collection<WorkCommand.Status> statuses);
 
