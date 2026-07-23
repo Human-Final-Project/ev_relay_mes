@@ -189,7 +189,8 @@ class InspectionServiceTest {
                 .l1Result(Inspection.Result.NG).build();
         when(inspectionUnitResultRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeq("LOT-040", "OP40_OP50", 1))
-                .thenReturn(Optional.empty(), Optional.of(persisted));
+                .thenReturn(Optional.empty())
+                .thenReturn(Optional.of(persisted));
         when(inspectionUnitResultRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionStandardService.snapshotCount(lot, process)).thenReturn(0L);

@@ -7,7 +7,6 @@ import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
-import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
