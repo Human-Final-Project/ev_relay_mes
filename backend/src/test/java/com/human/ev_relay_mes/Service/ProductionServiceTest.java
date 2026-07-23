@@ -43,6 +43,10 @@ class ProductionServiceTest {
     private LotRepository lotRepository;
     @Mock
     private WorkCommandService workCommandService;
+    @Mock
+    private ProductionScheduleRequestService productionScheduleRequestService;
+    @Mock
+    private WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     @InjectMocks
     private ProductionService productionService;
@@ -78,7 +82,7 @@ class ProductionServiceTest {
     }
 
     @Test
-    void completesFinalProcessLotAndWorkOrder() {
+    void completesFinalProcessLotAndRequestsAutomaticWorkOrderEvaluation() {
         Fixture fixture = fixture();
         ProductionResultReceiveRequestDto request = request(10, 10, 0, "COMPLETED");
         mockBase(fixture);
@@ -89,18 +93,16 @@ class ProductionServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(1))
                 .thenReturn(Optional.empty());
-        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
-                .thenReturn(10L);
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
-                .thenReturn(false);
-
         var response = productionService.saveResult(request);
 
         assertThat(response.getStatus()).isEqualTo("COMPLETED");
+        assertThat(response.getEndedAt()).isNotNull();
         assertThat(fixture.lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
+        assertThat(fixture.lot.getCompletedAt()).isEqualTo(response.getEndedAt());
         assertThat(fixture.lot.getOkQty()).isEqualTo(10);
         assertThat(fixture.lot.getNgQty()).isZero();
-        assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.COMPLETED);
+        assertThat(fixture.workOrder.getStatus()).isEqualTo(WorkOrder.Status.RUNNING);
+        verify(workOrderContinuationRequestService).requestEvaluation(1L);
     }
 
     @Test
@@ -143,23 +145,19 @@ class ProductionServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(processRepository.findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(6))
                 .thenReturn(Optional.empty());
-        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
-                .thenReturn(5L);
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
-                .thenReturn(false);
-
         productionService.saveResult(request);
 
         assertThat(lot.getOkQty()).isEqualTo(5);
         assertThat(lot.getNgQty()).isEqualTo(5);
         assertThat(lot.getStatus()).isEqualTo(Lot.Status.COMPLETED);
         assertThat(order.getStatus()).isEqualTo(WorkOrder.Status.RUNNING);
+        verify(workOrderContinuationRequestService).requestEvaluation(1L);
     }
 
     @Test
     void rejectsQuantityOverLotInput() {
         Fixture fixture = fixture();
-        ProductionResultReceiveRequestDto request = request(5, 5, 0, "RUNNING");
+        ProductionResultReceiveRequestDto request = request(11, 11, 0, "RUNNING");
         mockBase(fixture);
         ProductionLog previous = ProductionLog.builder()
                 .lot(fixture.lot)
@@ -175,6 +173,62 @@ class ProductionServiceTest {
 
         assertThatThrownBy(() -> productionService.saveResult(request))
                 .isInstanceOf(CustomException.class);
+    }
+
+    @Test
+    void updatesExistingProcessLogWithLatestCumulativeQuantity() {
+        Fixture fixture = fixture();
+        ProductionLog current = ProductionLog.builder()
+                .productionLogId(20L)
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(4)
+                .okQty(4)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+        ProductionResultReceiveRequestDto request = request(7, 6, 1, "RUNNING");
+        mockBase(fixture);
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of(current));
+        when(productionLogRepository.save(current)).thenReturn(current);
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getProductionLogId()).isEqualTo(20L);
+        assertThat(response.getInputQty()).isEqualTo(7);
+        assertThat(response.getOkQty()).isEqualTo(6);
+        assertThat(response.getNgQty()).isEqualTo(1);
+        assertThat(response.getStatus()).isEqualTo("RUNNING");
+        verify(productionLogRepository).save(current);
+    }
+
+    @Test
+    void ignoresOlderCumulativeProgressWithoutRegressingTheLog() {
+        Fixture fixture = fixture();
+        ProductionLog current = ProductionLog.builder()
+                .productionLogId(21L)
+                .lot(fixture.lot)
+                .machine(fixture.machine)
+                .process(fixture.process)
+                .inputQty(6)
+                .okQty(6)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+        ProductionResultReceiveRequestDto request = request(5, 5, 0, "RUNNING");
+        when(lotRepository.findByLotNoForUpdate("LOT-001"))
+                .thenReturn(Optional.of(fixture.lot));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP10"))
+                .thenReturn(List.of(current));
+
+        var response = productionService.saveResult(request);
+
+        assertThat(response.getInputQty()).isEqualTo(6);
+        verifyNoInteractions(machineRepository, processRepository, workCommandService);
     }
 
     @Test
@@ -222,7 +276,8 @@ class ProductionServiceTest {
         productionService.saveResult(request);
 
         assertThat(lot.getCurrentProcess()).isEqualTo(assembly);
-        verify(workCommandService).createStartCommand(lot, assembly, 8);
+        verify(productionScheduleRequestService).requestMachine("EQ-WELD-01");
+        verify(productionScheduleRequestService).requestLot("LOT-001");
     }
 
     private void mockBase(Fixture fixture) {

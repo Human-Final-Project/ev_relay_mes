@@ -36,6 +36,7 @@ public class WorkOrderService {
     private final MemberRepository memberRepository;
     private final LotRepository lotRepository;
     private final MaterialLotService materialLotService;
+    private final LotService lotService;
 
     @Transactional
     public WorkOrderResponseDto createWorkOrder(WorkOrderRequestDto dto, Long memberId) {
@@ -97,11 +98,47 @@ public class WorkOrderService {
         return toResponse(workOrder);
     }
 
+    /**
+     * 작업지시를 확정하고 최초 LOT 생성·자재 차감 시도·파이프라인 투입 요청을
+     * 하나의 트랜잭션으로 처리한다.
+     */
+    @Transactional
+    public WorkOrderResponseDto releaseAndStart(Long id, Long memberId) {
+        WorkOrder workOrder = findWorkOrderForUpdate(id);
+        if (workOrder.getStatus() == WorkOrder.Status.RELEASED) {
+            if (!lotRepository.existsByWorkOrder_WorkOrderId(id)) {
+                lotService.createInitialLotAndRequestStart(
+                        workOrder, resolveLotCreatorId(workOrder, memberId));
+            }
+            return toResponse(workOrder);
+        }
+        if (workOrder.getStatus() == WorkOrder.Status.RUNNING) {
+            return toResponse(workOrder);
+        }
+        validateTransition(workOrder, WorkOrder.Status.RELEASED);
+        workOrder.setStatus(WorkOrder.Status.RELEASED);
+        lotService.createInitialLotAndRequestStart(
+                workOrder, resolveLotCreatorId(workOrder, memberId));
+        return toResponse(workOrder);
+    }
+
     @Transactional
     public WorkOrderResponseDto updateStatus(Long id, WorkOrderStatusRequestDto dto) {
         WorkOrder workOrder = findWorkOrderForUpdate(id);
         WorkOrder.Status targetStatus = parseStatus(dto.getStatus());
         if (workOrder.getStatus() == targetStatus) {
+            if (targetStatus == WorkOrder.Status.RELEASED
+                    && !lotRepository.existsByWorkOrder_WorkOrderId(id)) {
+                lotService.createInitialLotAndRequestStart(
+                        workOrder, resolveLotCreatorId(workOrder, null));
+            }
+            return toResponse(workOrder);
+        }
+        if (targetStatus == WorkOrder.Status.RELEASED) {
+            validateTransition(workOrder, targetStatus);
+            workOrder.setStatus(targetStatus);
+            lotService.createInitialLotAndRequestStart(
+                    workOrder, resolveLotCreatorId(workOrder, null));
             return toResponse(workOrder);
         }
         validateTransition(workOrder, targetStatus);
@@ -168,15 +205,22 @@ public class WorkOrderService {
     }
 
     private WorkOrderResponseDto toResponse(WorkOrder workOrder) {
-        long completedOkLong = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
-                workOrder.getWorkOrderId(), Lot.Status.COMPLETED);
-        int completedOkQty = Math.toIntExact(completedOkLong);
+        List<Lot> lots = workOrder.getWorkOrderId() == null
+                ? List.of()
+                : lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(
+                        workOrder.getWorkOrderId());
+        if (lots == null) {
+            lots = List.of();
+        }
+        int completedOkQty = lots.stream()
+                .filter(lot -> lot.getStatus() == Lot.Status.COMPLETED)
+                .mapToInt(Lot::getOkQty)
+                .sum();
         int remainingQty = Math.max(workOrder.getTargetQty() - completedOkQty, 0);
-
-        boolean hasCompletedLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(
-                workOrder.getWorkOrderId(), Lot.Status.COMPLETED);
-        boolean hasNonTerminalLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
-                workOrder.getWorkOrderId(), NON_TERMINAL_LOT_STATUSES);
+        boolean hasCompletedLot = lots.stream()
+                .anyMatch(lot -> lot.getStatus() == Lot.Status.COMPLETED);
+        boolean hasNonTerminalLot = lots.stream()
+                .anyMatch(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
         boolean supplementRequired = workOrder.getStatus() == WorkOrder.Status.RUNNING
                 && hasCompletedLot
                 && !hasNonTerminalLot
@@ -186,7 +230,48 @@ public class WorkOrderService {
                 workOrder,
                 completedOkQty,
                 remainingQty,
-                supplementRequired);
+                supplementRequired,
+                resolveAutomationStatus(workOrder, lots));
+    }
+
+    private String resolveAutomationStatus(WorkOrder workOrder, List<Lot> lots) {
+        if (workOrder.getStatus() == WorkOrder.Status.CREATED) {
+            return "DRAFT";
+        }
+        if (workOrder.getStatus() == WorkOrder.Status.CANCELED) {
+            return "CANCELED";
+        }
+        if (workOrder.getStatus() == WorkOrder.Status.COMPLETED) {
+            return "COMPLETED";
+        }
+        Lot active = lots.stream()
+                .filter(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()))
+                .findFirst()
+                .orElse(null);
+        if (active == null) {
+            return workOrder.getStatus() == WorkOrder.Status.RELEASED
+                    ? "INITIAL_LOT_PENDING"
+                    : "AUTO_SUPPLEMENT_PENDING";
+        }
+        if (active.getStatus() == Lot.Status.HOLD) {
+            return "LOT_HOLD";
+        }
+        boolean supplement = active.getLotType() == Lot.LotType.SUPPLEMENT;
+        if (active.getStatus() == Lot.Status.WAITING) {
+            return supplement ? "AUTO_SUPPLEMENT_PENDING" : "INITIAL_LOT_PENDING";
+        }
+        return supplement ? "AUTO_SUPPLEMENT_ACTIVE" : "PIPELINE_ACTIVE";
+    }
+
+    private Long resolveLotCreatorId(WorkOrder workOrder, Long requestedMemberId) {
+        if (requestedMemberId != null) {
+            return requestedMemberId;
+        }
+        if (workOrder.getCreatedBy() == null) {
+            throw new CustomException(ErrorCode.MEMBER_NOT_FOUND,
+                    "최초 LOT 생성에 사용할 작업지시 생성자가 없습니다.");
+        }
+        return workOrder.getCreatedBy().getMemberId();
     }
 
     private WorkOrder findWorkOrder(Long id) {

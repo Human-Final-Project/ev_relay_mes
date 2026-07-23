@@ -34,61 +34,57 @@ public class LotService {
 
     private static final EnumSet<Lot.Status> NON_TERMINAL_STATUSES =
             EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
-    private static final EnumSet<Lot.Status> LINE_BLOCKING_STATUSES =
-            EnumSet.of(Lot.Status.RUNNING, Lot.Status.HOLD);
 
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
     private final MemberRepository memberRepository;
     private final ProcessRepository processRepository;
     private final MaterialLotService materialLotService;
-    private final WorkCommandService workCommandService;
+    private final ProductionScheduleRequestService productionScheduleRequestService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
 
     /**
-     * 작업지시의 최초 생산 LOT를 생성한다.
-     * 한 작업지시에는 최초 LOT 하나만 허용하고, 부족 수량은 supplement API로 보충한다.
+     * 관리자 복구용 수동 API. 일반 흐름에서는 WorkOrder 확정 시 자동 호출된다.
+     * 생성 직후 자재를 확인하고 파이프라인 투입까지 요청한다.
      */
     @Transactional
     public LotResponseDto createLot(Long workOrderId, LotCreateRequestDto dto, Long memberId) {
         WorkOrder workOrder = findWorkOrderForUpdate(workOrderId);
-        if (workOrder.getStatus() != WorkOrder.Status.RELEASED) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
-                    "확정(RELEASED) 상태의 작업지시에서만 최초 LOT를 생성할 수 있습니다.");
-        }
-        if (lotRepository.existsByWorkOrder_WorkOrderId(workOrderId)) {
-            throw new CustomException(ErrorCode.INITIAL_LOT_ALREADY_EXISTS);
-        }
         if (!workOrder.getTargetQty().equals(dto.getInputQty())) {
             throw new CustomException(ErrorCode.INVALID_LOT_QUANTITY,
                     "최초 LOT 투입 수량은 작업지시 목표 수량과 같아야 합니다.");
         }
+        return createInitialLotAndRequestStart(workOrder, memberId);
+    }
 
-        materialLotService.validateMaterialAvailability(
-                workOrder.getItem().getItemCode(), dto.getInputQty());
+    /** WorkOrder 확정 트랜잭션 안에서 최초 LOT를 원자적으로 생성하고 자동 투입한다. */
+    @Transactional
+    public LotResponseDto createInitialLotAndRequestStart(WorkOrder workOrder, Long memberId) {
+        if (workOrder.getStatus() != WorkOrder.Status.RELEASED) {
+            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
+                    "확정(RELEASED) 상태의 작업지시에서만 최초 LOT를 생성할 수 있습니다.");
+        }
+        if (lotRepository.existsByWorkOrder_WorkOrderId(workOrder.getWorkOrderId())) {
+            throw new CustomException(ErrorCode.INITIAL_LOT_ALREADY_EXISTS);
+        }
 
-        Lot lot = buildLot(
+        Lot saved = lotRepository.save(buildLot(
                 workOrder,
-                dto.getInputQty(),
+                workOrder.getTargetQty(),
                 Lot.LotType.INITIAL,
                 1,
-                findMember(memberId));
-        return toResponse(lotRepository.save(lot));
+                findMember(memberId)));
+        requestPipelineStart(saved);
+        return toResponse(saved);
     }
 
     /**
-     * 완료 LOT의 누적 양품 수량을 기준으로 부족 수량을 Backend가 계산하고,
-     * 같은 작업지시에 보충 LOT를 생성한 뒤 즉시 생산을 시작한다.
+     * 완료 LOT의 누적 양품을 기준으로 부족 수량을 계산하여 보충 LOT를 만든다.
+     * 다른 WorkOrder가 실행 중이어도 해당 LOT는 파이프라인 대기열에 들어갈 수 있다.
      */
     @Transactional
     public LotResponseDto createSupplementLot(Long workOrderId, Long memberId) {
-        // 생산라인 시작 관련 요청은 항상 작업지시 전체를 ID 순서대로 먼저 잠근다.
-        // 서로 다른 작업지시에 대한 동시 보충 요청에서도 잠금 순서가 같아 데드락을 줄인다.
-        List<WorkOrder> lockedOrders = workOrderRepository.findAllForUpdate();
-        WorkOrder workOrder = lockedOrders.stream()
-                .filter(order -> order.getWorkOrderId().equals(workOrderId))
-                .findFirst()
-                .orElseThrow(() -> new CustomException(ErrorCode.WORK_ORDER_NOT_FOUND));
+        WorkOrder workOrder = findWorkOrderForUpdate(workOrderId);
         if (workOrder.getStatus() != WorkOrder.Status.RUNNING) {
             throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
                     "생산 중이며 목표 수량이 부족한 작업지시만 추가 생산할 수 있습니다.");
@@ -111,25 +107,43 @@ public class LotService {
             throw new CustomException(ErrorCode.SUPPLEMENT_NOT_REQUIRED);
         }
 
-        // 보충 LOT 생성과 시작 요청이 동시에 들어와도 하나만 처리되도록
-        // 전체 작업지시 행을 동일한 순서로 잠가 생산라인 시작을 직렬화한다.
-        validateStartEligibility(workOrder, null, lockedOrders);
+        return createSupplementLotAndRequestStart(
+                workOrder,
+                remainingQty,
+                findMember(memberId));
+    }
 
-        materialLotService.validateMaterialAvailability(
-                workOrder.getItem().getItemCode(), remainingQty);
 
-        int nextRound = lotRepository.findMaxProductionRoundByWorkOrderId(workOrderId) + 1;
-        Lot supplementLot = buildLot(
+    /**
+     * 최종 양품 부족분을 자동 보충 LOT로 생성한다.
+     * 자재가 부족해도 LOT은 WAITING/startRequestedAt 상태로 남아 입고 이벤트 때 자동 재시도된다.
+     */
+    @Transactional
+    public LotResponseDto createAutomaticSupplementLot(WorkOrder workOrder, int remainingQty) {
+        Member creator = workOrder.getCreatedBy();
+        if (creator == null) {
+            throw new CustomException(ErrorCode.MEMBER_NOT_FOUND,
+                    "자동 보충 LOT 생성에 사용할 작업지시 생성자가 없습니다.");
+        }
+        return createSupplementLotAndRequestStart(workOrder, remainingQty, creator);
+    }
+
+    private LotResponseDto createSupplementLotAndRequestStart(
+            WorkOrder workOrder,
+            int remainingQty,
+            Member creator) {
+        if (remainingQty <= 0) {
+            throw new CustomException(ErrorCode.SUPPLEMENT_NOT_REQUIRED);
+        }
+        int nextRound = lotRepository
+                .findMaxProductionRoundByWorkOrderId(workOrder.getWorkOrderId()) + 1;
+        Lot saved = lotRepository.save(buildLot(
                 workOrder,
                 remainingQty,
                 Lot.LotType.SUPPLEMENT,
                 nextRound,
-                findMember(memberId));
-        Lot saved = lotRepository.save(supplementLot);
-
-        // 추가 생산 버튼 한 번으로 LOT 생성과 실제 START를 함께 처리한다.
-        startNowOrThrow(saved);
-        saved.setStatus(Lot.Status.RUNNING);
+                creator));
+        requestPipelineStart(saved);
         return toResponse(saved);
     }
 
@@ -163,13 +177,28 @@ public class LotService {
         Lot lot = findLotForUpdate(id);
         Lot.Status targetStatus = parseStatus(dto.getStatus());
         if (lot.getStatus() == targetStatus) {
+            if (targetStatus == Lot.Status.RUNNING) {
+                productionScheduleRequestService.requestLot(lot.getLotNo());
+            }
             return toResponse(lot);
         }
         validateTransition(lot, targetStatus);
         if (targetStatus == Lot.Status.RUNNING) {
-            validateStartEligibility(lot.getWorkOrder(), lot.getLotId());
+            validateStartEligibility(lot.getWorkOrder());
+            if (lot.getStatus() == Lot.Status.HOLD) {
+                lot.setStatus(Lot.Status.RUNNING);
+                productionScheduleRequestService.requestLot(lot.getLotNo());
+            } else {
+                requestPipelineStart(lot);
+            }
+            return toResponse(lot);
         }
-        applyStatus(lot, targetStatus);
+
+        lot.setStartRequestedAt(null);
+        lot.setStatus(targetStatus);
+        if (targetStatus == Lot.Status.COMPLETED || targetStatus == Lot.Status.SCRAPPED) {
+            lot.setCompletedAt(LocalDateTime.now());
+        }
         return toResponse(lot);
     }
 
@@ -206,91 +235,37 @@ public class LotService {
         }
     }
 
-    private void validateStartEligibility(WorkOrder currentWorkOrder, Long currentLotId) {
-        validateStartEligibility(
-                currentWorkOrder,
-                currentLotId,
-                workOrderRepository.findAllForUpdate());
-    }
-
-    private void validateStartEligibility(
-            WorkOrder currentWorkOrder,
-            Long currentLotId,
-            List<WorkOrder> lockedOrders) {
-        if (currentWorkOrder.getStatus() != WorkOrder.Status.RELEASED
-                && currentWorkOrder.getStatus() != WorkOrder.Status.RUNNING) {
+    private void validateStartEligibility(WorkOrder workOrder) {
+        if (workOrder.getStatus() != WorkOrder.Status.RELEASED
+                && workOrder.getStatus() != WorkOrder.Status.RUNNING) {
             throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
                     "확정 또는 생산 중인 작업지시의 LOT만 시작할 수 있습니다.");
         }
-
-        boolean anotherWorkOrderRunning = lockedOrders.stream()
-                .anyMatch(order -> !order.getWorkOrderId().equals(currentWorkOrder.getWorkOrderId())
-                        && order.getStatus() == WorkOrder.Status.RUNNING);
-        if (anotherWorkOrderRunning) {
-            throw new CustomException(ErrorCode.ANOTHER_WORK_ORDER_IN_PROGRESS,
-                    "현재 생산 중인 작업지시의 목표 양품 수량을 먼저 충족해야 합니다.");
-        }
-
-        boolean earlierReleasedOrderExists = lockedOrders.stream()
-                .anyMatch(order -> order.getWorkOrderId() < currentWorkOrder.getWorkOrderId()
-                        && (order.getStatus() == WorkOrder.Status.RELEASED
-                        || order.getStatus() == WorkOrder.Status.RUNNING));
-        if (earlierReleasedOrderExists) {
-            throw new CustomException(ErrorCode.EARLIER_WORK_ORDER_NOT_COMPLETED,
-                    "먼저 확정된 작업지시를 완료한 후 다음 작업지시를 시작할 수 있습니다.");
-        }
-
-        long blockingLotCount = currentLotId == null
-                ? lotRepository.countLineBlockingLots(
-                        LINE_BLOCKING_STATUSES, Lot.Status.WAITING)
-                : lotRepository.countAnotherLineBlockingLot(
-                        currentLotId, LINE_BLOCKING_STATUSES, Lot.Status.WAITING);
-        if (blockingLotCount > 0) {
-            throw new CustomException(ErrorCode.ANOTHER_LOT_IN_PROGRESS,
-                    "현재 가동 중이거나 시작 대기 중인 LOT가 완료된 후 시작할 수 있습니다.");
-        }
     }
 
-    private void applyStatus(Lot lot, Lot.Status targetStatus) {
-        if (targetStatus != Lot.Status.RUNNING) {
-            lot.setStartRequestedAt(null);
-        }
-        if (targetStatus == Lot.Status.RUNNING) {
-            if (lot.getStartedAt() == null) {
-                lot.setStartRequestedAt(LocalDateTime.now());
-                if (!tryStart(lot)) {
-                    return;
-                }
-            }
-            WorkOrder workOrder = lot.getWorkOrder();
-            if (workOrder.getStatus() == WorkOrder.Status.RELEASED) {
-                workOrder.setStatus(WorkOrder.Status.RUNNING);
-            }
-        }
-        lot.setStatus(targetStatus);
-        if (targetStatus == Lot.Status.COMPLETED || targetStatus == Lot.Status.SCRAPPED) {
-            lot.setCompletedAt(LocalDateTime.now());
-        }
-    }
-
-    private boolean tryStart(Lot lot) {
-        try {
-            startNowOrThrow(lot);
-            return true;
-        } catch (CustomException exception) {
-            if (exception.getErrorCode() == ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY) {
-                return false;
-            }
-            throw exception;
-        }
-    }
-
-    private void startNowOrThrow(Lot lot) {
-        materialLotService.consumeMaterials(
+    /**
+     * 자재는 LOT가 파이프라인에 진입할 때 한 번만 차감한다.
+     * 설비가 바쁘면 LOT은 RUNNING 상태로 해당 공정 대기열에 남는다.
+     */
+    private boolean requestPipelineStart(Lot lot) {
+        lot.setStartRequestedAt(LocalDateTime.now());
+        boolean consumed = materialLotService.tryConsumeMaterials(
                 lot.getItem().getItemCode(), lot.getInputQty());
-        workCommandService.createInitialStartCommands(lot);
-        lot.setStartedAt(LocalDateTime.now());
+        if (!consumed) {
+            return false;
+        }
+
+        if (lot.getStartedAt() == null) {
+            lot.setStartedAt(LocalDateTime.now());
+        }
         lot.setStartRequestedAt(null);
+        lot.setStatus(Lot.Status.RUNNING);
+        if (lot.getWorkOrder().getStatus() == WorkOrder.Status.RELEASED) {
+            lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
+        }
+        // 새 LOT을 직접 우선 배정하지 않고 전체 IDLE 설비를 FIFO 대기열 기준으로 채운다.
+        productionScheduleRequestService.requestAllIdleMachines();
+        return true;
     }
 
     @TransactionalEventListener(
@@ -306,24 +281,8 @@ public class LotService {
             if (lot.getStatus() != Lot.Status.WAITING || lot.getStartRequestedAt() == null) {
                 continue;
             }
-            try {
-                validateStartEligibility(lot.getWorkOrder(), lot.getLotId());
-            } catch (CustomException exception) {
-                if (exception.getErrorCode() == ErrorCode.ANOTHER_LOT_IN_PROGRESS
-                        || exception.getErrorCode() == ErrorCode.ANOTHER_WORK_ORDER_IN_PROGRESS
-                        || exception.getErrorCode() == ErrorCode.EARLIER_WORK_ORDER_NOT_COMPLETED) {
-                    continue;
-                }
-                throw exception;
-            }
-            if (tryStart(lot)) {
-                lot.setStatus(Lot.Status.RUNNING);
-                if (lot.getWorkOrder().getStatus() == WorkOrder.Status.RELEASED) {
-                    lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
-                }
-                // 전체 생산라인은 한 번에 LOT 하나만 가동한다.
-                return;
-            }
+            validateStartEligibility(lot.getWorkOrder());
+            requestPipelineStart(lot);
         }
     }
 

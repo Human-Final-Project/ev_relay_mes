@@ -20,7 +20,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
 
@@ -39,6 +38,8 @@ public class ProductionService {
     private final ProcessRepository processRepository;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
+    private final ProductionScheduleRequestService productionScheduleRequestService;
+    private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     @Transactional
     public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
@@ -56,39 +57,50 @@ public class ProductionService {
                 return toResponse(existing.get());
             }
         }
-        validateLot(lot, dto.getProcessCode());
 
+        List<ProductionLog> processLogs = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        dto.getLotNo(), dto.getProcessCode());
+        ProductionLog currentLog = processLogs.stream().findFirst().orElse(null);
+        if (currentLog != null && dto.getInputQty() <= currentLog.getInputQty()) {
+            return toResponse(currentLog);
+        }
+
+        validateLot(lot, dto.getProcessCode());
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
         Process process = processRepository.findById(dto.getProcessCode())
                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
         validateMachineAndProcess(machine, process);
 
-        List<ProductionLog> previousLogs = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        dto.getLotNo(), dto.getProcessCode());
-        int totalInputQty = sumInput(previousLogs) + dto.getInputQty();
-        int totalOkQty = sumOk(previousLogs) + dto.getOkQty();
         int expectedInputQty = expectedInputQty(lot, process);
-        validateCumulativeQuantity(expectedInputQty, dto.getStatus(), totalInputQty);
-        String logStatus = totalInputQty == expectedInputQty ? "COMPLETED" : "RUNNING";
+        validateCumulativeQuantity(expectedInputQty, dto.getStatus(), dto.getInputQty());
+        String logStatus = dto.getInputQty() == expectedInputQty ? "COMPLETED" : "RUNNING";
 
-        ProductionLog log = ProductionLog.builder()
-                .eventId(eventId)
-                .lot(lot)
-                .machine(machine)
-                .process(process)
-                .inputQty(dto.getInputQty())
-                .okQty(dto.getOkQty())
-                .ngQty(dto.getNgQty())
-                .status(logStatus)
-                .startedAt(dto.getStartedAt())
-                .endedAt(dto.getEndedAt())
-                .build();
-        ProductionLog savedLog = productionLogRepository.save(log);
+        if (currentLog == null) {
+            currentLog = ProductionLog.builder()
+                    .eventId(eventId)
+                    .lot(lot)
+                    .machine(machine)
+                    .process(process)
+                    .startedAt(dto.getStartedAt())
+                    .build();
+        }
+        currentLog.setInputQty(dto.getInputQty());
+        currentLog.setOkQty(dto.getOkQty());
+        currentLog.setNgQty(dto.getNgQty());
+        currentLog.setStatus(logStatus);
+        if (currentLog.getStartedAt() == null) {
+            currentLog.setStartedAt(dto.getStartedAt());
+        }
+        LocalDateTime completedAt = "COMPLETED".equals(logStatus)
+                ? (dto.getEndedAt() == null ? LocalDateTime.now() : dto.getEndedAt())
+                : null;
+        currentLog.setEndedAt(completedAt);
+        ProductionLog savedLog = productionLogRepository.save(currentLog);
 
-        if (totalInputQty == expectedInputQty) {
-            completeCurrentProcess(lot, machine, process, totalOkQty, dto.getEndedAt());
+        if (dto.getInputQty() == expectedInputQty) {
+            completeCurrentProcess(lot, machine, process, dto.getOkQty(), completedAt);
         }
         return toResponse(savedLog);
     }
@@ -98,14 +110,17 @@ public class ProductionService {
     public ProductionLogResponseDto completeInspectionProcess(
             Lot lot, Machine machine, Process process,
             int inputQty, int okQty, int ngQty) {
-        if (!INSPECTION_PROCESS.equals(process.getProcessCode())) {
-            throw new CustomException(ErrorCode.INVALID_PROCESS_ORDER,
-                    "검사 집계 실적은 OP70에서만 생성할 수 있습니다.");
-        }
+        return completeEvaluatedProcess(lot, machine, process, inputQty, okQty, ngQty);
+    }
+
+    @Transactional
+    public ProductionLogResponseDto completeEvaluatedProcess(
+            Lot lot, Machine machine, Process process,
+            int inputQty, int okQty, int ngQty) {
         if (inputQty != okQty + ngQty) {
             throw new CustomException(ErrorCode.PRODUCTION_QUANTITY_MISMATCH);
         }
-        String eventId = "INSPECTION-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
+        String eventId = "QUALITY-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
         Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
         if (existing.isPresent()) {
             return toResponse(existing.get());
@@ -115,7 +130,7 @@ public class ProductionService {
                         lot.getLotNo(), process.getProcessCode())
                 .isEmpty()) {
             throw new CustomException(ErrorCode.DUPLICATE_RESOURCE,
-                    "OP70 검사 집계 실적이 이미 존재합니다.");
+                    "해당 공정의 생산 실적이 이미 존재합니다.");
         }
 
         ProductionLog log = ProductionLog.builder()
@@ -172,9 +187,9 @@ public class ProductionService {
     }
 
     private void validateLot(Lot lot, String processCode) {
-        if (lot.getStatus() != Lot.Status.RUNNING) {
+        if (lot.getStatus() != Lot.Status.RUNNING && lot.getStatus() != Lot.Status.HOLD) {
             throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
-                    "생산 중인 LOT에만 실적을 등록할 수 있습니다.");
+                    "생산 중이거나 설비 오류로 보류된 LOT에만 실적을 등록할 수 있습니다.");
         }
         if (lot.getCurrentProcess() == null || !isProcessReady(lot, processCode)) {
             throw new CustomException(ErrorCode.INVALID_PROCESS_ORDER,
@@ -213,6 +228,9 @@ public class ProductionService {
             Lot lot, Machine machine, Process process,
             int totalOkQty, LocalDateTime endedAt) {
         workCommandService.completeStartCommand(lot, process, machine);
+        // MACHINE_STATUS IDLE가 실적보다 먼저 도착했더라도, 명령 완료 직후
+        // 방금 비워진 설비에 FIFO 대기 LOT을 다시 배정한다.
+        productionScheduleRequestService.requestMachine(machine.getMachineId());
 
         if (isParallelProcess(process.getProcessCode())) {
             advanceAfterParallelProcesses(lot);
@@ -225,7 +243,7 @@ public class ProductionService {
         if (nextProcess.isPresent()) {
             lot.setCurrentProcess(nextProcess.get());
             if (totalOkQty > 0) {
-                workCommandService.createStartCommand(lot, nextProcess.get(), totalOkQty);
+                productionScheduleRequestService.requestLot(lot.getLotNo());
             } else {
                 lot.setStatus(Lot.Status.HOLD);
             }
@@ -236,7 +254,9 @@ public class ProductionService {
         lot.setNgQty(lot.getInputQty() - totalOkQty);
         lot.setStatus(Lot.Status.COMPLETED);
         lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
-        completeWorkOrderIfReady(lot);
+        lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
+        workOrderContinuationRequestService.requestEvaluation(
+                lot.getWorkOrder().getWorkOrderId());
     }
 
     private void advanceAfterParallelProcesses(Lot lot) {
@@ -253,7 +273,7 @@ public class ProductionService {
                 processOkQty(lot, PARALLEL_PROCESS_2));
         lot.setCurrentProcess(assembly);
         if (assemblyInputQty > 0) {
-            workCommandService.createStartCommand(lot, assembly, assemblyInputQty);
+            productionScheduleRequestService.requestLot(lot.getLotNo());
         } else {
             lot.setStatus(Lot.Status.HOLD);
         }
@@ -291,24 +311,6 @@ public class ProductionService {
 
     private boolean isParallelProcess(String processCode) {
         return PARALLEL_PROCESS_1.equals(processCode) || PARALLEL_PROCESS_2.equals(processCode);
-    }
-
-    private void completeWorkOrderIfReady(Lot completedLot) {
-        WorkOrder workOrder = completedLot.getWorkOrder();
-        Long workOrderId = workOrder.getWorkOrderId();
-
-        long completedOkQty = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
-                workOrderId, Lot.Status.COMPLETED);
-        boolean hasNonTerminalLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
-                workOrderId,
-                EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD));
-
-        if (!hasNonTerminalLot && completedOkQty >= workOrder.getTargetQty()) {
-            workOrder.setStatus(WorkOrder.Status.COMPLETED);
-        } else {
-            // LOT 한 차수가 끝나도 목표 양품이 부족하면 보충 생산을 위해 RUNNING을 유지한다.
-            workOrder.setStatus(WorkOrder.Status.RUNNING);
-        }
     }
 
     private int sumInput(List<ProductionLog> logs) {

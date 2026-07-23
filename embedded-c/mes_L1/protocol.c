@@ -708,6 +708,41 @@ L1ProtocolResult l1_protocol_build_inspection(
     return finish_output(out_buffer, buffer_size, written, out_length);
 }
 
+L1ProtocolResult l1_protocol_build_judgment(
+    char *out_buffer,
+    size_t buffer_size,
+    const L1JudgmentEvent *event,
+    size_t *out_length)
+{
+    const char *result_name;
+    const char *defect_code;
+    const char *message;
+    L1ProtocolResult result = prepare_output(out_buffer, buffer_size, out_length);
+    int written;
+
+    if (result != L1_PROTOCOL_OK) return result;
+    if (event == NULL) return L1_PROTOCOL_NULL_ARGUMENT;
+    if ((result = validate_machine_process(event->machine_id, event->process_code)) != L1_PROTOCOL_OK
+        || (result = validate_required_lot(event->lot_no)) != L1_PROTOCOL_OK
+        || (result = normalize_optional_field(event->defect_code, L1_CODE_CAPACITY, &defect_code)) != L1_PROTOCOL_OK
+        || (result = normalize_optional_field(event->message, L1_MESSAGE_CAPACITY, &message)) != L1_PROTOCOL_OK) {
+        return result;
+    }
+    if (event->unit_seq <= 0) return L1_PROTOCOL_OUT_OF_RANGE;
+    result_name = event->result == L1_JUDGMENT_OK ? "OK"
+        : event->result == L1_JUDGMENT_NG ? "NG" : NULL;
+    if (result_name == NULL) return L1_PROTOCOL_INVALID_VALUE;
+    if (event->result == L1_JUDGMENT_NG && strcmp(defect_code, "-") == 0) {
+        return L1_PROTOCOL_INVALID_VALUE;
+    }
+    written = snprintf(out_buffer, buffer_size,
+                       "%s,JUDGMENT,%s,%s,%s,%d,%s,%s,%s\n",
+                       L1_PROTOCOL_VERSION, event->machine_id,
+                       event->process_code, event->lot_no, event->unit_seq,
+                       result_name, defect_code, message);
+    return finish_output(out_buffer, buffer_size, written, out_length);
+}
+
 L1ProtocolResult l1_protocol_build_defect(char *out_buffer,
                                           size_t buffer_size,
                                           const L1DefectEvent *event,

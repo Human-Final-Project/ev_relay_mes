@@ -59,8 +59,23 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
                 order.getWorkOrderId(), Lot.Status.COMPLETED)).isEqualTo(25L);
         assertThat(lotRepository.findMaxProductionRoundByWorkOrderId(
                 order.getWorkOrderId())).isEqualTo(1);
-        assertThat(lotRepository.countLineBlockingLots(
-                List.of(Lot.Status.RUNNING, Lot.Status.HOLD), Lot.Status.WAITING)).isEqualTo(1L);
+    }
+
+
+    @Test
+    void 파이프라인_후보는_작업지시와_생산차수_FIFO로_잠금조회한다() {
+        Item product = item("FG-PIPE", Item.ItemType.FG);
+        Process op60 = process("OP60-PIPE", 60);
+        WorkOrder firstOrder = workOrder("WO-PIPE-001", product, WorkOrder.Status.RUNNING, 10);
+        WorkOrder secondOrder = workOrder("WO-PIPE-002", product, WorkOrder.Status.RUNNING, 10);
+        Lot first = lot("LOT-PIPE-001", firstOrder, product, op60, Lot.Status.RUNNING, 10);
+        Lot held = lot("LOT-PIPE-HOLD", firstOrder, product, op60, Lot.Status.HOLD, 10);
+        Lot second = lot("LOT-PIPE-002", secondOrder, product, op60, Lot.Status.RUNNING, 10);
+
+        assertThat(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
+                .extracting(Lot::getLotNo)
+                .containsExactly(first.getLotNo(), second.getLotNo())
+                .doesNotContain(held.getLotNo());
     }
 
     @Test

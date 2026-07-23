@@ -16,6 +16,8 @@ public interface MachineStatusHistoryRepository extends JpaRepository<MachineSta
     // 설비 상세 화면에서 가동·대기·오류 상태의 변경 이력을 표시할 때 사용한다.
     List<MachineStatusHistory> findByMachine_MachineIdOrderByRecordedAtDesc(String machineId);
 
+    Optional<MachineStatusHistory> findFirstByMachine_MachineIdOrderByRecordedAtDesc(String machineId);
+
     // LOT 생산 과정에서 어떤 설비 상태 변화가 발생했는지 추적할 때 사용한다.
     List<MachineStatusHistory> findByLot_LotNoOrderByRecordedAtDesc(String lotNo);
 

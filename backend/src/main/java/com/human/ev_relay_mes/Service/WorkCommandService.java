@@ -18,10 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.Comparator;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -36,6 +38,12 @@ public class WorkCommandService {
             WorkCommand.Status.PENDING,
             WorkCommand.Status.DISPATCHED,
             WorkCommand.Status.ACCEPTED);
+    private static final EnumSet<WorkCommand.Status> STARTED_PROCESS_STATUSES = EnumSet.of(
+            WorkCommand.Status.PENDING,
+            WorkCommand.Status.DISPATCHED,
+            WorkCommand.Status.ACCEPTED,
+            WorkCommand.Status.COMPLETED,
+            WorkCommand.Status.CANCELED);
     private static final EnumSet<WorkCommand.Status> MACHINE_RESERVED_STATUSES = EnumSet.of(
             WorkCommand.Status.DISPATCHED,
             WorkCommand.Status.ACCEPTED);
@@ -51,44 +59,80 @@ public class WorkCommandService {
     private final LotProcessResponsibleService lotProcessResponsibleService;
     private final InspectionStandardService inspectionStandardService;
 
+    /**
+     * 기존 호출부와 테스트를 위한 엄격한 생성 API다.
+     * 파이프라인 스케줄러는 설비가 바쁠 때 예외를 발생시키지 않는 try 메서드를 사용한다.
+     */
     @Transactional
     public List<WorkCommandResponseDto> createInitialStartCommands(Lot lot) {
+        return tryCreateInitialStartCommands(lot)
+                .orElseThrow(() -> new CustomException(
+                        ErrorCode.MACHINE_NOT_IDLE,
+                        "OP20·OP30 설비가 모두 대기 상태일 때 초기 공정을 시작할 수 있습니다."));
+    }
+
+    /**
+     * OP20과 OP30 설비를 같은 트랜잭션에서 잠그고 두 START 명령을 함께 예약한다.
+     * 두 설비 중 하나라도 바쁘면 아무 명령도 생성하지 않는다.
+     */
+    @Transactional
+    public Optional<List<WorkCommandResponseDto>> tryCreateInitialStartCommands(Lot lot) {
         Process op20 = activeProcess(PARALLEL_PROCESS_1);
         Process op30 = activeProcess(PARALLEL_PROCESS_2);
-        if (lot.getCurrentProcess() != null
-                && PARALLEL_PROCESS_1.equals(lot.getCurrentProcess().getProcessCode())
-                && op20 != null && op30 != null) {
-            return List.of(
-                    createStartCommand(lot, op20, lot.getInputQty()),
-                    createStartCommand(lot, op30, lot.getInputQty()));
-        }
-        if (lot.getCurrentProcess() == null) {
+        if (op20 == null || op30 == null) {
             throw new CustomException(ErrorCode.PROCESS_NOT_FOUND);
         }
-        return List.of(createStartCommand(lot, lot.getCurrentProcess(), lot.getInputQty()));
+        if (lot.getCurrentProcess() == null
+                || !PARALLEL_PROCESS_1.equals(lot.getCurrentProcess().getProcessCode())) {
+            return Optional.empty();
+        }
+        if (hasActiveExecution(lot.getLotNo(), PARALLEL_PROCESS_1)
+                || hasActiveExecution(lot.getLotNo(), PARALLEL_PROCESS_2)) {
+            return Optional.empty();
+        }
+
+        // 공정 코드 순서가 항상 같아 동시 스케줄링 시 설비 잠금 순서도 고정된다.
+        Machine wind = findAvailableMachineForUpdate(PARALLEL_PROCESS_1).orElse(null);
+        Machine weld = findAvailableMachineForUpdate(PARALLEL_PROCESS_2).orElse(null);
+        if (wind == null || weld == null) {
+            return Optional.empty();
+        }
+
+        WorkCommand windCommand = buildStartCommand(lot, op20, wind, lot.getInputQty());
+        WorkCommand weldCommand = buildStartCommand(lot, op30, weld, lot.getInputQty());
+        return Optional.of(List.of(
+                WorkCommandResponseDto.fromEntity(workCommandRepository.save(windCommand)),
+                WorkCommandResponseDto.fromEntity(workCommandRepository.save(weldCommand))));
     }
 
     @Transactional
     public WorkCommandResponseDto createStartCommand(Lot lot, Process process, int inputQty) {
+        return tryCreateStartCommand(lot, process, inputQty)
+                .orElseThrow(() -> new CustomException(
+                        ErrorCode.MACHINE_NOT_IDLE,
+                        "해당 공정 설비가 사용 중이거나 이미 예약되어 있습니다."));
+    }
+
+    /**
+     * 설비 행을 잠근 뒤 IDLE 상태와 활성 명령 부재를 확인하여 START를 예약한다.
+     * PENDING 명령 자체가 RESERVED 역할을 하므로 별도 설비 상태를 추가하지 않는다.
+     */
+    @Transactional
+    public Optional<WorkCommandResponseDto> tryCreateStartCommand(
+            Lot lot, Process process, int inputQty) {
         if (inputQty <= 0) {
             throw new CustomException(ErrorCode.INVALID_PRODUCTION_QUANTITY,
                     "작업명령 투입 수량은 1 이상이어야 합니다.");
         }
-        if (workCommandRepository
-                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
-                        lot.getLotNo(), process.getProcessCode(), WorkCommand.CommandType.START, ACTIVE_STATUSES)) {
-            throw new CustomException(ErrorCode.WORK_COMMAND_ALREADY_EXISTS);
+        if (hasActiveExecution(lot.getLotNo(), process.getProcessCode())) {
+            return Optional.empty();
         }
-
-        Machine machine = selectMachine(process.getProcessCode());
-        WorkCommand command = WorkCommand.builder()
-                .commandType(WorkCommand.CommandType.START)
-                .machine(machine)
-                .process(process)
-                .lot(lot)
-                .inputQty(inputQty)
-                .build();
-        return WorkCommandResponseDto.fromEntity(workCommandRepository.save(command));
+        Machine machine = findAvailableMachineForUpdate(process.getProcessCode()).orElse(null);
+        if (machine == null) {
+            return Optional.empty();
+        }
+        WorkCommand command = buildStartCommand(lot, process, machine, inputQty);
+        return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(command)));
     }
 
     @Transactional
@@ -106,16 +150,22 @@ public class WorkCommandService {
                 : workCommandRepository.findByMachineAndStatusForDispatch(
                         normalizedMachineId, WorkCommand.Status.PENDING);
 
-        return pending.stream()
-                .filter(this::canDispatch)
-                .filter(command -> !workCommandRepository.existsByMachine_MachineIdAndStatusIn(
-                        command.getMachine().getMachineId(), MACHINE_RESERVED_STATUSES))
-                .map(command -> {
-                    command.setStatus(WorkCommand.Status.DISPATCHED);
-                    command.setDispatchedAt(now);
-                    return WorkCommandResponseDto.fromEntity(command);
-                })
-                .toList();
+        List<WorkCommandResponseDto> claimed = new ArrayList<>();
+        Set<String> reservedDuringClaim = new HashSet<>();
+        for (WorkCommand command : pending) {
+            String commandMachineId = command.getMachine().getMachineId();
+            if (!canDispatch(command)
+                    || reservedDuringClaim.contains(commandMachineId)
+                    || workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                            commandMachineId, MACHINE_RESERVED_STATUSES)) {
+                continue;
+            }
+            command.setStatus(WorkCommand.Status.DISPATCHED);
+            command.setDispatchedAt(now);
+            reservedDuringClaim.add(commandMachineId);
+            claimed.add(WorkCommandResponseDto.fromEntity(command));
+        }
+        return claimed;
     }
 
     private void requeueStaleDispatched(String machineId, LocalDateTime cutoff) {
@@ -157,25 +207,21 @@ public class WorkCommandService {
         Lot lot = interrupted.getLot();
         Process process = interrupted.getProcess();
         Machine machine = interrupted.getMachine();
-        if (workCommandRepository
-                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
-                        lot.getLotNo(), process.getProcessCode(),
-                        WorkCommand.CommandType.RESUME, ACTIVE_STATUSES)) {
-            throw new CustomException(ErrorCode.WORK_COMMAND_ALREADY_EXISTS);
+        if (hasActiveExecution(lot.getLotNo(), process.getProcessCode())
+                || workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                        machineId, ACTIVE_STATUSES)) {
+            return Optional.empty();
         }
 
         int targetQty = originalTargetQty(interrupted);
-        int processedQty;
-        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(process.getProcessCode())) {
-            processedQty = Math.toIntExact(inspectionUnitResultRepository
-                    .countByLot_LotNoAndProcess_ProcessCode(
-                            lot.getLotNo(), process.getProcessCode()));
-        } else {
-            processedQty = productionLogRepository
-                    .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                            lot.getLotNo(), process.getProcessCode())
-                    .stream().mapToInt(log -> log.getInputQty()).sum();
-        }
+        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
+                .countByLot_LotNoAndProcess_ProcessCode(
+                        lot.getLotNo(), process.getProcessCode()));
+        int productionQty = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        lot.getLotNo(), process.getProcessCode())
+                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int processedQty = Math.max(evaluatedQty, productionQty);
         int remainingQty = targetQty - processedQty;
         if (remainingQty <= 0) {
             return Optional.empty();
@@ -265,14 +311,13 @@ public class WorkCommandService {
         return WorkCommandResponseDto.fromEntity(command);
     }
 
-
     private void captureStartContext(WorkCommand command) {
         if (command.getCommandType() == WorkCommand.CommandType.STOP) {
             return;
         }
         lotProcessResponsibleService.captureIfAbsent(
                 command.getLot(), command.getProcess(), command.getMachine());
-        if (InspectionStandardService.INSPECTION_PROCESS_CODE.equals(
+        if (InspectionStandardService.supportsMeasurements(
                 command.getProcess().getProcessCode())) {
             inspectionStandardService.captureStandardsIfAbsent(
                     command.getLot(), command.getProcess());
@@ -298,6 +343,27 @@ public class WorkCommandService {
                 .stream().map(WorkCommandResponseDto::fromEntity).toList();
     }
 
+    public boolean hasActiveExecution(String lotNo, String processCode) {
+        return workCommandRepository
+                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
+                        lotNo, processCode, WorkCommand.CommandType.START, ACTIVE_STATUSES)
+                || workCommandRepository
+                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
+                        lotNo, processCode, WorkCommand.CommandType.RESUME, ACTIVE_STATUSES);
+    }
+
+    public boolean hasStartedProcess(String lotNo, String processCode) {
+        return workCommandRepository
+                .existsByLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusIn(
+                        lotNo, processCode, WorkCommand.CommandType.START,
+                        STARTED_PROCESS_STATUSES);
+    }
+
+    public boolean hasActiveCommandForMachine(String machineId) {
+        return workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                machineId, ACTIVE_STATUSES);
+    }
+
     private boolean canDispatch(WorkCommand command) {
         Machine.Status machineStatus = command.getMachine().getStatus();
         if (command.getCommandType() == WorkCommand.CommandType.RESUME) {
@@ -320,18 +386,25 @@ public class WorkCommandService {
     }
 
     private Process activeProcess(String processCode) {
-        return processRepository.findById(processCode)
-                                .orElse(null);
+        return processRepository.findById(processCode).orElse(null);
     }
 
-    private Machine selectMachine(String processCode) {
-        List<Machine> machines = machineRepository.findUsableByProcessForUpdate(processCode);
-        return machines.stream()
-                .min(Comparator
-                        .comparingLong((Machine machine) -> workCommandRepository
-                                .countByMachine_MachineIdAndStatusIn(machine.getMachineId(), ACTIVE_STATUSES))
-                        .thenComparing(machine -> machine.getStatus() == Machine.Status.IDLE ? 0 : 1)
-                        .thenComparing(Machine::getMachineId))
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_MACHINE_NOT_CONFIGURED));
+    private Optional<Machine> findAvailableMachineForUpdate(String processCode) {
+        return machineRepository.findUsableByProcessForUpdate(processCode).stream()
+                .filter(machine -> machine.getStatus() == Machine.Status.IDLE)
+                .filter(machine -> !workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                        machine.getMachineId(), ACTIVE_STATUSES))
+                .findFirst();
+    }
+
+    private WorkCommand buildStartCommand(
+            Lot lot, Process process, Machine machine, int inputQty) {
+        return WorkCommand.builder()
+                .commandType(WorkCommand.CommandType.START)
+                .machine(machine)
+                .process(process)
+                .lot(lot)
+                .inputQty(inputQty)
+                .build();
     }
 }

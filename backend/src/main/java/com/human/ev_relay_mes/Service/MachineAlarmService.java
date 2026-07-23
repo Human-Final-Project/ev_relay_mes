@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
 import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
@@ -15,6 +16,7 @@ import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -28,12 +30,19 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class MachineAlarmService {
 
+    private static final List<WorkCommand.Status> ALARM_CONTEXT_STATUSES = List.of(
+            WorkCommand.Status.PENDING,
+            WorkCommand.Status.DISPATCHED,
+            WorkCommand.Status.ACCEPTED);
+
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineRepository machineRepository;
     private final AlarmCodeRepository alarmCodeRepository;
     private final MemberRepository memberRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
+    private final WorkCommandRepository workCommandRepository;
     private final WorkCommandService workCommandService;
+    private final ProductionScheduleRequestService productionScheduleRequestService;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
@@ -51,20 +60,25 @@ public class MachineAlarmService {
                 .orElseThrow(() -> new CustomException(ErrorCode.ALARM_CODE_NOT_FOUND));
         validateAlarm(machine, alarmCode, dto.getAlarmLevel());
         String alarmLevel = dto.getAlarmLevel().toUpperCase();
+        WorkCommand contextCommand = workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+                        machine.getMachineId(), ALARM_CONTEXT_STATUSES)
+                .orElse(null);
 
         MachineAlarmHistory history = MachineAlarmHistory.builder()
                 .eventId(eventId)
                 .machine(machine)
                 .alarmCode(alarmCode)
                 .alarmLevel(alarmLevel)
-                .occurredAt(dto.getOccurredAt())
+                .lot(contextCommand == null ? null : contextCommand.getLot())
+                .process(contextCommand == null ? machine.getProcess() : contextCommand.getProcess())
+                .occurredAt(dto.getOccurredAt() == null ? LocalDateTime.now() : dto.getOccurredAt())
                 .message(dto.getMessage())
                 .build();
         MachineAlarmHistory savedHistory = machineAlarmHistoryRepository.save(history);
         if ("ERROR".equals(alarmLevel)) {
-            if (machine.getStatus() != Machine.Status.ERROR) {
-                changeMachineStatus(machine, Machine.Status.ERROR, "ERROR 알람 발생: " + alarmCode.getAlarmCode());
-            }
+            // 상태 이력은 뒤이어 오는 MACHINE_STATUS ERROR가 한 번만 저장한다.
+            machine.setStatus(Machine.Status.ERROR);
             workCommandService.pauseForMachineError(machine.getMachineId());
         }
         return toResponse(savedHistory);
@@ -84,7 +98,7 @@ public class MachineAlarmService {
                 .toList();
     }
 
-    // 작업자가 발생 중인 알람을 해제하고 해제 시각과 처리자를 기록할 때 사용한다.
+    // 로그인 사용자가 발생 중인 알람을 해제한다. 해제자는 내부 감사 이력으로만 저장한다.
     @Transactional
     public MachineAlarmResponseDto clearAlarm(Long historyId, Long memberId) {
         MachineAlarmHistory history = machineAlarmHistoryRepository.findByIdForUpdate(historyId)
@@ -119,12 +133,27 @@ public class MachineAlarmService {
         boolean anotherErrorExists = machineAlarmHistoryRepository
                 .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
                         machine.getMachineId(), "ERROR", clearedHistory.getMachineAlarmHistoryId());
-        if (!anotherErrorExists && machine.getStatus() == Machine.Status.ERROR) {
-            workCommandService.createResumeCommand(machine.getMachineId());
+        if (anotherErrorExists || machine.getStatus() != Machine.Status.ERROR) {
+            return;
         }
+
+        var resumeCommand = workCommandService.createResumeCommand(machine.getMachineId());
+        if (resumeCommand.isEmpty() && !isCommunicationAlarm(clearedHistory)) {
+            changeMachineStatus(machine, Machine.Status.IDLE, "알람 해제 후 대기 상태 복구");
+            productionScheduleRequestService.requestMachine(machine.getMachineId());
+        }
+        // 통신 알람은 L1 재접속 직후 전송되는 MACHINE_STATUS 스냅샷으로 복구한다.
+    }
+
+    private boolean isCommunicationAlarm(MachineAlarmHistory history) {
+        String alarmCode = history.getAlarmCode().getAlarmCode();
+        return "COMM_DISCONNECTED".equals(alarmCode) || "COMM_TIMEOUT".equals(alarmCode);
     }
 
     private void changeMachineStatus(Machine machine, Machine.Status status, String message) {
+        if (machine.getStatus() == status) {
+            return;
+        }
         machine.setStatus(status);
         MachineStatusHistory statusHistory = MachineStatusHistory.builder()
                 .machine(machine)
@@ -142,7 +171,6 @@ public class MachineAlarmService {
         }
     }
 
-    // 선택 검색 조건이 입력되지 않았는지 판단할 때 내부적으로 사용한다.
     private boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
@@ -151,12 +179,12 @@ public class MachineAlarmService {
         return isBlank(eventId) ? null : eventId.trim();
     }
 
-    // 알람 발생 시각이 사용자가 지정한 조회 기간에 포함되는지 판단할 때 사용한다.
     private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {
-        return (start == null || !value.isBefore(start)) && (end == null || !value.isAfter(end));
+        return value != null
+                && (start == null || !value.isBefore(start))
+                && (end == null || !value.isAfter(end));
     }
 
-    // 알람 이력 Entity를 알람 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.
     private MachineAlarmResponseDto toResponse(MachineAlarmHistory history) {
         Member clearer = history.getClearedBy();
         return MachineAlarmResponseDto.builder()
@@ -166,6 +194,9 @@ public class MachineAlarmService {
                 .alarmCode(history.getAlarmCode().getAlarmCode())
                 .alarmName(history.getAlarmCode().getAlarmName())
                 .alarmLevel(history.getAlarmLevel())
+                .lotNo(history.getLot() == null ? null : history.getLot().getLotNo())
+                .processCode(history.getProcess() == null ? null : history.getProcess().getProcessCode())
+                .processName(history.getProcess() == null ? null : history.getProcess().getProcessName())
                 .occurredAt(history.getOccurredAt())
                 .clearedAt(history.getClearedAt())
                 .clearedById(clearer == null ? null : clearer.getMemberId())

@@ -27,7 +27,7 @@ import java.util.Map;
 @Transactional(readOnly = true)
 public class DashboardService {
 
-    private static final int LOW_STOCK_THRESHOLD = 10;
+    private static final int LOW_STOCK_THRESHOLD = 100;
 
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;

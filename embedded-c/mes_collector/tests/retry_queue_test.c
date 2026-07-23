@@ -123,7 +123,10 @@ int main(void)
     result = api_client_send_event(&message, &status);
     if (result != API_CLIENT_QUEUED
         || file_size(MES_HTTP_RETRY_QUEUE_FILE) <= 0
-        || !file_contains(MES_HTTP_RETRY_QUEUE_FILE, "\"eventId\":\"L2-")) {
+        || !file_contains(MES_HTTP_RETRY_QUEUE_FILE, "\"eventId\":\"L2-")
+        || !file_contains(MES_HTTP_RETRY_QUEUE_FILE, "\"lotNo\":\"LOT-RETRY-001\"")
+        || !file_contains(MES_HTTP_RETRY_QUEUE_FILE, "\"machineId\":\"EQ-WIND-01\"")
+        || !file_contains(MES_HTTP_RETRY_QUEUE_FILE, "\"processCode\":\"OP20\"")) {
         fprintf(stderr,
                 "FAIL: event was not durably queued result=%s status=%d\n",
                 api_client_result_name(result),

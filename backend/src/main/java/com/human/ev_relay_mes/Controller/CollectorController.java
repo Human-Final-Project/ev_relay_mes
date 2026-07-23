@@ -6,12 +6,14 @@ import com.human.ev_relay_mes.Dto.Request.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
+import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
 import com.human.ev_relay_mes.Service.DefectService;
 import com.human.ev_relay_mes.Service.InspectionService;
 import com.human.ev_relay_mes.Service.MachineAlarmService;
@@ -48,6 +50,12 @@ public class CollectorController {
     public ResponseEntity<InspectionResponseDto> receiveInspection(
             @Valid @RequestBody InspectionResultReceiveRequestDto dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(inspectionService.saveResult(dto));
+    }
+
+    @PostMapping("/judgments")
+    public ResponseEntity<InspectionUnitResultResponseDto> receiveJudgment(
+            @Valid @RequestBody UnitJudgmentReceiveRequestDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inspectionService.saveJudgment(dto));
     }
 
     @PostMapping("/defects")

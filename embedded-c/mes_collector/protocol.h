@@ -22,6 +22,7 @@ typedef enum {
     PROTOCOL_EVENT_HEARTBEAT,
     PROTOCOL_EVENT_PRODUCTION,
     PROTOCOL_EVENT_INSPECTION,
+    PROTOCOL_EVENT_JUDGMENT,
     PROTOCOL_EVENT_DEFECT,
     PROTOCOL_EVENT_ALARM,
     PROTOCOL_EVENT_MACHINE_STATUS,
@@ -86,6 +87,16 @@ typedef struct {
     char machine_id[PROTOCOL_MACHINE_ID_CAPACITY];
     char process_code[PROTOCOL_PROCESS_CODE_CAPACITY];
     char lot_no[PROTOCOL_LOT_NO_CAPACITY];
+    int unit_seq;
+    char result[PROTOCOL_STATUS_CAPACITY];
+    char defect_code[PROTOCOL_CODE_CAPACITY];
+    char message[PROTOCOL_MESSAGE_CAPACITY];
+} ProtocolJudgmentEvent;
+
+typedef struct {
+    char machine_id[PROTOCOL_MACHINE_ID_CAPACITY];
+    char process_code[PROTOCOL_PROCESS_CODE_CAPACITY];
+    char lot_no[PROTOCOL_LOT_NO_CAPACITY];
     char defect_code[PROTOCOL_CODE_CAPACITY];
     int defect_qty;
     char message[PROTOCOL_MESSAGE_CAPACITY];
@@ -119,6 +130,7 @@ typedef struct {
         ProtocolConnectionEvent connection;
         ProtocolProductionEvent production;
         ProtocolInspectionEvent inspection;
+        ProtocolJudgmentEvent judgment;
         ProtocolDefectEvent defect;
         ProtocolAlarmEvent alarm;
         ProtocolMachineStatusEvent machine_status;

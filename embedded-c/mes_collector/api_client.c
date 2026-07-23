@@ -22,6 +22,7 @@
 
 #define API_PATH_PRODUCTION "/api/collector/production-logs"
 #define API_PATH_INSPECTION "/api/collector/inspections"
+#define API_PATH_JUDGMENT "/api/collector/judgments"
 #define API_PATH_DEFECT "/api/collector/defects"
 #define API_PATH_ALARM "/api/collector/machine-alarms"
 #define API_PATH_MACHINE_STATUS "/api/collector/machine-statuses"
@@ -47,6 +48,54 @@ typedef struct {
     size_t length;
     int failed;
 } JsonBuilder;
+
+static int api_current_local_datetime(char *output, size_t output_capacity)
+{
+    if (output == NULL || output_capacity < 20U) {
+        return -1;
+    }
+
+#ifdef _WIN32
+    SYSTEMTIME local_time;
+    int written;
+
+    GetLocalTime(&local_time);
+
+    written = snprintf(
+        output,
+        output_capacity,
+        "%04u-%02u-%02uT%02u:%02u:%02u",
+        (unsigned int)local_time.wYear,
+        (unsigned int)local_time.wMonth,
+        (unsigned int)local_time.wDay,
+        (unsigned int)local_time.wHour,
+        (unsigned int)local_time.wMinute,
+        (unsigned int)local_time.wSecond
+    );
+
+    if (written < 0 || (size_t)written >= output_capacity) {
+        return -1;
+    }
+
+    return 0;
+#else
+    time_t now;
+    struct tm local_time;
+
+    now = time(NULL);
+
+    if (localtime_r(&now, &local_time) == NULL) {
+        return -1;
+    }
+
+    return strftime(
+        output,
+        output_capacity,
+        "%Y-%m-%dT%H:%M:%S",
+        &local_time
+    ) == 0 ? -1 : 0;
+#endif
+}
 
 static int api_uint64_to_text(uint64_t value,
                               char *output,
@@ -305,6 +354,19 @@ static ApiClientResult api_client_build_event_request_internal(
         json_append_optional_string_field(&builder, "unit", event->unit, &first);
         break;
     }
+    case PROTOCOL_EVENT_JUDGMENT: {
+        const ProtocolJudgmentEvent *event = &message->data.judgment;
+
+        path_result = copy_path(path, path_capacity, API_PATH_JUDGMENT);
+        json_append_string_field(&builder, "lotNo", event->lot_no, &first);
+        json_append_string_field(&builder, "machineId", event->machine_id, &first);
+        json_append_string_field(&builder, "processCode", event->process_code, &first);
+        json_append_int_field(&builder, "unitSeq", event->unit_seq, &first);
+        json_append_string_field(&builder, "result", event->result, &first);
+        json_append_optional_string_field(&builder, "defectCode", event->defect_code, &first);
+        json_append_optional_string_field(&builder, "message", event->message, &first);
+        break;
+    }
     case PROTOCOL_EVENT_DEFECT: {
         const ProtocolDefectEvent *event = &message->data.defect;
 
@@ -323,10 +385,15 @@ static ApiClientResult api_client_build_event_request_internal(
             ? "WARN"
             : event->alarm_level;
 
+        char occurred_at[32];
+
         path_result = copy_path(path, path_capacity, API_PATH_ALARM);
         json_append_string_field(&builder, "machineId", event->machine_id, &first);
         json_append_string_field(&builder, "alarmCode", event->alarm_code, &first);
         json_append_string_field(&builder, "alarmLevel", alarm_level, &first);
+        if (api_current_local_datetime(occurred_at, sizeof(occurred_at)) == 0) {
+            json_append_string_field(&builder, "occurredAt", occurred_at, &first);
+        }
         json_append_optional_string_field(&builder, "message", event->message, &first);
         break;
     }
@@ -1334,6 +1401,8 @@ static const char *api_message_machine_id(const ProtocolMessage *message)
         return message->data.production.machine_id;
     case PROTOCOL_EVENT_INSPECTION:
         return message->data.inspection.machine_id;
+    case PROTOCOL_EVENT_JUDGMENT:
+        return message->data.judgment.machine_id;
     case PROTOCOL_EVENT_DEFECT:
         return message->data.defect.machine_id;
     case PROTOCOL_EVENT_ALARM:

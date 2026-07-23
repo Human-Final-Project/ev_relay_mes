@@ -56,6 +56,9 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
     Optional<WorkCommand> findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
             String machineId, WorkCommand.Status status);
 
+    Optional<WorkCommand> findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+            String machineId, Collection<WorkCommand.Status> statuses);
+
     boolean existsByMachine_MachineIdAndStatusIn(
             String machineId, Collection<WorkCommand.Status> statuses);
 

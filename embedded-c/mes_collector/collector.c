@@ -30,6 +30,8 @@ static const char *message_machine_id(const ProtocolMessage *message)
         return message->data.production.machine_id;
     case PROTOCOL_EVENT_INSPECTION:
         return message->data.inspection.machine_id;
+    case PROTOCOL_EVENT_JUDGMENT:
+        return message->data.judgment.machine_id;
     case PROTOCOL_EVENT_DEFECT:
         return message->data.defect.machine_id;
     case PROTOCOL_EVENT_ALARM:

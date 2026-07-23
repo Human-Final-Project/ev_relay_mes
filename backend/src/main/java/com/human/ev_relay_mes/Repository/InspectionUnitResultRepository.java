@@ -13,6 +13,10 @@ public interface InspectionUnitResultRepository extends JpaRepository<Inspection
 
     long countByLot_LotNoAndProcess_ProcessCode(String lotNo, String processCode);
 
+    long countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+            String lotNo, String processCode,
+            InspectionUnitResult.EvaluationStatus evaluationStatus);
+
     long countByLot_LotNoAndProcess_ProcessCodeAndResult(
             String lotNo, String processCode, Inspection.Result result);
 

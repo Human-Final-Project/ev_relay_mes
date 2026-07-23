@@ -61,6 +61,30 @@ class MaterialLotServiceTest {
     }
 
     @Test
+    void returnsFalseWithoutDeductionWhenAutomaticLotHasInsufficientMaterial() {
+        Item parent = item("FG-001", Item.ItemType.FG);
+        Item child = item("RM-001", Item.ItemType.RM);
+        Bom bom = Bom.builder()
+                .parentItem(parent)
+                .childItem(child)
+                .quantity(new BigDecimal("2"))
+                .useYn("Y")
+                .build();
+        MaterialLot onlyLot = materialLot(1L, child, 5);
+
+        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("FG-001", "Y"))
+                .thenReturn(List.of(bom));
+        when(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
+                .thenReturn(List.of(onlyLot));
+
+        boolean consumed = materialLotService.tryConsumeMaterials("FG-001", 5);
+
+        assertThat(consumed).isFalse();
+        assertThat(onlyLot.getCurrentQty()).isEqualTo(5);
+        assertThat(onlyLot.getStatus()).isEqualTo(MaterialLot.Status.AVAILABLE);
+    }
+
+    @Test
     void explodesMultiLevelBomToRawMaterial() {
         Item finished = item("FG-001", Item.ItemType.FG);
         Item assembly = item("SA-001", Item.ItemType.SA);

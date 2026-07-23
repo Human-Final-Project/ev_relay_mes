@@ -45,7 +45,8 @@ class DefectServiceTest {
                 .machineType("WINDER").process(process).build();
         Lot lot = Lot.builder().lotNo("LOT-001").build();
         DefectCode defectCode = DefectCode.builder()
-                .defectCode("WIRE_BREAK").defectName("wire break").process(process).build();
+                .defectCode("WIRE_BREAK").defectName("wire break")
+                .description("wire is disconnected").process(process).build();
         DefectHistory existing = DefectHistory.builder()
                 .defectHistoryId(14L)
                 .eventId("defect-001")
@@ -63,6 +64,7 @@ class DefectServiceTest {
         var response = defectService.createDefect(dto);
 
         assertThat(response.getDefectHistoryId()).isEqualTo(14L);
+        assertThat(response.getDefectDescription()).isEqualTo("wire is disconnected");
         verifyNoInteractions(defectCodeRepository, machineRepository,
                 processRepository, memberRepository, lotRepository);
     }
