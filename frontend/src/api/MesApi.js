@@ -13,6 +13,7 @@ async function mutate(method, url, data, config) {
 
 const MesApi = {
   getDashboardSummary: () => httpClient.get("/api/mes/dashboard/summary"),
+  getCollectorStatus: () => httpClient.get("/api/mes/collector-status"),
   getRecentProductionLogs: () => httpClient.get("/api/mes/production/recent-logs"),
 
   getWorkOrders: (params) => httpClient.get("/api/work-orders", query(params)),
@@ -64,6 +65,7 @@ const MesApi = {
   clearMachineAlarm: (id) => mutate("patch", `/api/machines/alarms/${id}/clear`),
   getMachineAssignments: (machineId) =>
     httpClient.get(`/api/machines/${machineId}/assignments`),
+  getAllMachineAssignments: () => httpClient.get("/api/machines/assignments"),
   assignResponsible: (machineId, workerId) =>
     mutate("put", `/api/machines/${machineId}/responsible`, { workerId: Number(workerId) }),
   addMachineWorker: (machineId, workerId) =>
