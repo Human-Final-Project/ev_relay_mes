@@ -15,7 +15,7 @@ public interface MachineRepository extends JpaRepository<Machine, String> {
     List<Machine> findByProcess_ProcessCodeOrderByMachineIdAsc(String processCode);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select m from Machine m where m.process.processCode = :processCode order by m.machineId asc")
+    @Query("select m from Machine m where m.process.processCode = :processCode and m.useYn = 'Y' order by m.machineId asc")
     List<Machine> findUsableByProcessForUpdate(@Param("processCode") String processCode);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.Service;
 
+import com.human.ev_relay_mes.Dto.Request.MachineRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MachineResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
@@ -52,6 +53,45 @@ public class MachineService {
     // 설비 상세 화면에서 특정 설비의 정보와 현재 상태를 조회할 때 사용한다.
     public MachineResponseDto getMachine(String machineId) {
         return toMachineResponse(findMachine(machineId));
+    }
+
+    @Transactional
+    public MachineResponseDto createMachine(MachineRequestDto dto) {
+        if (machineRepository.existsById(dto.getMachineId())) {
+            throw new CustomException(ErrorCode.DUPLICATE_MACHINE_ID);
+        }
+        com.human.ev_relay_mes.Entity.Process process = findProcess(dto.getProcessCode());
+        Machine machine = Machine.builder()
+                .machineId(dto.getMachineId())
+                .machineName(dto.getMachineName())
+                .machineType(dto.getMachineType())
+                .process(process)
+                .status(Machine.Status.IDLE)
+                .useYn("Y")
+                .build();
+        return toMachineResponse(machineRepository.save(machine));
+    }
+
+    @Transactional
+    public MachineResponseDto updateMachine(String machineId, MachineRequestDto dto) {
+        if (!machineId.equals(dto.getMachineId())) {
+            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE);
+        }
+        Machine machine = findMachine(machineId);
+        machine.setMachineName(dto.getMachineName());
+        machine.setMachineType(dto.getMachineType());
+        machine.setProcess(findProcess(dto.getProcessCode()));
+        return toMachineResponse(machine);
+    }
+
+    @Transactional
+    public MachineResponseDto updateUseYn(String machineId, boolean active) {
+        Machine machine = findMachine(machineId);
+        if (!active && machine.getStatus() == Machine.Status.RUNNING) {
+            throw new CustomException(ErrorCode.MACHINE_NOT_IDLE);
+        }
+        machine.setUseYn(active ? "Y" : "N");
+        return toMachineResponse(machine);
     }
 
     // L2가 전달한 설비 상태를 현재 상태에 반영하고 상태 변경 이력을 남길 때 사용한다.
@@ -173,6 +213,11 @@ public class MachineService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
     }
 
+    private com.human.ev_relay_mes.Entity.Process findProcess(String processCode) {
+        return processRepository.findById(processCode)
+                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+    }
+
     // 설비 상태 메시지에 포함된 LOT 번호를 생산 LOT와 연결할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
         return lotRepository.findByLotNo(lotNo)
@@ -206,6 +251,7 @@ public class MachineService {
                 .processCode(machine.getProcess().getProcessCode())
                 .processName(machine.getProcess().getProcessName())
                 .status(machine.getStatus().name())
+                .useYn(machine.getUseYn())
                 .createdAt(machine.getCreatedAt())
                 .updatedAt(machine.getUpdatedAt());
         if (machine.getStatus() == Machine.Status.RUNNING) {

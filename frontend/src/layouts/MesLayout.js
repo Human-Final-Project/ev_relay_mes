@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
 import MesApi from "../api/MesApi";
 import "../style/MesUi.css";
@@ -49,11 +48,19 @@ const layoutStyles = `
   .mesdash .sidebar-brand h1 { margin:8px 0 2px; font-size:20px; font-weight:800; line-height:24px; white-space:nowrap; }
   .mesdash .sidebar-brand p { margin:0; font-size:11px; font-weight:500; color:#d8e8fa; white-space:nowrap; }
   .mesdash .sidebar-toggle { width:30px; height:30px; border:1px solid rgba(255,255,255,.25); border-radius:7px; background:rgba(0,0,0,.12); color:#dcecff; cursor:pointer; flex:0 0 auto; }
-  .mesdash .sidebar-nav { flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 18px; }
-  .mesdash .nav-item { min-height:44px; display:flex; align-items:center; gap:14px; padding:9px 15px; border-radius:7px; text-decoration:none; color:#f1f7ff; font-size:14px; font-weight:650; transition:all .18s; white-space:nowrap; }
-  .mesdash .nav-item .material-symbols-outlined { font-size:22px; flex:0 0 22px; }
+  .mesdash .sidebar-nav { flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 12px; overflow-y:auto; scrollbar-width:thin; scrollbar-color:#31577e transparent; }
+  .mesdash .nav-group { display:grid; gap:3px; }
+  .mesdash .nav-group-toggle { width:100%; min-height:38px; display:flex; align-items:center; gap:11px; padding:8px 11px; border:0; border-radius:7px; color:#dcecff; background:transparent; font:inherit; font-size:12px; font-weight:800; text-align:left; cursor:pointer; white-space:nowrap; }
+  .mesdash .nav-group-toggle:hover { background:rgba(255,255,255,.07); }
+  .mesdash .nav-group-toggle .material-symbols-outlined { flex:0 0 20px; font-size:20px; }
+  .mesdash .nav-chevron { margin-left:auto; font-family:"Material Symbols Outlined"; font-size:18px; transition:transform .18s; }
+  .mesdash .nav-group.open .nav-chevron { transform:rotate(180deg); }
+  .mesdash .nav-group-items { display:grid; gap:2px; padding:1px 0 5px 12px; }
+  .mesdash .nav-item { min-height:34px; display:flex; align-items:center; gap:10px; padding:7px 11px; border-radius:6px; text-decoration:none; color:#dce8f7; font-size:11px; font-weight:650; transition:all .18s; white-space:nowrap; }
+  .mesdash .nav-item .material-symbols-outlined { font-size:18px; flex:0 0 18px; }
   .mesdash .nav-item:hover { background:rgba(255,255,255,.09); }
   .mesdash .nav-item.active { color:#fff; background:linear-gradient(135deg,#0874ed,#1554c5); box-shadow:0 5px 14px rgba(0,91,219,.35); }
+  .mesdash .admin-nav { margin-top:6px; border-top:1px solid rgba(255,255,255,.1); border-radius:0 0 6px 6px; }
   .mesdash .sidebar-footer { display:grid; gap:10px; padding:14px 18px 18px; margin-top:auto; }
   .mesdash .connection-tile { min-height:42px; display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 13px; border:1px solid rgba(153,196,241,.24); border-radius:8px; color:#eaf4ff; font-size:12px; font-weight:700; white-space:nowrap; }
   .mesdash .connection-name { display:flex; align-items:center; gap:9px; }
@@ -67,6 +74,8 @@ const layoutStyles = `
   .mesdash .sidebar.collapsed .connection-short-label { display:inline; }
   .mesdash .sidebar.collapsed .sidebar-brand-row { justify-content:center; }
   .mesdash .sidebar.collapsed .sidebar-nav { padding:12px 9px; }
+  .mesdash .sidebar.collapsed .nav-group-toggle { justify-content:center; padding:8px; }
+  .mesdash .sidebar.collapsed .nav-group-items { padding-left:0; }
   .mesdash .sidebar.collapsed .nav-item { justify-content:center; padding:9px; }
   .mesdash .sidebar.collapsed .sidebar-footer { padding:14px 10px 18px; }
   .mesdash .sidebar.collapsed .connection-tile { justify-content:center; padding:0; }
@@ -103,12 +112,6 @@ const layoutStyles = `
   .mesdash .user-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; border: 1px solid var(--outline-variant); background-color: var(--surface-container); flex-shrink: 0; }
   .mesdash .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
   
-  /* 하단 푸터 스타일 */
-  .mesdash .footer { height: 40px; background-color: var(--surface-container-lowest); border-top: 1px solid rgba(197, 198, 205, 0.3); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--lg); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--outline); margin-top: auto; }
-  .mesdash .footer-links { display: flex; gap: var(--lg); }
-  .mesdash .footer-copyright { display: flex; align-items: center; gap: var(--md); }
-  .mesdash .footer-copyright strong { color: var(--on-surface); }
-
   /* 🔔 알림 버튼 및 드롭다운 토글 기능용 전역 스타일 디자인 추가 */
   .mesdash .user-actions button { position: relative; }
   .mesdash .user-actions button .notification-badge {
@@ -183,7 +186,6 @@ const MesLayout = ({ onLogout, currentUser }) => {
             <main className="content-area custom-scrollbar">
               <Outlet />
             </main>
-            <Footer />
           </div>
         </div>
       </div>

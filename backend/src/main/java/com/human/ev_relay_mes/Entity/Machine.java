@@ -38,6 +38,10 @@ public class Machine {
     @Builder.Default
     private Status status = Status.IDLE;
 
+    @Column(name = "use_yn", nullable = false, length = 1, columnDefinition = "varchar(1) default 'Y'")
+    @Builder.Default
+    private String useYn = "Y";
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

@@ -18,6 +18,11 @@ public class MachineWorkerAssignmentController {
 
     private final MachineWorkerAssignmentService assignmentService;
 
+    @GetMapping("/assignments")
+    public List<MachineWorkerAssignmentResponseDto> getAllAssignments() {
+        return assignmentService.getAllAssignments();
+    }
+
     @GetMapping("/{machineId}/assignments")
     public List<MachineWorkerAssignmentResponseDto> getAssignments(
             @PathVariable String machineId) {

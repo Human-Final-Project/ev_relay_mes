@@ -11,6 +11,7 @@ public class ProcessResponseDto {
     private String processName;
     private Integer processOrder;
     private String description;
+    private String useYn;
 
     public static ProcessResponseDto fromEntity(Process process) {
         return ProcessResponseDto.builder()
@@ -18,6 +19,7 @@ public class ProcessResponseDto {
                 .processName(process.getProcessName())
                 .processOrder(process.getProcessOrder())
                 .description(process.getDescription())
+                .useYn(process.getUseYn())
                 .build();
     }
 }

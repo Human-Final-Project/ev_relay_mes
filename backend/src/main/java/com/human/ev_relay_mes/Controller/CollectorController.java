@@ -15,6 +15,7 @@ import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
 import com.human.ev_relay_mes.Service.DefectService;
+import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.InspectionService;
 import com.human.ev_relay_mes.Service.MachineAlarmService;
 import com.human.ev_relay_mes.Service.MachineService;
@@ -39,6 +40,16 @@ public class CollectorController {
     private final MachineService machineService;
     private final MachineAlarmService machineAlarmService;
     private final WorkCommandService workCommandService;
+    private final CollectorStatusService collectorStatusService;
+
+    @PostMapping("/heartbeat")
+    public ResponseEntity<Void> receiveCollectorHeartbeat(
+            @RequestBody CollectorHeartbeatRequest request) {
+        collectorStatusService.receiveHeartbeat(
+                request.connectedMachineIds(),
+                request.totalCapacity());
+        return ResponseEntity.noContent().build();
+    }
 
     @PostMapping("/production-logs")
     public ResponseEntity<ProductionLogResponseDto> receiveProductionResult(
@@ -79,6 +90,7 @@ public class CollectorController {
     @GetMapping("/commands/pending")
     public List<WorkCommandResponseDto> claimPendingCommands(
             @RequestParam(required = false) String machineId) {
+        collectorStatusService.receiveMachineHeartbeat(machineId, 6);
         return workCommandService.claimPendingCommands(machineId);
     }
 
@@ -93,5 +105,10 @@ public class CollectorController {
     public WorkCommandResponseDto acknowledgeCommand(
             @Valid @RequestBody WorkCommandAckRequestDto dto) {
         return workCommandService.acknowledge(dto);
+    }
+
+    public record CollectorHeartbeatRequest(
+            List<String> connectedMachineIds,
+            int totalCapacity) {
     }
 }

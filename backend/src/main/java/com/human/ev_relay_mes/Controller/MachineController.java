@@ -1,6 +1,7 @@
 package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.MachineAlarmSearchRequestDto;
+import com.human.ev_relay_mes.Dto.Request.MachineRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
@@ -25,6 +26,22 @@ public class MachineController {
 
     @GetMapping("/{id}")
     public MachineResponseDto getMachine(@PathVariable String id) { return machineService.getMachine(id); }
+
+    @PostMapping
+    public MachineResponseDto createMachine(@Valid @RequestBody MachineRequestDto dto) {
+        return machineService.createMachine(dto);
+    }
+
+    @PutMapping("/{id}")
+    public MachineResponseDto updateMachine(@PathVariable String id,
+            @Valid @RequestBody MachineRequestDto dto) {
+        return machineService.updateMachine(id, dto);
+    }
+
+    @PatchMapping("/{id}/active")
+    public MachineResponseDto updateActive(@PathVariable String id, @RequestParam boolean active) {
+        return machineService.updateUseYn(id, active);
+    }
 
     @GetMapping("/{id}/status-history")
     public List<MachineStatusHistoryResponseDto> getStatusHistory(@PathVariable String id) {

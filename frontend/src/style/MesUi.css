@@ -105,6 +105,11 @@
 .stacked-scale { display:flex; justify-content:space-between; margin-left:122px; color:#94a3b8; font-size:9px; }
 .chart-empty { min-height:175px; display:grid; place-items:center; color:#94a3b8; font-size:12px; border:1px dashed #dbe3ec; border-radius:9px; }
 .production-analytics { display:grid; grid-template-columns:minmax(0,1fr) 230px; gap:28px; align-items:center; margin:8px 0 22px; padding:18px; border:1px solid #e2e8f0; border-radius:10px; background:linear-gradient(135deg,#f8fafc,#f0fdfa); }
+.management-page .management-table td { min-height:50px; }
+.management-table td small { display:block; margin-top:3px; color:#8795a8; font-size:9px; }
+.management-table .mes-actions { flex-wrap:nowrap; }
+.inventory-kpis { grid-template-columns:repeat(3,minmax(160px,1fr)); margin-bottom:14px; }
+.inventory-kpis .dashboard-kpi-card { min-height:104px; }
 @media(max-width:1200px){.dashboard-charts{grid-template-columns:1fr 1fr}.chart-wide{grid-column:1/-1}}
 @media(max-width:1000px){.mes-grid.two,.split-detail{grid-template-columns:1fr}.process-flow{grid-template-columns:1fr 1fr}.mes-form-grid{grid-template-columns:1fr}.production-analytics{grid-template-columns:1fr}}
 @media(max-width:640px){.dashboard-charts{grid-template-columns:1fr}.chart-wide{grid-column:auto}.stacked-row{grid-template-columns:82px minmax(90px,1fr) 72px}.stacked-scale{margin-left:94px}}

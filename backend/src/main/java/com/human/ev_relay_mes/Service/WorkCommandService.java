@@ -436,7 +436,9 @@ public class WorkCommandService {
     }
 
     private Process activeProcess(String processCode) {
-        return processRepository.findById(processCode).orElse(null);
+        return processRepository.findById(processCode)
+                .filter(process -> "Y".equalsIgnoreCase(process.getUseYn()))
+                .orElse(null);
     }
 
     private Optional<Machine> findAvailableMachineForUpdate(String processCode) {

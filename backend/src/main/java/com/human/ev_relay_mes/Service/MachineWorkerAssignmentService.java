@@ -33,6 +33,12 @@ public class MachineWorkerAssignmentService {
                 .toList();
     }
 
+    public List<MachineWorkerAssignmentResponseDto> getAllAssignments() {
+        return assignmentRepository.findAll().stream()
+                .map(MachineWorkerAssignmentResponseDto::fromEntity)
+                .toList();
+    }
+
     @Transactional
     public MachineWorkerAssignmentResponseDto assignResponsible(
             String machineId,

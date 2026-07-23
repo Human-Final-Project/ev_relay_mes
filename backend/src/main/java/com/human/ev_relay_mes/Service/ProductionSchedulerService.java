@@ -55,7 +55,8 @@ public class ProductionSchedulerService {
         // 항상 OP20 -> OP30 순서로 획득한다.
         Machine machine = machineRepository.findById(machineId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        if (machine.getStatus() != Machine.Status.IDLE
+        if (!"Y".equalsIgnoreCase(machine.getUseYn())
+                || machine.getStatus() != Machine.Status.IDLE
                 || workCommandService.hasActiveCommandForMachine(machineId)) {
             return false;
         }
@@ -82,7 +83,8 @@ public class ProductionSchedulerService {
                         left.getProcess().getProcessOrder(),
                         right.getProcess().getProcessOrder()))
                 .toList()) {
-            if (machine.getStatus() == Machine.Status.IDLE
+            if ("Y".equalsIgnoreCase(machine.getUseYn())
+                    && machine.getStatus() == Machine.Status.IDLE
                     && tryAssignMachine(machine.getMachineId())) {
                 assigned++;
             }

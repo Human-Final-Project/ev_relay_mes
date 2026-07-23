@@ -60,6 +60,10 @@ const MesApi = {
 
   getMachines: () => httpClient.get("/api/machines"),
   getMachine: (id) => httpClient.get(`/api/machines/${id}`),
+  createMachine: (data) => mutate("post", "/api/machines", data),
+  updateMachine: (id, data) => mutate("put", `/api/machines/${encodeURIComponent(id)}`, data),
+  setMachineActive: (id, active) =>
+    mutate("patch", `/api/machines/${encodeURIComponent(id)}/active`, undefined, { params: { active } }),
   getMachineStatusHistory: (id) => httpClient.get(`/api/machines/${id}/status-history`),
   getMachineAlarms: (params) => httpClient.get("/api/machines/alarms", query(params)),
   clearMachineAlarm: (id) => mutate("patch", `/api/machines/alarms/${id}/clear`),
@@ -100,6 +104,10 @@ const MesApi = {
     mutate("patch", `/api/boms/${id}/active`, undefined, { params: { active } }),
   deleteBom: (id) => mutate("delete", `/api/boms/${id}`),
   getProcesses: () => httpClient.get("/api/processes"),
+  createProcess: (data) => mutate("post", "/api/processes", data),
+  updateProcess: (code, data) => mutate("put", `/api/processes/${encodeURIComponent(code)}`, data),
+  setProcessActive: (code, active) =>
+    mutate("patch", `/api/processes/${encodeURIComponent(code)}/active`, undefined, { params: { active } }),
   getDefectCodes: () => httpClient.get("/api/defect-codes"),
   getAlarmCodes: () => httpClient.get("/api/alarm-codes"),
 
