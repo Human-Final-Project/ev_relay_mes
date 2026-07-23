@@ -16,6 +16,7 @@ test("shows live L2 and L1 connection badges instead of the account link", async
 
   render(<MemoryRouter><Sidebar currentUser={{ role: "VIEWER" }}/></MemoryRouter>);
 
+  expect(screen.getByRole("link", { name: "Mini MES 홈으로 이동" })).toHaveAttribute("href", "/");
   expect(screen.getByText("L2 Collector")).toBeInTheDocument();
   expect(await screen.findByText("4/6")).toBeInTheDocument();
   expect(screen.getByText("ONLINE")).toBeInTheDocument();

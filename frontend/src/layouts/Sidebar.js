@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
 
@@ -30,7 +30,7 @@ export default function Sidebar({ currentUser }) {
   const unavailable = connections.error && connections.data === null;
 
   return <aside className="sidebar">
-    <div className="sidebar-brand"><h1>Mini MES</h1><p>System Operator</p></div>
+    <Link to="/" className="sidebar-brand" aria-label="Mini MES 홈으로 이동"><h1>Mini MES</h1><p>System Operator</p></Link>
     <nav className="sidebar-nav">
       {menus.map(([to, icon, label]) => <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
         <span className="material-symbols-outlined">{icon}</span><span>{label}</span>

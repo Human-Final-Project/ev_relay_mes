@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
 import "../style/MesUi.css";
 
@@ -41,7 +40,9 @@ const layoutStyles = `
   
   /* 사이드바 스타일 */
   .mesdash .sidebar { width: 230px; background-color: #f4f6fa; border-right: 1px solid #d9dee8; display: flex; flex-direction: column; flex-shrink: 0; z-index: 50; }
-  .mesdash .sidebar-brand { min-height: 96px; padding: 20px 24px 22px; border-bottom: 1px solid #e1e5ec; }
+  .mesdash .sidebar-brand { display:block; min-height:96px; padding:20px 24px 22px; border-bottom:1px solid #e1e5ec; color:inherit; text-decoration:none; transition:background-color .15s; }
+  .mesdash .sidebar-brand:hover { background-color:#edf2f8; }
+  .mesdash .sidebar-brand:focus-visible { outline:2px solid rgba(5,102,217,.35); outline-offset:-2px; }
   .mesdash .sidebar-brand h1 { margin: 0; font-size: 21px; font-weight: 800; color: #15314f; line-height: 28px; letter-spacing: -.02em; }
   .mesdash .sidebar-brand p { margin: 2px 0 0; font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: #7b8796; }
   .mesdash .sidebar-nav { flex: 1; display: flex; flex-direction: column; gap: 3px; padding: 16px 10px; }
@@ -96,12 +97,6 @@ const layoutStyles = `
   .mesdash .user-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; border: 1px solid var(--outline-variant); background-color: var(--surface-container); flex-shrink: 0; }
   .mesdash .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
   
-  /* 하단 푸터 스타일 */
-  .mesdash .footer { height: 40px; background-color: var(--surface-container-lowest); border-top: 1px solid rgba(197, 198, 205, 0.3); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--lg); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--outline); margin-top: auto; }
-  .mesdash .footer-links { display: flex; gap: var(--lg); }
-  .mesdash .footer-copyright { display: flex; align-items: center; gap: var(--md); }
-  .mesdash .footer-copyright strong { color: var(--on-surface); }
-
   /* 🔔 알림 버튼 및 드롭다운 토글 기능용 전역 스타일 디자인 추가 */
   .mesdash .user-actions button { position: relative; }
   .mesdash .user-actions button .notification-badge {
@@ -159,7 +154,6 @@ const MesLayout = ({ onLogout, currentUser }) => {
             <main className="content-area custom-scrollbar">
               <Outlet />
             </main>
-            <Footer />
           </div>
         </div>
       </div>
