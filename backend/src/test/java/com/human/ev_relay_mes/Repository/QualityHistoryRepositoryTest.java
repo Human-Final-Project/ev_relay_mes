@@ -10,6 +10,7 @@ import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
+import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import org.junit.jupiter.api.Test;

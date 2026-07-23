@@ -10,6 +10,7 @@ import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
@@ -20,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.EnumSet;
 
@@ -32,6 +34,7 @@ public class MachineService {
             WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED);
 
     private final MachineRepository machineRepository;
+    private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final ProcessRepository processRepository;
     private final LotRepository lotRepository;
@@ -69,6 +72,19 @@ public class MachineService {
                 : processRepository.findById(dto.getProcessCode())
                         .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
 
+        boolean connectionStateSync = "connection_state_sync".equalsIgnoreCase(dto.getMessage());
+        if (connectionStateSync) {
+            clearRecoveredCommunicationAlarms(machine.getMachineId());
+            if (status == Machine.Status.ERROR
+                    && lot != null
+                    && process != null
+                    && lot.getStatus() == Lot.Status.HOLD
+                    && !hasActiveEquipmentError(machine.getMachineId())) {
+                workCommandService.createResumeCommand(
+                        machine.getMachineId(), lot.getLotNo(), process.getProcessCode());
+            }
+        }
+
         boolean resumeCompleted = status == Machine.Status.RUNNING
                 && lot != null
                 && process != null
@@ -103,6 +119,30 @@ public class MachineService {
             productionScheduleRequestService.requestMachine(machine.getMachineId());
         }
         return toHistoryResponse(savedHistory);
+    }
+
+    private void clearRecoveredCommunicationAlarms(String machineId) {
+        LocalDateTime recoveredAt = LocalDateTime.now();
+        machineAlarmHistoryRepository
+                .findByMachine_MachineIdAndClearedAtIsNullOrderByOccurredAtAsc(machineId)
+                .stream()
+                .filter(this::isCommunicationAlarm)
+                .forEach(history -> history.setClearedAt(recoveredAt));
+    }
+
+    private boolean hasActiveEquipmentError(String machineId) {
+        return machineAlarmHistoryRepository
+                .findByMachine_MachineIdAndClearedAtIsNullOrderByOccurredAtAsc(machineId)
+                .stream()
+                .filter(history -> "ERROR".equalsIgnoreCase(history.getAlarmLevel()))
+                .anyMatch(history -> !isCommunicationAlarm(history));
+    }
+
+    private boolean isCommunicationAlarm(
+            com.human.ev_relay_mes.Entity.MachineAlarmHistory history) {
+        String alarmCode = history.getAlarmCode().getAlarmCode();
+        return "COMM_DISCONNECTED".equals(alarmCode)
+                || "COMM_TIMEOUT".equals(alarmCode);
     }
 
     // 설비 상세 화면에서 특정 설비의 상태 변화 이력을 최신순으로 표시할 때 사용한다.

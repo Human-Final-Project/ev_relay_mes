@@ -62,13 +62,6 @@ ApiClientResult api_client_release_command(int64_t command_id,
                                            const char *machine_id,
                                            int *http_status);
 
-/* Reports L2 liveness and the currently registered L1 machine IDs. */
-ApiClientResult api_client_send_collector_heartbeat(
-    const char *const *connected_machine_ids,
-    size_t connected_count,
-    size_t total_capacity,
-    int *http_status);
-
 const char *api_client_result_name(ApiClientResult result);
 
 #endif

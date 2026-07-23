@@ -29,7 +29,6 @@
 #define API_PATH_COMMAND_ACK "/api/collector/command-acks"
 #define API_PATH_PENDING_COMMANDS "/api/collector/commands/pending"
 #define API_PATH_RELEASE_COMMAND_PREFIX "/api/collector/commands/"
-#define API_PATH_COLLECTOR_HEARTBEAT "/api/collector/heartbeat"
 #define API_QUEUE_LINE_CAPACITY (API_CLIENT_PATH_CAPACITY + API_CLIENT_JSON_CAPACITY + 16)
 #define API_EVENT_ID_CAPACITY 100
 
@@ -55,46 +54,34 @@ static int api_current_local_datetime(char *output, size_t output_capacity)
     if (output == NULL || output_capacity < 20U) {
         return -1;
     }
-
 #ifdef _WIN32
-    SYSTEMTIME local_time;
-    int written;
+    {
+        SYSTEMTIME local_time;
+        int written;
 
-    GetLocalTime(&local_time);
-
-    written = snprintf(
-        output,
-        output_capacity,
-        "%04u-%02u-%02uT%02u:%02u:%02u",
-        (unsigned int)local_time.wYear,
-        (unsigned int)local_time.wMonth,
-        (unsigned int)local_time.wDay,
-        (unsigned int)local_time.wHour,
-        (unsigned int)local_time.wMinute,
-        (unsigned int)local_time.wSecond
-    );
-
-    if (written < 0 || (size_t)written >= output_capacity) {
-        return -1;
+        GetLocalTime(&local_time);
+        written = snprintf(output,
+                           output_capacity,
+                           "%04u-%02u-%02uT%02u:%02u:%02u",
+                           (unsigned int)local_time.wYear,
+                           (unsigned int)local_time.wMonth,
+                           (unsigned int)local_time.wDay,
+                           (unsigned int)local_time.wHour,
+                           (unsigned int)local_time.wMinute,
+                           (unsigned int)local_time.wSecond);
+        return written < 0 || (size_t)written >= output_capacity ? -1 : 0;
     }
-
-    return 0;
 #else
-    time_t now;
-    struct tm local_time;
+    {
+        time_t now = time(NULL);
+        struct tm local_time;
 
-    now = time(NULL);
-
-    if (localtime_r(&now, &local_time) == NULL) {
-        return -1;
+        if (localtime_r(&now, &local_time) == NULL) {
+            return -1;
+        }
+        return strftime(output, output_capacity,
+                        "%Y-%m-%dT%H:%M:%S", &local_time) == 0 ? -1 : 0;
     }
-
-    return strftime(
-        output,
-        output_capacity,
-        "%Y-%m-%dT%H:%M:%S",
-        &local_time
-    ) == 0 ? -1 : 0;
 #endif
 }
 
@@ -1194,59 +1181,6 @@ ApiClientResult api_client_release_command(int64_t command_id,
         return API_CLIENT_BUFFER_TOO_SMALL;
     }
     return api_client_post_with_retries(path, "{}", http_status);
-}
-
-ApiClientResult api_client_send_collector_heartbeat(
-    const char *const *connected_machine_ids,
-    size_t connected_count,
-    size_t total_capacity,
-    int *http_status)
-{
-    char json[API_CLIENT_JSON_CAPACITY];
-    size_t offset = 0;
-    size_t index;
-    int written;
-
-    if ((connected_count > 0 && connected_machine_ids == NULL)
-        || connected_count > total_capacity) {
-        return API_CLIENT_INVALID_ARGUMENT;
-    }
-    written = snprintf(json,
-                       sizeof(json),
-                       "{\"connectedMachineIds\":[");
-    if (written < 0 || (size_t)written >= sizeof(json)) {
-        return API_CLIENT_BUFFER_TOO_SMALL;
-    }
-    offset = (size_t)written;
-    for (index = 0; index < connected_count; ++index) {
-        const char *machine_id = connected_machine_ids[index];
-
-        if (machine_id == NULL
-            || strchr(machine_id, '"') != NULL
-            || strchr(machine_id, '\\') != NULL) {
-            return API_CLIENT_INVALID_ARGUMENT;
-        }
-        written = snprintf(json + offset,
-                           sizeof(json) - offset,
-                           "%s\"%s\"",
-                           index == 0 ? "" : ",",
-                           machine_id);
-        if (written < 0 || (size_t)written >= sizeof(json) - offset) {
-            return API_CLIENT_BUFFER_TOO_SMALL;
-        }
-        offset += (size_t)written;
-    }
-    written = snprintf(json + offset,
-                       sizeof(json) - offset,
-                       "],\"totalCapacity\":%lu}",
-                       (unsigned long)total_capacity);
-    if (written < 0 || (size_t)written >= sizeof(json) - offset) {
-        return API_CLIENT_BUFFER_TOO_SMALL;
-    }
-    return api_client_post_with_retries(
-        API_PATH_COLLECTOR_HEARTBEAT,
-        json,
-        http_status);
 }
 
 

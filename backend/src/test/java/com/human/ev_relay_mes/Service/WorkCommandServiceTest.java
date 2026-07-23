@@ -295,6 +295,8 @@ class WorkCommandServiceTest {
         interrupted.setStatus(WorkCommand.Status.CANCELED);
         ProductionLog partial = ProductionLog.builder().inputQty(4).build();
 
+        when(machineRepository.findByIdForUpdate("EQ-WIND-01"))
+                .thenReturn(Optional.of(machine));
         when(workCommandRepository
                 .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
                         "EQ-WIND-01", WorkCommand.Status.CANCELED))
@@ -326,6 +328,8 @@ class WorkCommandServiceTest {
         WorkCommand interrupted = command(701L, lot, machine, process);
         interrupted.setStatus(WorkCommand.Status.CANCELED);
 
+        when(machineRepository.findByIdForUpdate("EQ-TEST-01"))
+                .thenReturn(Optional.of(machine));
         when(workCommandRepository
                 .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
                         "EQ-TEST-01", WorkCommand.Status.CANCELED))
@@ -333,7 +337,8 @@ class WorkCommandServiceTest {
         when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-070"))
                 .thenReturn(List.of(interrupted));
         when(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCode("LOT-070", "OP70"))
+                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+                        eq("LOT-070"), eq("OP70"), any()))
                 .thenReturn(3L);
         when(workCommandRepository.save(any(WorkCommand.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

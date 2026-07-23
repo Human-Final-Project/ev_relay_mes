@@ -7,6 +7,22 @@ set "L2_DIR=%EMBEDDED_DIR%mes_collector"
 set "L1_EXE=%L1_DIR%\l1_simulator.exe"
 set "L2_EXE=%L2_DIR%\mes_collector.exe"
 
+rem Prevent duplicate collectors/simulators from making communication alarms and stale sessions.
+tasklist /FI "IMAGENAME eq mes_collector.exe" 2>NUL | find /I "mes_collector.exe" >NUL
+if not errorlevel 1 (
+    echo [ERROR] mes_collector.exe is already running.
+    echo         Run stop_all.bat first, then start again.
+    pause
+    exit /b 1
+)
+tasklist /FI "IMAGENAME eq l1_simulator.exe" 2>NUL | find /I "l1_simulator.exe" >NUL
+if not errorlevel 1 (
+    echo [ERROR] l1_simulator.exe is already running.
+    echo         Run stop_all.bat first, then start again.
+    pause
+    exit /b 1
+)
+
 if not exist "%L2_EXE%" (
     echo [ERROR] L2 executable not found:
     echo         %L2_EXE%

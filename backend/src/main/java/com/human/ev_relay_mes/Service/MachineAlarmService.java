@@ -130,15 +130,39 @@ public class MachineAlarmService {
             return;
         }
         Machine machine = clearedHistory.getMachine();
-        boolean anotherErrorExists = machineAlarmHistoryRepository
-                .existsByMachine_MachineIdAndAlarmLevelIgnoreCaseAndClearedAtIsNullAndMachineAlarmHistoryIdNot(
-                        machine.getMachineId(), "ERROR", clearedHistory.getMachineAlarmHistoryId());
-        if (anotherErrorExists || machine.getStatus() != Machine.Status.ERROR) {
+
+        // 과거 COMM_TIMEOUT/COMM_DISCONNECTED가 해제되지 않은 채 남아 있어도
+        // 실제 설비 ERROR 해제와 RESUME을 막지 않는다. 생산 정지를 유지해야 하는
+        // 다른 설비 ERROR만 차단 조건으로 본다.
+        boolean anotherBlockingErrorExists = machineAlarmHistoryRepository
+                .findActiveByMachineForUpdate(machine.getMachineId()).stream()
+                .filter(item -> !item.getMachineAlarmHistoryId()
+                        .equals(clearedHistory.getMachineAlarmHistoryId()))
+                .filter(item -> "ERROR".equalsIgnoreCase(item.getAlarmLevel()))
+                .anyMatch(item -> !isCommunicationAlarm(item));
+        if (anotherBlockingErrorExists) {
             return;
         }
 
-        var resumeCommand = workCommandService.createResumeCommand(machine.getMachineId());
-        if (resumeCommand.isEmpty() && !isCommunicationAlarm(clearedHistory)) {
+        String lotNo = clearedHistory.getLot() == null
+                ? null : clearedHistory.getLot().getLotNo();
+        String processCode = clearedHistory.getProcess() == null
+                ? null : clearedHistory.getProcess().getProcessCode();
+        var resumeCommand = workCommandService.createResumeCommand(
+                machine.getMachineId(), lotNo, processCode);
+        if (resumeCommand.isPresent()) {
+            return;
+        }
+
+        // HOLD 상태의 중단 작업이 실제로 남아 있는데 일시적인 명령 경쟁 때문에
+        // RESUME 생성이 실패한 경우 설비를 IDLE로 잘못 풀지 않는다. 다음 해제/복구
+        // 재시도에서 같은 중단 컨텍스트로 다시 RESUME을 만들 수 있게 유지한다.
+        if (workCommandService.hasHeldInterruptedWork(
+                machine.getMachineId(), lotNo, processCode)) {
+            return;
+        }
+
+        if (!isCommunicationAlarm(clearedHistory)) {
             changeMachineStatus(machine, Machine.Status.IDLE, "알람 해제 후 대기 상태 복구");
             productionScheduleRequestService.requestMachine(machine.getMachineId());
         }
