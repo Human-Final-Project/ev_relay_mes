@@ -49,7 +49,7 @@ export function getIssues() {
   }
 }
 
-export function addIssue({ equipment, issueType, severity, note, photoName, reporter }) {
+export function addIssue({ equipment, issueType, severity, note, photoName, photoDataUrl, reporter }) {
   const list = getIssues();
   const entry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -58,6 +58,7 @@ export function addIssue({ equipment, issueType, severity, note, photoName, repo
     severity, // "low" | "mid" | "urgent"
     note,
     photoName: photoName || null,
+    photoDataUrl: photoDataUrl || null, // base64 데이터 URL (실제 이미지 표시용)
     reporter: reporter || "사원",
     time: `방금 · ${new Date().toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", hour12: false })}`,
     status: "received", // "received" | "checking" | "resolved"

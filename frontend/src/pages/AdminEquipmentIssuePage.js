@@ -72,6 +72,7 @@ function AdminEquipmentIssuePage() {
     .ai-item-reporter { font-size: 11.5px; color: #94a3b8; margin-left: auto; }
     .ai-item-note { font-size: 13px; color: #334155; line-height: 1.5; margin: 6px 0; }
     .ai-item-photo { font-size: 12px; color: #64748b; margin-bottom: 6px; }
+    .ai-item-thumb { display: block; max-width: 220px; max-height: 160px; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 8px; object-fit: cover; cursor: zoom-in; }
     .ai-item-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
     .ai-item-time { font-size: 11.5px; color: #94a3b8; }
 
@@ -153,7 +154,13 @@ function AdminEquipmentIssuePage() {
                 <span className="ai-item-reporter">신고자: {issue.reporter}</span>
               </div>
               <div className="ai-item-note">{issue.note}</div>
-              {issue.photoName && <div className="ai-item-photo">📎 {issue.photoName}</div>}
+              {issue.photoDataUrl ? (
+                <a href={issue.photoDataUrl} target="_blank" rel="noopener noreferrer" title="원본 크기로 보기">
+                  <img className="ai-item-thumb" src={issue.photoDataUrl} alt={issue.photoName || "첨부 사진"} />
+                </a>
+              ) : (
+                issue.photoName && <div className="ai-item-photo">📎 {issue.photoName}</div>
+              )}
 
               <div className="ai-item-bottom">
                 <span className="ai-item-time">{issue.time}</span>
