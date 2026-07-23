@@ -85,6 +85,27 @@ public class MaterialLotService {
      */
     @Transactional
     public void consumeMaterials(String parentItemCode, int productionQty) {
+        consumeMaterialsInternal(parentItemCode, productionQty);
+    }
+
+    /**
+     * 자동 LOT 투입용 비예외 재고 차감 API다. 자재 부족은 정상적인 대기 사유이므로
+     * 트랜잭션을 rollback-only로 만들지 않고 false를 반환한다.
+     */
+    @Transactional
+    public boolean tryConsumeMaterials(String parentItemCode, int productionQty) {
+        try {
+            consumeMaterialsInternal(parentItemCode, productionQty);
+            return true;
+        } catch (CustomException exception) {
+            if (exception.getErrorCode() == ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY) {
+                return false;
+            }
+            throw exception;
+        }
+    }
+
+    private void consumeMaterialsInternal(String parentItemCode, int productionQty) {
         Map<String, Integer> requiredQtyByItem = calculateRequiredQuantities(parentItemCode, productionQty);
         Map<String, List<MaterialLot>> availableLotsByItem = new LinkedHashMap<>();
 

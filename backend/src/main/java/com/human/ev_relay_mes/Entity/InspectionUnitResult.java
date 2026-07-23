@@ -2,8 +2,6 @@ package com.human.ev_relay_mes.Entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-
 import java.time.LocalDateTime;
 
 @Entity
@@ -40,10 +38,24 @@ public class InspectionUnitResult {
     private Integer unitSeq;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "result", nullable = false, length = 10)
+    @Column(name = "l1_result", length = 10)
+    private Inspection.Result l1Result;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "measurement_result", length = 10)
+    private Inspection.Result measurementResult;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "result", length = 10)
     private Inspection.Result result;
 
-    @CreationTimestamp
-    @Column(name = "evaluated_at", nullable = false, updatable = false)
+    @Enumerated(EnumType.STRING)
+    @Column(name = "evaluation_status", nullable = false, length = 20)
+    @Builder.Default
+    private EvaluationStatus evaluationStatus = EvaluationStatus.PENDING;
+
+    @Column(name = "evaluated_at")
     private LocalDateTime evaluatedAt;
+
+    public enum EvaluationStatus { PENDING, COMPLETED }
 }

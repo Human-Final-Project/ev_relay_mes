@@ -50,6 +50,13 @@ public class WorkOrderController {
         return workOrderService.updateWorkOrder(id, dto);
     }
 
+    @PostMapping("/{id}/release")
+    public WorkOrderResponseDto releaseAndStart(
+            @PathVariable Long id,
+            @AuthenticationPrincipal CustomUserDetails userDetails) {
+        return workOrderService.releaseAndStart(id, userDetails.getMemberId());
+    }
+
     @PatchMapping("/{id}/status")
     public WorkOrderResponseDto updateStatus(
             @PathVariable Long id, @Valid @RequestBody WorkOrderStatusRequestDto dto) {

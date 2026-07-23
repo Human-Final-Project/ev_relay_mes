@@ -169,6 +169,12 @@ static L1ProtocolResult build_runtime_action(
             output_capacity,
             &action->data.inspection,
             output_length);
+    case L1_RUNTIME_ACTION_JUDGMENT:
+        return l1_protocol_build_judgment(
+            output,
+            output_capacity,
+            &action->data.judgment,
+            output_length);
     case L1_RUNTIME_ACTION_ALARM:
         return l1_protocol_build_alarm(output,
                                        output_capacity,
@@ -213,8 +219,9 @@ static int execute_runtime_actions(RuntimeContext *runtime,
         if (((action->type == L1_RUNTIME_ACTION_PRODUCTION
               && l1_machine_runtime_mark_reported(
                      runtime->machine,
-                     action->data.production.input_qty) != 0)
-             || (action->type == L1_RUNTIME_ACTION_INSPECTION
+                     action->reported_quantity) != 0)
+             || ((action->type == L1_RUNTIME_ACTION_INSPECTION
+                  || action->type == L1_RUNTIME_ACTION_JUDGMENT)
                  && action->completes_unit
                  && l1_machine_runtime_mark_reported(runtime->machine, 1) != 0))) {
             fprintf(stderr, "[L1] Failed to update reported quantity.\n");
@@ -389,10 +396,47 @@ static void run_connected_session(L1Socket socket,
     }
 }
 
+static L1MachineStatus runtime_machine_status(L1RuntimeState state)
+{
+    switch (state) {
+    case L1_RUNTIME_RUNNING: return L1_MACHINE_RUNNING;
+    case L1_RUNTIME_ERROR_PAUSED: return L1_MACHINE_ERROR;
+    case L1_RUNTIME_STOPPED: return L1_MACHINE_STOPPED;
+    case L1_RUNTIME_IDLE:
+    default: return L1_MACHINE_IDLE;
+    }
+}
+
+static int send_runtime_state_snapshot(L1Socket socket,
+                                       const L1MachineRuntime *machine)
+{
+    L1MachineStatusEvent event;
+    char output[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
+    size_t output_length = 0;
+    L1ProtocolResult result;
+
+    memset(&event, 0, sizeof(event));
+    strcpy(event.machine_id, machine->device->machine_id);
+    event.status = runtime_machine_status(machine->state);
+    strcpy(event.lot_no,
+           machine->state == L1_RUNTIME_IDLE || machine->lot_no[0] == '\0'
+               ? "-" : machine->lot_no);
+    strcpy(event.process_code, machine->device->process_code);
+    strcpy(event.message, "connection_state_sync");
+    result = l1_protocol_build_machine_status(output,
+                                              sizeof(output),
+                                              &event,
+                                              &output_length);
+    if (result != L1_PROTOCOL_OK) {
+        return -1;
+    }
+    return send_protocol_message(socket, output, output_length);
+}
+
 int l1_client_run(const L1DeviceConfig *device,
                   const char *server_address,
                   uint16_t server_port,
-                  int error_after_qty)
+                  const L1AlarmInjectionConfig *alarm_injection)
 {
     char hello[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
     char heartbeat[L1_PROTOCOL_MAX_MESSAGE_SIZE + 1];
@@ -404,7 +448,7 @@ int l1_client_run(const L1DeviceConfig *device,
     if (device == NULL || server_address == NULL || server_port == 0) {
         return -1;
     }
-    l1_machine_runtime_init(&machine, device, error_after_qty);
+    l1_machine_runtime_init_with_alarm(&machine, device, alarm_injection);
 
     protocol_result = l1_protocol_build_hello(hello,
                                               sizeof(hello),
@@ -442,12 +486,17 @@ int l1_client_run(const L1DeviceConfig *device,
             printf("[L1] Connected. machine=%s process=%s\n",
                    device->machine_id,
                    device->process_code);
-            if (send_protocol_message(socket, hello, hello_length) == 0) {
+            if (send_protocol_message(socket, hello, hello_length) == 0
+                && send_runtime_state_snapshot(socket, &machine) == 0) {
                 run_connected_session(socket,
                                       device,
                                       &machine,
                                       heartbeat,
                                       heartbeat_length);
+                if (machine.state == L1_RUNTIME_RUNNING) {
+                    machine.state = L1_RUNTIME_ERROR_PAUSED;
+                    printf("[L1] Production paused because the L2 connection was lost. RESUME is required after reconnect.\n");
+                }
             }
             l1_net_close(socket);
         }

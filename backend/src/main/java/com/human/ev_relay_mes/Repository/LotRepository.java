@@ -65,19 +65,9 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
             + "where l.workOrder.workOrderId = :workOrderId")
     Integer findMaxProductionRoundByWorkOrderId(@Param("workOrderId") Long workOrderId);
 
-    @Query("select count(l) from Lot l "
-            + "where l.lotId <> :lotId and ("
-            + "l.status in :blockingStatuses or "
-            + "(l.status = :waitingStatus and l.startRequestedAt is not null))")
-    long countAnotherLineBlockingLot(
-            @Param("lotId") Long lotId,
-            @Param("blockingStatuses") Collection<Lot.Status> blockingStatuses,
-            @Param("waitingStatus") Lot.Status waitingStatus);
-
-    @Query("select count(l) from Lot l where "
-            + "l.status in :blockingStatuses or "
-            + "(l.status = :waitingStatus and l.startRequestedAt is not null)")
-    long countLineBlockingLots(
-            @Param("blockingStatuses") Collection<Lot.Status> blockingStatuses,
-            @Param("waitingStatus") Lot.Status waitingStatus);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select l from Lot l where l.status = :status "
+            + "order by l.workOrder.workOrderId asc, l.productionRound asc, "
+            + "l.createdAt asc, l.lotId asc")
+    List<Lot> findPipelineCandidatesForUpdate(@Param("status") Lot.Status status);
 }

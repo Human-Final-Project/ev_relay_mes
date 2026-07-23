@@ -15,6 +15,9 @@ public class MachineAlarmResponseDto {
     private String alarmCode;
     private String alarmName;
     private String alarmLevel;
+    private String lotNo;
+    private String processCode;
+    private String processName;
     private LocalDateTime occurredAt;
     private LocalDateTime clearedAt;
     private Long clearedById;

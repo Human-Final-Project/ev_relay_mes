@@ -74,6 +74,49 @@ class WorkCommandServiceTest {
         assertThat(commands).allMatch(command -> command.getStatus().equals("PENDING"));
     }
 
+
+
+    @Test
+    void doesNotCreateOnlyOneInitialCommandWhenParallelMachineIsBusy() {
+        Process op20 = process("OP20", 1);
+        Process op30 = process("OP30", 2);
+        Machine wind = machine("EQ-WIND-01", op20);
+        Machine weld = machine("EQ-WELD-01", op30);
+        Lot lot = Lot.builder().lotNo("LOT-001").currentProcess(op20).inputQty(10).build();
+
+        when(processRepository.findById("OP20")).thenReturn(Optional.of(op20));
+        when(processRepository.findById("OP30")).thenReturn(Optional.of(op30));
+        when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
+        when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                eq("EQ-WIND-01"), anyCollection())).thenReturn(false);
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                eq("EQ-WELD-01"), anyCollection())).thenReturn(true);
+
+        var result = workCommandService.tryCreateInitialStartCommands(lot);
+
+        assertThat(result).isEmpty();
+        org.mockito.Mockito.verify(workCommandRepository, org.mockito.Mockito.never())
+                .save(any(WorkCommand.class));
+    }
+
+    @Test
+    void doesNotCreateStartCommandWhenMachineAlreadyHasActiveCommand() {
+        Process process = process("OP60", 60);
+        Machine machine = machine("EQ-SEAL-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-002").currentProcess(process).inputQty(10).build();
+
+        when(machineRepository.findUsableByProcessForUpdate("OP60")).thenReturn(List.of(machine));
+        when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                eq("EQ-SEAL-01"), anyCollection())).thenReturn(true);
+
+        var result = workCommandService.tryCreateStartCommand(lot, process, 10);
+
+        assertThat(result).isEmpty();
+        org.mockito.Mockito.verify(workCommandRepository, org.mockito.Mockito.never())
+                .save(any(WorkCommand.class));
+    }
+
     @Test
     void claimsOnlyFirstCommandWhenSameIdleMachineHasQueue() {
         Process process = process("OP20", 1);

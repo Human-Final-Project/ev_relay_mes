@@ -18,7 +18,11 @@ public class WorkOrderResponseDto {
     private Integer targetQty;
     private Integer completedOkQty;
     private Integer remainingQty;
+    /** 하위 호환용. 자동 보충 구조에서는 보통 즉시 false로 전환된다. */
     private Boolean supplementRequired;
+    /** DRAFT, INITIAL_LOT_PENDING, PIPELINE_ACTIVE, LOT_HOLD,
+     * AUTO_SUPPLEMENT_PENDING, AUTO_SUPPLEMENT_ACTIVE, COMPLETED, CANCELED */
+    private String automationStatus;
     private String status;
     private LocalDateTime plannedStartAt;
     private LocalDateTime plannedEndAt;
@@ -27,14 +31,15 @@ public class WorkOrderResponseDto {
     private LocalDateTime createdAt;
 
     public static WorkOrderResponseDto fromEntity(WorkOrder workOrder) {
-        return fromEntity(workOrder, 0, workOrder.getTargetQty(), false);
+        return fromEntity(workOrder, 0, workOrder.getTargetQty(), false, "DRAFT");
     }
 
     public static WorkOrderResponseDto fromEntity(
             WorkOrder workOrder,
             int completedOkQty,
             int remainingQty,
-            boolean supplementRequired) {
+            boolean supplementRequired,
+            String automationStatus) {
         Member creator = workOrder.getCreatedBy();
         return WorkOrderResponseDto.builder()
                 .workOrderId(workOrder.getWorkOrderId())
@@ -45,6 +50,7 @@ public class WorkOrderResponseDto {
                 .completedOkQty(completedOkQty)
                 .remainingQty(remainingQty)
                 .supplementRequired(supplementRequired)
+                .automationStatus(automationStatus)
                 .status(workOrder.getStatus().name())
                 .plannedStartAt(workOrder.getPlannedStartAt())
                 .plannedEndAt(workOrder.getPlannedEndAt())

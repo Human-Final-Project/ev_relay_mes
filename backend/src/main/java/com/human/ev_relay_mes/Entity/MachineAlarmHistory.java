@@ -37,6 +37,14 @@ public class MachineAlarmHistory {
     @Builder.Default
     private String alarmLevel = "ERROR";
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lot_no", referencedColumnName = "lot_no")
+    private Lot lot;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "process_code", referencedColumnName = "process_code")
+    private Process process;
+
     @CreationTimestamp
     @Column(name = "occurred_at", nullable = false, updatable = false)
     private LocalDateTime occurredAt;

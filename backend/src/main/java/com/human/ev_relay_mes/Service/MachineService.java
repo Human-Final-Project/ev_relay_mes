@@ -6,28 +6,40 @@ import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
+import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.Repository.ProductionLogRepository;
+import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.EnumSet;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MachineService {
 
+    private static final EnumSet<WorkCommand.Status> ACTIVE_COMMAND_STATUSES = EnumSet.of(
+            WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED);
+
     private final MachineRepository machineRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final ProcessRepository processRepository;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
+    private final WorkCommandRepository workCommandRepository;
+    private final ProductionLogRepository productionLogRepository;
+    private final InspectionUnitResultRepository inspectionUnitResultRepository;
+    private final ProductionScheduleRequestService productionScheduleRequestService;
 
     // 설비 현황 화면에 전체 설비의 기본 정보와 현재 상태를 표시할 때 사용한다.
     public List<MachineResponseDto> getMachines() {
@@ -50,18 +62,34 @@ public class MachineService {
             }
         }
         Machine machine = findMachine(dto.getMachineId());
+        Machine.Status previousStatus = machine.getStatus();
         Machine.Status status = parseStatus(dto.getStatus());
         Lot lot = isBlank(dto.getLotNo()) ? null : findLot(dto.getLotNo());
         com.human.ev_relay_mes.Entity.Process process = isBlank(dto.getProcessCode()) ? null
                 : processRepository.findById(dto.getProcessCode())
                         .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
 
-        machine.setStatus(status);
-        if (status == Machine.Status.RUNNING && lot != null && process != null
+        boolean resumeCompleted = status == Machine.Status.RUNNING
+                && lot != null
+                && process != null
                 && lot.getStatus() == Lot.Status.HOLD
-                && workCommandService.completeResumeCommand(lot, process, machine)) {
+                && workCommandService.completeResumeCommand(lot, process, machine);
+        if (resumeCompleted) {
             lot.setStatus(Lot.Status.RUNNING);
         }
+
+        var latestHistory = machineStatusHistoryRepository
+                .findFirstByMachine_MachineIdOrderByRecordedAtDesc(machine.getMachineId());
+        if (!resumeCompleted
+                && previousStatus == status
+                && latestHistory.filter(history -> sameStatusSnapshot(history, status, lot, process)).isPresent()) {
+            if (status == Machine.Status.IDLE) {
+                productionScheduleRequestService.requestMachine(machine.getMachineId());
+            }
+            return toHistoryResponse(latestHistory.get());
+        }
+
+        machine.setStatus(status);
         MachineStatusHistory history = MachineStatusHistory.builder()
                 .eventId(eventId)
                 .machine(machine)
@@ -70,7 +98,11 @@ public class MachineService {
                 .process(process)
                 .message(dto.getMessage())
                 .build();
-        return toHistoryResponse(machineStatusHistoryRepository.save(history));
+        MachineStatusHistory savedHistory = machineStatusHistoryRepository.save(history);
+        if (status == Machine.Status.IDLE) {
+            productionScheduleRequestService.requestMachine(machine.getMachineId());
+        }
+        return toHistoryResponse(savedHistory);
     }
 
     // 설비 상세 화면에서 특정 설비의 상태 변화 이력을 최신순으로 표시할 때 사용한다.
@@ -78,6 +110,21 @@ public class MachineService {
         findMachine(machineId);
         return machineStatusHistoryRepository.findByMachine_MachineIdOrderByRecordedAtDesc(machineId)
                 .stream().map(this::toHistoryResponse).toList();
+    }
+
+    private boolean sameStatusSnapshot(
+            MachineStatusHistory history,
+            Machine.Status status,
+            Lot lot,
+            com.human.ev_relay_mes.Entity.Process process) {
+        String historyLotNo = history.getLot() == null ? null : history.getLot().getLotNo();
+        String requestedLotNo = lot == null ? null : lot.getLotNo();
+        String historyProcessCode = history.getProcess() == null
+                ? null : history.getProcess().getProcessCode();
+        String requestedProcessCode = process == null ? null : process.getProcessCode();
+        return history.getStatus() == status
+                && java.util.Objects.equals(historyLotNo, requestedLotNo)
+                && java.util.Objects.equals(historyProcessCode, requestedProcessCode);
     }
 
     // 요청된 설비가 실제 등록된 설비인지 확인하고 Entity를 가져올 때 내부적으로 사용한다.
@@ -112,7 +159,7 @@ public class MachineService {
 
     // 설비 Entity를 설비 현황 화면과 API에 전달할 응답 DTO로 변환할 때 사용한다.
     private MachineResponseDto toMachineResponse(Machine machine) {
-        return MachineResponseDto.builder()
+        MachineResponseDto.MachineResponseDtoBuilder builder = MachineResponseDto.builder()
                 .machineId(machine.getMachineId())
                 .machineName(machine.getMachineName())
                 .machineType(machine.getMachineType())
@@ -120,8 +167,43 @@ public class MachineService {
                 .processName(machine.getProcess().getProcessName())
                 .status(machine.getStatus().name())
                 .createdAt(machine.getCreatedAt())
-                .updatedAt(machine.getUpdatedAt())
-                .build();
+                .updatedAt(machine.getUpdatedAt());
+        if (machine.getStatus() == Machine.Status.RUNNING) {
+            workCommandRepository
+                    .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+                            machine.getMachineId(), ACTIVE_COMMAND_STATUSES)
+                    .ifPresent(command -> appendProgress(builder, command));
+        }
+        return builder.build();
+    }
+
+    private void appendProgress(
+            MachineResponseDto.MachineResponseDtoBuilder builder,
+            WorkCommand command) {
+        String lotNo = command.getLot().getLotNo();
+        String processCode = command.getProcess().getProcessCode();
+        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
+                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
+                        lotNo, processCode,
+                        com.human.ev_relay_mes.Entity.InspectionUnitResult.EvaluationStatus.COMPLETED));
+        int productionQty = productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(lotNo, processCode)
+                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int processedQty = Math.max(evaluatedQty, productionQty);
+        int targetQty = command.getCommandType() == WorkCommand.CommandType.RESUME
+                ? workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo).stream()
+                        .filter(item -> item.getCommandType() == WorkCommand.CommandType.START)
+                        .filter(item -> item.getProcess().getProcessCode().equals(processCode))
+                        .mapToInt(WorkCommand::getInputQty)
+                        .findFirst()
+                        .orElse(processedQty + command.getInputQty())
+                : command.getInputQty();
+        int progressPercent = targetQty == 0
+                ? 0 : Math.min(100, processedQty * 100 / targetQty);
+        builder.currentLotNo(lotNo)
+                .targetQty(targetQty)
+                .processedQty(processedQty)
+                .progressPercent(progressPercent);
     }
 
     // 설비 상태 이력 Entity를 상태 이력 화면에 전달할 응답 DTO로 변환할 때 사용한다.

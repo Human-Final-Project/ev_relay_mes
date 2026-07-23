@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 #include "device_config.h"
+#include "machine_runtime.h"
 #include "protocol.h"
 
 typedef enum {
@@ -52,7 +53,7 @@ L1ClientFeedResult l1_client_session_feed(
 int l1_client_run(const L1DeviceConfig *device,
                   const char *server_address,
                   uint16_t server_port,
-                  int error_after_qty);
+                  const L1AlarmInjectionConfig *alarm_injection);
 
 const char *l1_client_feed_result_name(L1ClientFeedResult result);
 

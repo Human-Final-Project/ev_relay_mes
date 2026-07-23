@@ -101,15 +101,11 @@ public class DefectService {
     }
 
     private void validateDefectQuantity(Lot lot, int newDefectQty) {
-        int registeredQty = defectHistoryRepository
-                .findByLot_LotNoOrderByOccurredAtDesc(lot.getLotNo()).stream()
-                .mapToInt(DefectHistory::getDefectQty)
-                .sum();
         int maximumQty = lot.getStatus() == Lot.Status.COMPLETED
                 ? lot.getNgQty() : lot.getInputQty();
-        if (registeredQty + newDefectQty > maximumQty) {
+        if (newDefectQty > maximumQty) {
             throw new CustomException(ErrorCode.INVALID_DEFECT_QUANTITY,
-                    "등록된 불량수량 합계가 LOT의 허용 불량수량을 초과합니다.");
+                    "개별 불량수량이 LOT의 허용 수량을 초과합니다.");
         }
     }
 
@@ -145,6 +141,7 @@ public class DefectService {
                 .processName(history.getProcess().getProcessName())
                 .defectCode(history.getDefectCode().getDefectCode())
                 .defectName(history.getDefectCode().getDefectName())
+                .defectDescription(history.getDefectCode().getDescription())
                 .defectQty(history.getDefectQty())
                 .occurredAt(history.getOccurredAt())
                 .message(history.getMessage())

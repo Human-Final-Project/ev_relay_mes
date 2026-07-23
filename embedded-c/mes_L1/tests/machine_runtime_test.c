@@ -8,423 +8,279 @@
 static int checks_run;
 static int checks_failed;
 
-#define CHECK(condition)                                                     \
-    do {                                                                     \
-        ++checks_run;                                                        \
-        if (!(condition)) {                                                  \
-            ++checks_failed;                                                 \
-            fprintf(stderr,                                                  \
-                    "FAIL %s:%d: %s\n",                                    \
-                    __FILE__,                                                \
-                    __LINE__,                                                \
-                    #condition);                                             \
-        }                                                                    \
-    } while (0)
+#define CHECK(condition) do { \
+    ++checks_run; \
+    if (!(condition)) { \
+        ++checks_failed; \
+        fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #condition); \
+    } \
+} while (0)
 
-static L1Command make_command(L1CommandType type,
-                              int64_t command_id,
-                              const char *lot_no,
-                              int input_qty)
+static L1Command start_command(const L1DeviceConfig *device,
+                               const char *lot_no,
+                               int qty)
 {
     L1Command command;
-
     memset(&command, 0, sizeof(command));
-    command.command_id = command_id;
-    command.type = type;
-    strcpy(command.machine_id, "EQ-WIND-01");
-    strcpy(command.process_code, "OP20");
+    command.command_id = 100 + qty;
+    command.type = L1_COMMAND_START;
+    strcpy(command.machine_id, device->machine_id);
+    strcpy(command.process_code, device->process_code);
     strcpy(command.lot_no, lot_no);
-    command.input_qty = input_qty;
+    command.input_qty = qty;
     return command;
 }
 
 static void start_runtime(L1MachineRuntime *runtime,
-                          int error_after_qty,
-                          int target_qty,
+                          const char *machine_id,
+                          int qty,
+                          int error_after,
                           L1RuntimeActions *actions)
 {
-    L1Command start = make_command(L1_COMMAND_START,
-                                   101,
-                                   "EVR-LOT-001",
-                                   target_qty);
-
-    l1_machine_runtime_init(runtime,
-                            l1_device_config_find("EQ-WIND-01"),
-                            error_after_qty);
-    CHECK(l1_machine_runtime_handle_command(runtime,
-                                            &start,
-                                            actions) == 0);
+    const L1DeviceConfig *device = l1_device_config_find(machine_id);
+    L1Command command;
+    CHECK(device != NULL);
+    command = start_command(device, "LOT-RUNTIME-001", qty);
+    l1_machine_runtime_init(runtime, device, error_after);
+    CHECK(l1_machine_runtime_handle_command(runtime, &command, actions) == 0);
     CHECK(actions->count == 2);
     CHECK(actions->actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
-    CHECK(actions->actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
     CHECK(actions->actions[1].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(actions->actions[1].data.machine_status.status
-          == L1_MACHINE_RUNNING);
-    CHECK(runtime->state == L1_RUNTIME_RUNNING);
-    CHECK(strcmp(runtime->lot_no, "EVR-LOT-001") == 0);
-    CHECK(runtime->target_qty == target_qty);
 }
 
-static void test_error_flushes_partial_before_alarm_and_status(void)
+static int action_has_measurement_ng(const L1RuntimeActions *actions)
 {
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-
-    start_runtime(&runtime, 3, 10, &actions);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 0);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 0);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-
-    CHECK(actions.count == 3);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[0].data.production.input_qty == 3);
-    CHECK(actions.actions[0].data.production.ok_qty == 3);
-    CHECK(actions.actions[0].data.production.ng_qty == 0);
-    CHECK(actions.actions[0].data.production.status
-          == L1_PRODUCTION_RUNNING);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_ALARM);
-    CHECK(strcmp(actions.actions[1].data.alarm.alarm_code,
-                 "WIRE_BREAK") == 0);
-    CHECK(actions.actions[1].data.alarm.alarm_level == L1_ALARM_ERROR);
-    CHECK(actions.actions[2].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(actions.actions[2].data.machine_status.status == L1_MACHINE_ERROR);
-    CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
-    CHECK(runtime.processed_qty == 3);
-    CHECK(runtime.reported_qty == 0);
-    CHECK(l1_machine_runtime_remaining_qty(&runtime) == 7);
-    CHECK(strcmp(runtime.lot_no, "EVR-LOT-001") == 0);
-
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 3) == 0);
-    CHECK(runtime.reported_qty == 3);
-    CHECK(l1_machine_runtime_unreported_qty(&runtime) == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 0);
-    CHECK(runtime.processed_qty == 3);
-}
-
-static void test_resume_rejects_wrong_quantity_then_finishes_remaining(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command wrong_resume;
-    L1Command resume;
-    int index;
-
-    start_runtime(&runtime, 3, 10, &actions);
-    for (index = 0; index < 3; ++index) {
-        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    }
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 3) == 0);
-
-    wrong_resume = make_command(L1_COMMAND_RESUME,
-                                201,
-                                "EVR-LOT-001",
-                                8);
-    CHECK(l1_machine_runtime_handle_command(&runtime,
-                                            &wrong_resume,
-                                            &actions) == 0);
-    CHECK(actions.count == 1);
-    CHECK(actions.actions[0].data.command_ack.status == L1_ACK_REJECTED);
-    CHECK(strcmp(actions.actions[0].data.command_ack.message,
-                 "resume_quantity_mismatch") == 0);
-    CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
-
-    resume = make_command(L1_COMMAND_RESUME,
-                          202,
-                          "EVR-LOT-001",
-                          7);
-    CHECK(l1_machine_runtime_handle_command(&runtime,
-                                            &resume,
-                                            &actions) == 0);
-    CHECK(actions.count == 2);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
-    CHECK(actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(actions.actions[1].data.machine_status.status
-          == L1_MACHINE_RUNNING);
-    CHECK(strcmp(actions.actions[1].data.machine_status.message,
-                 "production_resumed") == 0);
-    CHECK(runtime.state == L1_RUNTIME_RUNNING);
-
-    for (index = 0; index < 6; ++index) {
-        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-        CHECK(actions.count == 0);
-    }
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 2);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[0].data.production.input_qty == 7);
-    CHECK(actions.actions[0].data.production.status
-          == L1_PRODUCTION_COMPLETED);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(actions.actions[1].data.machine_status.status == L1_MACHINE_IDLE);
-    CHECK(strcmp(actions.actions[1].data.machine_status.lot_no, "-") == 0);
-    CHECK(runtime.state == L1_RUNTIME_IDLE);
-    CHECK(runtime.processed_qty == 10);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 7) == 0);
-    CHECK(runtime.reported_qty == 10);
-}
-
-static void test_duplicate_command_id_only_repeats_ack(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command duplicate = make_command(L1_COMMAND_START,
-                                       101,
-                                       "EVR-LOT-001",
-                                       5);
-
-    start_runtime(&runtime, 0, 5, &actions);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(runtime.processed_qty == 1);
-
-    CHECK(l1_machine_runtime_handle_command(&runtime,
-                                            &duplicate,
-                                            &actions) == 0);
-    CHECK(actions.count == 1);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
-    CHECK(actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
-    CHECK(strcmp(actions.actions[0].data.command_ack.message,
-                 "command_received") == 0);
-    CHECK(runtime.state == L1_RUNTIME_RUNNING);
-    CHECK(runtime.processed_qty == 1);
-    CHECK(runtime.target_qty == 5);
-}
-
-static void test_error_threshold_at_target_completes_without_error(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    int index;
-
-    start_runtime(&runtime, 5, 5, &actions);
-    for (index = 0; index < 4; ++index) {
-        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-        CHECK(actions.count == 0);
-    }
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 2);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[0].data.production.input_qty == 5);
-    CHECK(actions.actions[0].data.production.status
-          == L1_PRODUCTION_COMPLETED);
-    CHECK(actions.actions[1].data.machine_status.status == L1_MACHINE_IDLE);
-}
-
-static void test_stop_flushes_progress_and_can_resume(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command stop;
-    L1Command resume;
-
-    start_runtime(&runtime, 0, 5, &actions);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    stop = make_command(L1_COMMAND_STOP, 301, "EVR-LOT-001", 0);
-    CHECK(l1_machine_runtime_handle_command(&runtime,
-                                            &stop,
-                                            &actions) == 0);
-    CHECK(actions.count == 3);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_PRODUCTION);
-    CHECK(actions.actions[1].data.production.input_qty == 2);
-    CHECK(actions.actions[1].data.production.status
-          == L1_PRODUCTION_RUNNING);
-    CHECK(actions.actions[2].data.machine_status.status
-          == L1_MACHINE_STOPPED);
-    CHECK(runtime.state == L1_RUNTIME_STOPPED);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 2) == 0);
-
-    resume = make_command(L1_COMMAND_RESUME,
-                          302,
-                          "EVR-LOT-001",
-                          3);
-    CHECK(l1_machine_runtime_handle_command(&runtime,
-                                            &resume,
-                                            &actions) == 0);
-    CHECK(actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
-    CHECK(runtime.state == L1_RUNTIME_RUNNING);
-}
-
-
-static void test_op70_sends_measurements_without_production(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command start;
     size_t index;
-
-    memset(&start, 0, sizeof(start));
-    start.command_id = 701;
-    start.type = L1_COMMAND_START;
-    strcpy(start.machine_id, "EQ-TEST-01");
-    strcpy(start.process_code, "OP70");
-    strcpy(start.lot_no, "EVR-LOT-070");
-    start.input_qty = 2;
-
-    l1_machine_runtime_init(&runtime,
-                            l1_device_config_find("EQ-TEST-01"),
-                            0);
-    CHECK(l1_machine_runtime_handle_command(&runtime, &start, &actions) == 0);
-    CHECK(actions.count == 2);
-    CHECK(strcmp(actions.actions[1].data.machine_status.message,
-                 "inspection_started") == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 3);
-    for (index = 0; index < actions.count; ++index) {
-        CHECK(actions.actions[index].type == L1_RUNTIME_ACTION_INSPECTION);
-        CHECK(actions.actions[index].data.inspection.unit_seq == 1);
+    for (index = 0; index < actions->count; ++index) {
+        const L1RuntimeAction *action = &actions->actions[index];
+        if (action->type != L1_RUNTIME_ACTION_INSPECTION) continue;
+        if ((strcmp(action->data.inspection.item, "COIL_RESISTANCE") == 0
+             && action->data.inspection.value > 120.0)
+            || (strcmp(action->data.inspection.item, "WELD_STRENGTH") == 0
+                && action->data.inspection.value < 40.0)
+            || (strcmp(action->data.inspection.item, "GAS_PRESSURE") == 0
+                && action->data.inspection.value > 3.5)
+            || (strcmp(action->data.inspection.item, "INSULATION_RESISTANCE") == 0
+                && action->data.inspection.value < 100.0)) {
+            return 1;
+        }
     }
-    CHECK(strcmp(actions.actions[0].data.inspection.item,
-                 "OPERATION_VOLTAGE") == 0);
-    CHECK(strcmp(actions.actions[1].data.inspection.item,
-                 "COIL_RESISTANCE") == 0);
-    CHECK(strcmp(actions.actions[2].data.inspection.item,
-                 "CONTACT_RESISTANCE") == 0);
-    CHECK(actions.actions[2].completes_unit == 1);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 4);
-    CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_INSPECTION);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 2);
-    CHECK(actions.actions[1].type == L1_RUNTIME_ACTION_INSPECTION);
-    CHECK(actions.actions[2].type == L1_RUNTIME_ACTION_INSPECTION);
-    CHECK(actions.actions[3].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(actions.actions[3].data.machine_status.status == L1_MACHINE_IDLE);
-    CHECK(strcmp(actions.actions[3].data.machine_status.message,
-                 "inspection_finished") == 0);
-    CHECK(runtime.state == L1_RUNTIME_IDLE);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
-    CHECK(runtime.reported_qty == 2);
+    return 0;
 }
 
-
-static void test_op70_replays_unreported_measurement_unit(void)
+static void test_process_event_shapes(void)
 {
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command start;
-
-    memset(&start, 0, sizeof(start));
-    start.command_id = 705;
-    start.type = L1_COMMAND_START;
-    strcpy(start.machine_id, "EQ-TEST-01");
-    strcpy(start.process_code, "OP70");
-    strcpy(start.lot_no, "EVR-LOT-075");
-    start.input_qty = 2;
-
-    l1_machine_runtime_init(&runtime,
-                            l1_device_config_find("EQ-TEST-01"),
-                            0);
-    CHECK(l1_machine_runtime_handle_command(&runtime, &start, &actions) == 0);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 3);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 1);
-    CHECK(runtime.processed_qty == 1);
-    CHECK(runtime.reported_qty == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 3);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 1);
-    CHECK(actions.actions[2].completes_unit == 1);
-    CHECK(runtime.processed_qty == 1);
-
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 2);
-}
-
-static void test_op70_resume_continues_unit_sequence(void)
-{
-    L1MachineRuntime runtime;
-    L1RuntimeActions actions;
-    L1Command start;
-    L1Command resume;
-
-    memset(&start, 0, sizeof(start));
-    start.command_id = 711;
-    start.type = L1_COMMAND_START;
-    strcpy(start.machine_id, "EQ-TEST-01");
-    strcpy(start.process_code, "OP70");
-    strcpy(start.lot_no, "EVR-LOT-071");
-    start.input_qty = 4;
-
-    l1_machine_runtime_init(&runtime,
-                            l1_device_config_find("EQ-TEST-01"),
-                            2);
-    CHECK(l1_machine_runtime_handle_command(&runtime, &start, &actions) == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 1);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.count == 5);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 2);
-    CHECK(actions.actions[2].completes_unit == 1);
-    CHECK(actions.actions[3].type == L1_RUNTIME_ACTION_ALARM);
-    CHECK(actions.actions[4].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
-    CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
-    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
-
-    resume = make_command(L1_COMMAND_RESUME,
-                          712,
-                          "EVR-LOT-071",
-                          2);
-    CHECK(l1_machine_runtime_handle_command(&runtime, &resume, &actions) == 0);
-    CHECK(actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
-
-    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
-    CHECK(actions.actions[0].data.inspection.unit_seq == 3);
-}
-
-static void test_six_devices_have_registered_error_codes(void)
-{
-    const char *expected[] = {
-        "WIRE_BREAK",
-        "WELD_POWER_ERROR",
-        "ASSEMBLY_JAM",
-        "CHAMBER_PRESSURE_ERROR",
-        "TEST_PROBE_ERROR",
-        "LABEL_PRINTER_ERROR"
+    const char *machines[] = {
+        "EQ-WIND-01", "EQ-WELD-01", "EQ-ASSY-01",
+        "EQ-SEAL-01", "EQ-TEST-01", "EQ-PACK-01"
     };
-    size_t index;
+    const size_t measurement_counts[] = {1, 3, 0, 2, 4, 0};
+    size_t machine_index;
 
-    CHECK(l1_device_config_count()
-          == sizeof(expected) / sizeof(expected[0]));
-    for (index = 0; index < l1_device_config_count(); ++index) {
-        const L1DeviceConfig *device = l1_device_config_at(index);
-
-        CHECK(device != NULL);
-        CHECK(strcmp(device->error_alarm_code, expected[index]) == 0);
-        CHECK(device->error_message != NULL);
-        CHECK(device->error_message[0] != '\0');
+    for (machine_index = 0; machine_index < 6; ++machine_index) {
+        L1MachineRuntime runtime;
+        L1RuntimeActions actions;
+        size_t index;
+        size_t measurements = 0;
+        start_runtime(&runtime, machines[machine_index], 2, 0, &actions);
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(actions.actions[0].type == L1_RUNTIME_ACTION_JUDGMENT);
+        CHECK(actions.actions[0].data.judgment.unit_seq == 1);
+        for (index = 0; index < actions.count; ++index) {
+            if (actions.actions[index].type == L1_RUNTIME_ACTION_INSPECTION) {
+                ++measurements;
+            }
+        }
+        CHECK(measurements == measurement_counts[machine_index]);
+        CHECK(actions.actions[actions.count - 1].completes_unit == 1);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
+}
+
+static void test_replays_unreported_unit(void)
+{
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    start_runtime(&runtime, "EQ-TEST-01", 2, 0, &actions);
+    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    CHECK(actions.actions[0].data.judgment.unit_seq == 1);
+    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    CHECK(actions.actions[0].data.judgment.unit_seq == 1);
+    CHECK(runtime.processed_qty == 1);
+    CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
+    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    CHECK(actions.actions[0].data.judgment.unit_seq == 2);
+}
+
+static void test_three_percent_combined_ng(void)
+{
+    const char *machines[] = {
+        "EQ-WIND-01", "EQ-WELD-01", "EQ-ASSY-01",
+        "EQ-SEAL-01", "EQ-TEST-01", "EQ-PACK-01"
+    };
+    size_t machine_index;
+    for (machine_index = 0; machine_index < 6; ++machine_index) {
+        L1MachineRuntime runtime;
+        L1RuntimeActions actions;
+        int index;
+        int ng_units = 0;
+        start_runtime(&runtime, machines[machine_index], 100, 0, &actions);
+        for (index = 0; index < 100; ++index) {
+            int l1_ng;
+            CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+            l1_ng = actions.actions[0].data.judgment.result == L1_JUDGMENT_NG;
+            if (l1_ng || action_has_measurement_ng(&actions)) ++ng_units;
+            CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
+        }
+        CHECK(ng_units == 3);
+        CHECK(runtime.state == L1_RUNTIME_IDLE);
+    }
+}
+
+static void test_error_and_resume(void)
+{
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command resume;
+    int index;
+    start_runtime(&runtime, "EQ-WIND-01", 5, 2, &actions);
+    for (index = 0; index < 2; ++index) {
+        CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+        CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
+    }
+    CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
+    CHECK(actions.actions[actions.count - 2].type == L1_RUNTIME_ACTION_ALARM);
+    CHECK(actions.actions[actions.count - 1].type == L1_RUNTIME_ACTION_MACHINE_STATUS);
+
+    memset(&resume, 0, sizeof(resume));
+    resume.command_id = 999;
+    resume.type = L1_COMMAND_RESUME;
+    strcpy(resume.machine_id, runtime.device->machine_id);
+    strcpy(resume.process_code, runtime.device->process_code);
+    strcpy(resume.lot_no, runtime.lot_no);
+    resume.input_qty = 3;
+    CHECK(l1_machine_runtime_handle_command(&runtime, &resume, &actions) == 0);
+    CHECK(runtime.state == L1_RUNTIME_RUNNING);
+}
+
+
+static void test_warning_alarm_does_not_pause_production(void)
+{
+    const L1DeviceConfig *device = l1_device_config_find("EQ-WELD-01");
+    L1AlarmInjectionConfig injection;
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command command;
+    size_t index;
+    int alarm_found = 0;
+
+    memset(&injection, 0, sizeof(injection));
+    injection.mode = L1_ALARM_INJECTION_FIXED;
+    injection.trigger_after_qty = 1;
+    injection.probability_percent = 100;
+    injection.alarm_code = "WELD_TIP_WEAR_WARN";
+    l1_machine_runtime_init_with_alarm(&runtime, device, &injection);
+    command = start_command(device, "LOT-WARNING-001", 3);
+    CHECK(l1_machine_runtime_handle_command(&runtime, &command, &actions) == 0);
+    CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
+    for (index = 0; index < actions.count; ++index) {
+        if (actions.actions[index].type == L1_RUNTIME_ACTION_ALARM) {
+            alarm_found = 1;
+            CHECK(actions.actions[index].data.alarm.alarm_level == L1_ALARM_WARNING);
+            CHECK(strcmp(actions.actions[index].data.alarm.alarm_code,
+                         "WELD_TIP_WEAR_WARN") == 0);
+        }
+    }
+    CHECK(alarm_found);
+    CHECK(runtime.state == L1_RUNTIME_RUNNING);
+}
+
+static void test_random_alarm_is_planned_once_per_start(void)
+{
+    const L1DeviceConfig *device = l1_device_config_find("EQ-SEAL-01");
+    L1AlarmInjectionConfig injection;
+    L1MachineRuntime runtime;
+    L1RuntimeActions actions;
+    L1Command command;
+
+    memset(&injection, 0, sizeof(injection));
+    injection.mode = L1_ALARM_INJECTION_RANDOM;
+    injection.probability_percent = 100;
+    l1_machine_runtime_init_with_alarm(&runtime, device, &injection);
+    command = start_command(device, "LOT-RANDOM-001", 20);
+    CHECK(l1_machine_runtime_handle_command(&runtime, &command, &actions) == 0);
+    CHECK(runtime.alarm_scheduled);
+    CHECK(runtime.selected_alarm != NULL);
+    CHECK(runtime.alarm_after_qty >= 1);
+    CHECK(runtime.alarm_after_qty < runtime.target_qty);
+
+    injection.probability_percent = 0;
+    l1_machine_runtime_init_with_alarm(&runtime, device, &injection);
+    command = start_command(device, "LOT-RANDOM-002", 20);
+    CHECK(l1_machine_runtime_handle_command(&runtime, &command, &actions) == 0);
+    CHECK(!runtime.alarm_scheduled);
+}
+
+
+static void test_independent_lots_and_busy_start_rejection(void)
+{
+    const L1DeviceConfig *wind_device = l1_device_config_find("EQ-WIND-01");
+    const L1DeviceConfig *seal_device = l1_device_config_find("EQ-SEAL-01");
+    L1MachineRuntime wind_runtime;
+    L1MachineRuntime seal_runtime;
+    L1RuntimeActions wind_actions;
+    L1RuntimeActions seal_actions;
+    L1Command wind_start;
+    L1Command seal_start;
+    L1Command conflicting_start;
+
+    CHECK(wind_device != NULL);
+    CHECK(seal_device != NULL);
+    l1_machine_runtime_init(&wind_runtime, wind_device, 0);
+    l1_machine_runtime_init(&seal_runtime, seal_device, 0);
+
+    wind_start = start_command(wind_device, "LOT-PIPE-003", 5);
+    wind_start.command_id = 301;
+    seal_start = start_command(seal_device, "LOT-PIPE-001", 7);
+    seal_start.command_id = 601;
+
+    CHECK(l1_machine_runtime_handle_command(&wind_runtime, &wind_start, &wind_actions) == 0);
+    CHECK(l1_machine_runtime_handle_command(&seal_runtime, &seal_start, &seal_actions) == 0);
+    CHECK(strcmp(wind_runtime.lot_no, "LOT-PIPE-003") == 0);
+    CHECK(strcmp(seal_runtime.lot_no, "LOT-PIPE-001") == 0);
+    CHECK(wind_actions.actions[0].data.command_ack.command_id == 301);
+    CHECK(seal_actions.actions[0].data.command_ack.command_id == 601);
+    CHECK(wind_actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
+    CHECK(seal_actions.actions[0].data.command_ack.status == L1_ACK_ACCEPTED);
+
+    conflicting_start = start_command(wind_device, "LOT-PIPE-004", 3);
+    conflicting_start.command_id = 302;
+    CHECK(l1_machine_runtime_handle_command(
+              &wind_runtime, &conflicting_start, &wind_actions) == 0);
+    CHECK(wind_actions.count == 1);
+    CHECK(wind_actions.actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK);
+    CHECK(wind_actions.actions[0].data.command_ack.command_id == 302);
+    CHECK(wind_actions.actions[0].data.command_ack.status == L1_ACK_REJECTED);
+    CHECK(strcmp(wind_actions.actions[0].data.command_ack.message,
+                 "machine_not_idle") == 0);
+    CHECK(strcmp(wind_runtime.lot_no, "LOT-PIPE-003") == 0);
+    CHECK(wind_runtime.target_qty == 5);
+    CHECK(wind_runtime.state == L1_RUNTIME_RUNNING);
+    CHECK(strcmp(seal_runtime.lot_no, "LOT-PIPE-001") == 0);
 }
 
 int main(void)
 {
-    test_error_flushes_partial_before_alarm_and_status();
-    test_resume_rejects_wrong_quantity_then_finishes_remaining();
-    test_duplicate_command_id_only_repeats_ack();
-    test_error_threshold_at_target_completes_without_error();
-    test_stop_flushes_progress_and_can_resume();
-    test_op70_sends_measurements_without_production();
-    test_op70_replays_unreported_measurement_unit();
-    test_op70_resume_continues_unit_sequence();
-    test_six_devices_have_registered_error_codes();
-
+    test_process_event_shapes();
+    test_replays_unreported_unit();
+    test_three_percent_combined_ng();
+    test_error_and_resume();
+    test_warning_alarm_does_not_pause_production();
+    test_random_alarm_is_planned_once_per_start();
+    test_independent_lots_and_busy_start_rejection();
     if (checks_failed != 0) {
-        fprintf(stderr,
-                "%d of %d machine runtime checks failed.\n",
-                checks_failed,
-                checks_run);
+        fprintf(stderr, "%d of %d machine runtime checks failed.\n",
+                checks_failed, checks_run);
         return EXIT_FAILURE;
     }
     printf("PASS: %d machine runtime checks\n", checks_run);

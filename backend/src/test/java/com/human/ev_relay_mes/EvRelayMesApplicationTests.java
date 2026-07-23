@@ -9,6 +9,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -19,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest
 @AutoConfigureMockMvc
+@ActiveProfiles("test")
 class EvRelayMesApplicationTests {
 
 	@Autowired
@@ -82,6 +84,19 @@ class EvRelayMesApplicationTests {
 				.andExpect(jsonPath("$.quality").exists())
 				.andExpect(jsonPath("$.alarms").exists())
 				.andExpect(jsonPath("$.materials").exists());
+	}
+
+	@Test
+	@WithMockUser(roles = "VIEWER")
+	void bindsOptionalWorkOrderAndLotFilters() throws Exception {
+		mockMvc.perform(get("/api/work-orders"))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/work-orders").param("status", "CREATED"))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/lots"))
+				.andExpect(status().isOk());
+		mockMvc.perform(get("/api/lots").param("status", "WAITING"))
+				.andExpect(status().isOk());
 	}
 
 }

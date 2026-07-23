@@ -4,7 +4,7 @@ import Sidebar from "./Sidebar";
 import Header from "./Header";
 import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
-import LowStockAlertModal from "../modal/LowStockAlertModal";
+import "../style/MesUi.css";
 
 // 폰트 및 핵심 레이아웃 디자인 전체 저장
 const layoutStyles = `
@@ -111,7 +111,7 @@ const layoutStyles = `
   .mesdash .noti-desc { margin: 0; font-size: 12px; color: var(--on-surface-variant); line-height: 1.4; }
 `;
 
-const MesLayout = ({ onLogout }) => {
+const MesLayout = ({ onLogout, currentUser }) => {
   const [currentTime, setCurrentTime] = useState("");
 
   useEffect(() => {
@@ -128,12 +128,10 @@ const MesLayout = ({ onLogout }) => {
       <GlobalStyle />
       <style>{layoutStyles}</style>
       <div className="mesdash">
-        {/* 관리자 로그인 시 제일 먼저 뜨는 재고 부족 알림 */}
-        <LowStockAlertModal />
         <div className="dashboard-layout">
-          <Sidebar />
+          <Sidebar currentUser={currentUser} />
           <div className="main-container">
-            <Header currentTime={currentTime} onLogout={onLogout} />
+            <Header currentTime={currentTime} onLogout={onLogout} currentUser={currentUser} />
             <main className="content-area custom-scrollbar">
               <Outlet />
             </main>
