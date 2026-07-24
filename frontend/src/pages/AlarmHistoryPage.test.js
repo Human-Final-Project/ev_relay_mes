@@ -7,7 +7,6 @@ jest.mock("../api/MesApi", () => ({
   default: {
     getMachineAlarms: jest.fn(),
     getMachines: jest.fn(),
-    getProcesses: jest.fn(),
     getAlarmCodes: jest.fn(),
     clearMachineAlarm: jest.fn(),
   },
@@ -16,7 +15,6 @@ jest.mock("../api/MesApi", () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   MesApi.getMachines.mockResolvedValue({ data: [] });
-  MesApi.getProcesses.mockResolvedValue({ data: [] });
   MesApi.getAlarmCodes.mockResolvedValue({ data: [] });
   MesApi.getMachineAlarms.mockResolvedValue({ data: [{
     machineAlarmHistoryId: 1,
@@ -48,4 +46,12 @@ test("활성 알람 해제 요청을 보낸다", async () => {
 
   fireEvent.click(await screen.findByRole("button", { name: "해제" }));
   await waitFor(() => expect(MesApi.clearMachineAlarm).toHaveBeenCalledWith(1));
+});
+
+test("설비 알람 조건 필터는 설비만 제공한다", async () => {
+  render(<AlarmHistoryPage currentUser={{ role: "OPERATOR" }}/>);
+
+  expect(await screen.findByLabelText("설비")).toBeInTheDocument();
+  expect(screen.queryByLabelText("조건")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("공정 선택")).not.toBeInTheDocument();
 });

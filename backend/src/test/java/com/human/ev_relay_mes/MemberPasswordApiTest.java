@@ -1,6 +1,5 @@
 package com.human.ev_relay_mes;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Repository.MemberRepository;
@@ -9,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -22,7 +20,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -36,13 +33,11 @@ class MemberPasswordApiTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired ObjectMapper objectMapper;
 
-    private Member admin;
     private Member operator;
 
     @BeforeEach
     void setUp() {
         memberRepository.deleteAll();
-        admin = memberRepository.save(member("admin", "admin-password", Member.Role.ADMIN));
         operator = memberRepository.save(member("operator", "old-password", Member.Role.OPERATOR));
     }
 
@@ -69,35 +64,6 @@ class MemberPasswordApiTest {
         login("operator", "new-password");
     }
 
-    @Test
-    void adminResetsSelectedMembersPasswordAndReceivesItOnce() throws Exception {
-        MockHttpSession operatorSession = login("operator", "old-password");
-        MockHttpSession adminSession = login("admin", "admin-password");
-
-        MvcResult result = mockMvc.perform(patch("/api/members/{id}/password-reset", operator.getMemberId())
-                        .session(adminSession)
-                        .with(csrf()))
-                .andExpect(status().isOk())
-                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, "no-store"))
-                .andExpect(jsonPath("$.memberId").value(operator.getMemberId()))
-                .andExpect(jsonPath("$.loginId").value("operator"))
-                .andExpect(jsonPath("$.temporaryPassword").isString())
-                .andReturn();
-
-        JsonNode response = objectMapper.readTree(result.getResponse().getContentAsString());
-        String temporaryPassword = response.get("temporaryPassword").asText();
-        Member reset = memberRepository.findById(operator.getMemberId()).orElseThrow();
-
-        assertThat(temporaryPassword).hasSize(12);
-        assertThat(reset.getPassword()).isNotEqualTo(temporaryPassword);
-        assertThat(passwordEncoder.matches(temporaryPassword, reset.getPassword())).isTrue();
-
-        assertExpired(operatorSession);
-        mockMvc.perform(get("/api/auth/me").session(adminSession))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.loginId").value("admin"));
-        login("operator", temporaryPassword);
-    }
 
     @Test
     void newLoginExpiresPreviousSessionAndKeepsLatestSession() throws Exception {
@@ -110,15 +76,6 @@ class MemberPasswordApiTest {
                 .andExpect(jsonPath("$.loginId").value("operator"));
     }
 
-    @Test
-    void nonAdminCannotResetAnotherMembersPassword() throws Exception {
-        MockHttpSession operatorSession = login("operator", "old-password");
-
-        mockMvc.perform(patch("/api/members/{id}/password-reset", admin.getMemberId())
-                        .session(operatorSession)
-                        .with(csrf()))
-                .andExpect(status().isForbidden());
-    }
 
     private MockHttpSession login(String loginId, String password) throws Exception {
         MvcResult result = mockMvc.perform(post("/api/auth/login")

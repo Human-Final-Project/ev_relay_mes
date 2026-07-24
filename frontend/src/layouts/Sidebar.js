@@ -18,6 +18,8 @@ export default function Sidebar({ collapsed, onToggle, collectorStatus, currentU
   const statusAvailable = collectorStatus !== null && collectorStatus?.statusAvailable !== false;
   const online = statusAvailable && Boolean(collectorStatus?.l2Online);
   const isAdmin = currentUser?.role === "ADMIN";
+  const canManageWorkers = ["ADMIN", "MANAGER"].includes(currentUser?.role);
+  const visibleMenus = menus.filter(([to]) => to !== "/workers" || canManageWorkers);
   return <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
     <div className="sidebar-brand">
       <div className="sidebar-brand-row">
@@ -28,7 +30,7 @@ export default function Sidebar({ collapsed, onToggle, collectorStatus, currentU
       </div>
     </div>
     <nav className="sidebar-nav">
-      {menus.map(([to, icon, label]) => <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
+      {visibleMenus.map(([to, icon, label]) => <NavLink key={to} to={to} className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
         <span className="material-symbols-outlined">{icon}</span><span className="nav-label">{label}</span>
       </NavLink>)}
       {isAdmin && <NavLink to="/members" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>

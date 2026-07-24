@@ -334,19 +334,6 @@ function LoginPage({ onLoginSuccess }) {
           font-weight:600;
         }
 
-        .page-footer{
-          margin-top:40px;
-          display:flex;
-          flex-direction:column;
-          gap:8px;
-          align-items:center;
-        }
-
-        .page-footer p{
-          margin:0;
-          color:var(--outline);
-        }
-
         .system-info{
           display:flex;
           align-items:center;
@@ -477,15 +464,6 @@ function LoginPage({ onLoginSuccess }) {
             </form>
 
           </div>
-
-          <footer className="page-footer">
-            <p>본 시스템은 사내 전용 생산 관리 시스템입니다.</p>
-            <div className="system-info">
-              <span>Spring Boot Session</span>
-              <span className="separator"></span>
-              <span>CSRF Protected</span>
-            </div>
-          </footer>
         </main>
 
         <div className="decoration-element">

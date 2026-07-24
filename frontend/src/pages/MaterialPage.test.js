@@ -25,15 +25,17 @@ beforeEach(()=>{
   MesApi.createMaterialLot.mockResolvedValue({data:{}});
 });
 
-test("자재 입고 품목을 활성 원자재 선택 목록으로 표시한다",async()=>{
+test("OPERATOR는 품목 등록만 가능하고 원자재 입고와 품목 수정은 할 수 없다", async()=>{
   render(<MaterialPage currentUser={{memberId:1,role:"OPERATOR"}}/>);
-  const inboundButton=await screen.findByRole("button",{name:"원자재 입고"});
-  await waitFor(()=>expect(inboundButton).toBeEnabled());
-  fireEvent.click(inboundButton);
 
-  const material=screen.getByLabelText("품목(코드)");
-  expect(material).toHaveTextContent("구리선 (RM-001)");
-  expect(material).not.toHaveTextContent("RM-OLD");
-  expect(material).toHaveTextContent("반제품 (SA-001)");
-  expect(material).not.toHaveTextContent("FG-001");
+  expect(await screen.findByRole("button",{name:"새로고침"})).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"원자재 입고"})).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button",{name:"품목 관리"}));
+  expect(await screen.findByRole("button",{name:"품목 등록"})).toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"수정"})).not.toBeInTheDocument();
+  expect(screen.queryByRole("button",{name:"비활성"})).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button",{name:"품목 등록"}));
+  expect(screen.getByRole("heading",{name:"품목 등록"})).toBeInTheDocument();
 });

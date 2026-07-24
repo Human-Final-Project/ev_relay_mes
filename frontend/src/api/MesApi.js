@@ -114,7 +114,6 @@ const MesApi = {
   getMembers: () => httpClient.get("/api/members"),
   createMember: (data) => mutate("post", "/api/members", data),
   updateMember: (id, data) => mutate("patch", `/api/members/${id}`, data),
-  resetMemberPassword: (id) => mutate("patch", `/api/members/${id}/password-reset`),
 };
 
 export default MesApi;

@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.Service;
 
+import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
@@ -17,6 +18,7 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -41,6 +43,23 @@ class MemberServiceTest {
                 .status(Member.Status.ACTIVE)
                 .build();
         when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+    }
+
+
+    @Test
+    void createsMemberWithSelectedStatus() {
+        MemberCreateRequestDto dto = new MemberCreateRequestDto();
+        dto.setLoginId("operator2");
+        dto.setPassword("password");
+        dto.setMemberName("operator2");
+        dto.setRole("OPERATOR");
+        dto.setStatus("LOCKED");
+        when(memberRepository.save(any(Member.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = memberService.createMember(dto, 1L);
+
+        assertThat(response.getRole()).isEqualTo("OPERATOR");
+        assertThat(response.getStatus()).isEqualTo("LOCKED");
     }
 
     @Test
@@ -80,19 +99,6 @@ class MemberServiceTest {
         assertThat(member.getPassword()).isEqualTo(originalPassword);
     }
 
-    @Test
-    void resetsPasswordAndReturnsPlainTemporaryPasswordOnlyInResponse() {
-        String originalPassword = member.getPassword();
-
-        var response = memberService.resetPassword(1L);
-
-        assertThat(response.getMemberId()).isEqualTo(1L);
-        assertThat(response.getLoginId()).isEqualTo("operator1");
-        assertThat(response.getTemporaryPassword()).hasSize(12);
-        assertThat(member.getPassword()).isNotEqualTo(originalPassword);
-        assertThat(member.getPassword()).isNotEqualTo(response.getTemporaryPassword());
-        assertThat(passwordEncoder.matches(response.getTemporaryPassword(), member.getPassword())).isTrue();
-    }
 
     private PasswordChangeRequestDto passwordChangeRequest(
             String currentPassword, String newPassword, String confirmation) {

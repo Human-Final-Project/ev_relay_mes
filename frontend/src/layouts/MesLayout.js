@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
-import Footer from "./Footer";
 import GlobalStyle from "../style/GlobalStyle";
 import MesApi from "../api/MesApi";
 import "../style/MesUi.css";
@@ -103,11 +102,6 @@ const layoutStyles = `
   .mesdash .user-avatar { width: 32px; height: 32px; border-radius: 50%; overflow: hidden; border: 1px solid var(--outline-variant); background-color: var(--surface-container); flex-shrink: 0; }
   .mesdash .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
   
-  /* 하단 푸터 스타일 */
-  .mesdash .footer { height: 40px; background-color: var(--surface-container-lowest); border-top: 1px solid rgba(197, 198, 205, 0.3); display: flex; align-items: center; justify-content: space-between; padding: 0 var(--lg); font-size: 10px; font-weight: 700; letter-spacing: 0.05em; color: var(--outline); margin-top: auto; }
-  .mesdash .footer-links { display: flex; gap: var(--lg); }
-  .mesdash .footer-copyright { display: flex; align-items: center; gap: var(--md); }
-  .mesdash .footer-copyright strong { color: var(--on-surface); }
 
   /* 🔔 알림 버튼 및 드롭다운 토글 기능용 전역 스타일 디자인 추가 */
   .mesdash .user-actions button { position: relative; }
@@ -189,7 +183,6 @@ const MesLayout = ({ onLogout, currentUser }) => {
             <main className="content-area custom-scrollbar">
               <Outlet />
             </main>
-            <Footer />
           </div>
         </div>
       </div>

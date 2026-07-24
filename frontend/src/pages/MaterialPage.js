@@ -13,7 +13,8 @@ export default function MaterialPage({ currentUser }) {
   const items = useApiData(MesApi.getItems, []);
   const itemRows = items.data || [];
   const receivableItems = itemRows.filter((item) => ["RM", "SA"].includes(item.itemType) && item.useYn === "Y");
-  const canReceive = ["ADMIN", "MANAGER", "OPERATOR"].includes(currentUser?.role);
+  const canReceive = ["ADMIN", "MANAGER"].includes(currentUser?.role);
+  const canCreateItems = ["ADMIN", "MANAGER", "OPERATOR"].includes(currentUser?.role);
   const canManageItems = ["ADMIN", "MANAGER"].includes(currentUser?.role);
 
   const summary = useMemo(() => ({
@@ -74,7 +75,7 @@ export default function MaterialPage({ currentUser }) {
       actions={<>
         <button className="btn secondary" onClick={() => { lots.reload(); items.reload(); }}>새로고침</button>
         {tab === "lots" && canReceive && <button className="btn" disabled={items.loading} onClick={() => setLotForm({ materialLotNo: "", itemCode: "", receivedQty: "" })}>원자재 입고</button>}
-        {tab === "items" && canManageItems && <button className="btn" onClick={() => setItemForm({ itemCode: "", itemName: "", itemType: "RM" })}>품목 등록</button>}
+        {tab === "items" && canCreateItems && <button className="btn" onClick={() => setItemForm({ itemCode: "", itemName: "", itemType: "RM" })}>품목 등록</button>}
       </>}
     />
 

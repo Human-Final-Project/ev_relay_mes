@@ -11,7 +11,6 @@ jest.mock("../api/MesApi", () => ({
     getWorkOrders: jest.fn(),
     getLots: jest.fn(),
     getMachines: jest.fn(),
-    getProcesses: jest.fn(),
     getDefectCodes: jest.fn(),
     updateInspectionLimits: jest.fn(),
   },
@@ -28,12 +27,11 @@ beforeEach(() => {
     { lotId: 71, lotNo: "LOT-007", lotType: "INITIAL", productionRound: 1 },
   ] });
   MesApi.getMachines.mockResolvedValue({ data: [] });
-  MesApi.getProcesses.mockResolvedValue({ data: [] });
   MesApi.getDefectCodes.mockResolvedValue({ data: [] });
 });
 
 test("품질관리에서도 작업지시 선택 후 해당 LOT를 고른다", async () => {
-  render(<QualityPage currentUser={{ role: "VIEWER" }} />);
+  render(<QualityPage currentUser={{ role: "OPERATOR" }} />);
 
   const workOrderSelect = await screen.findByLabelText("작업지시");
   const lotSelect = screen.getByLabelText("LOT");
@@ -43,4 +41,12 @@ test("품질관리에서도 작업지시 선택 후 해당 LOT를 고른다", as
 
   await waitFor(() => expect(MesApi.getLots).toHaveBeenCalledWith({ workOrderId: "7" }));
   expect(await screen.findByRole("option", { name: "LOT-007 · 최초" })).toBeInTheDocument();
+});
+
+test("품질관리 조건 필터는 설비만 제공한다", async () => {
+  render(<QualityPage currentUser={{ role: "OPERATOR" }} />);
+
+  expect(await screen.findByLabelText("설비")).toBeInTheDocument();
+  expect(screen.queryByLabelText("조건")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("공정 선택")).not.toBeInTheDocument();
 });

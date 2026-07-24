@@ -6,8 +6,7 @@ import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusB
 const emptyFilters = {
   workOrderId: "",
   lotNo: "",
-  conditionType: "process",
-  conditionValue: "",
+  machineId: "",
   result: "",
   defectCode: "",
 };
@@ -30,15 +29,10 @@ export default function QualityPage({ currentUser }) {
     [filters.workOrderId]
   );
   const machines = useApiData(MesApi.getMachines, []);
-  const processes = useApiData(MesApi.getProcesses, []);
   const defectCodes = useApiData(MesApi.getDefectCodes, []);
 
   const active = tab === "inspections" ? inspections : tab === "defects" ? defects : standards;
   const canEdit = ["ADMIN", "MANAGER"].includes(currentUser?.role);
-  const conditionOptions = filters.conditionType === "machine"
-    ? (machines.data || []).map((machine) => ({ value: machine.machineId, label: `${machine.machineId} · ${machine.machineName}` }))
-    : (processes.data || []).map((process) => ({ value: process.processCode, label: `${process.processCode} · ${process.processName}` }));
-
   const lotOptions = useMemo(() => {
     const seen = new Set();
     return (lots.data || []).filter((lot) => {
@@ -50,9 +44,7 @@ export default function QualityPage({ currentUser }) {
 
   const applyFilters = () => {
     const next = { workOrderId: filters.workOrderId || undefined, lotNo: filters.lotNo || undefined };
-    if (filters.conditionValue) {
-      next[filters.conditionType === "machine" ? "machineId" : "processCode"] = filters.conditionValue;
-    }
+    if (filters.machineId) next.machineId = filters.machineId;
     if (tab === "inspections" && filters.result) next.result = filters.result;
     if (tab === "defects" && filters.defectCode) next.defectCode = filters.defectCode;
     setApplied(next);
@@ -120,16 +112,10 @@ export default function QualityPage({ currentUser }) {
           )}
         </select>
       </Field>
-      <Field label="조건">
-        <select value={filters.conditionType} onChange={(event) => setFilters({ ...filters, conditionType: event.target.value, conditionValue: "" })}>
-          <option value="process">공정</option>
-          <option value="machine">설비</option>
-        </select>
-      </Field>
-      <Field label={filters.conditionType === "machine" ? "설비 선택" : "공정 선택"}>
-        <select value={filters.conditionValue} onChange={(event) => setFilters({ ...filters, conditionValue: event.target.value })}>
-          <option value="">전체</option>
-          {conditionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      <Field label="설비">
+        <select value={filters.machineId} onChange={(event) => setFilters({ ...filters, machineId: event.target.value })}>
+          <option value="">전체 설비</option>
+          {(machines.data || []).map((machine) => <option key={machine.machineId} value={machine.machineId}>{machine.machineId} · {machine.machineName}</option>)}
         </select>
       </Field>
       {tab === "inspections" && <Field label="결과">

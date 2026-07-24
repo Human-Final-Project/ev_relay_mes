@@ -18,6 +18,7 @@ import AccountPage from "./pages/AccountPage";
 
 function App() {
   const [currentUser,setCurrentUser]=useState(null); const [checking,setChecking]=useState(true);
+  const canManageWorkers = ["ADMIN", "MANAGER"].includes(currentUser?.role);
   useEffect(()=>{let active=true;AuthApi.getCurrentUser().then(r=>active&&setCurrentUser(r.data)).catch(()=>active&&setCurrentUser(null)).finally(()=>active&&setChecking(false));return()=>{active=false}},[]);
   const logout=async()=>{try{await AuthApi.logout()}catch(e){if(e.response?.status!==401)console.error(e)}finally{setCurrentUser(null)}};
   if(checking)return <div role="status" className="mes-state">로그인 상태를 확인하고 있습니다.</div>;
@@ -33,7 +34,7 @@ function App() {
       <Route path="/quality" element={<QualityPage currentUser={currentUser}/>}/>
       <Route path="/materials" element={<MaterialPage currentUser={currentUser}/>}/>
       <Route path="/master-data" element={<MasterDataPage currentUser={currentUser}/>}/>
-      <Route path="/workers" element={<WorkerAssignmentPage currentUser={currentUser}/>}/>
+      <Route path="/workers" element={canManageWorkers?<WorkerAssignmentPage currentUser={currentUser}/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/members" element={currentUser?.role==="ADMIN"?<AdminEmployeePage/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/account" element={<AccountPage currentUser={currentUser} onLoggedOut={()=>setCurrentUser(null)}/>}/>
     </Route>

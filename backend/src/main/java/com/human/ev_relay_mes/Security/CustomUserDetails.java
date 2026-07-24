@@ -45,7 +45,7 @@ public class CustomUserDetails implements UserDetails {
     }
 
     public Member.Role getRole() {
-        return role;
+        return role == Member.Role.VIEWER ? Member.Role.OPERATOR : role;
     }
 
     public Member.Status getStatus() {
@@ -55,7 +55,7 @@ public class CustomUserDetails implements UserDetails {
     // Member 역할을 ROLE_ADMIN과 같은 Spring Security 권한으로 제공한다.
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
+        return List.of(new SimpleGrantedAuthority("ROLE_" + getRole().name()));
     }
 
     @Override

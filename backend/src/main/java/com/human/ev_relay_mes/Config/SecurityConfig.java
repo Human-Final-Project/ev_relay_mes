@@ -109,45 +109,18 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/auth/login", "/api/auth/csrf", "/api/collector/**", "/error").permitAll()
+                        .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/members/**").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/machines/status")
+                        .requestMatchers(HttpMethod.POST, "/api/items")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers(HttpMethod.POST, "/api/production-logs")
-                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers(HttpMethod.POST,
-                                "/api/quality/inspections", "/api/quality/defects", "/api/machines/alarms")
-                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers(HttpMethod.PATCH, "/api/quality/defects/*/confirm")
-                                .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.PATCH, "/api/machines/alarms/*/clear")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers(HttpMethod.GET,
-                                "/api/items/**", "/api/boms/**", "/api/processes/**",
-                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**",
-                                "/api/material-lots/**", "/api/work-orders/**", "/api/lots/**",
-                                "/api/workers/**", "/api/inspection-standards/**")
-                                .authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/production-logs/**")
-                                .authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/quality/**")
-                                .authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/mes/**")
-                                .authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/mes/order")
+                        .requestMatchers(HttpMethod.GET, "/api/workers/**")
                                 .hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers(HttpMethod.POST, "/api/mes/material/inbound")
-                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers(
-                                "/api/items/**", "/api/boms/**", "/api/processes/**",
-                                "/api/machines/**", "/api/defect-codes/**", "/api/alarm-codes/**",
-                                "/api/workers/**", "/api/inspection-standards/**")
+                        .requestMatchers(HttpMethod.GET, "/api/**")
+                                .authenticated()
+                        .requestMatchers("/api/**")
                                 .hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers("/api/material-lots/**")
-                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
-                        .requestMatchers("/api/work-orders/**")
-                                .hasAnyRole("ADMIN", "MANAGER")
-                        .requestMatchers("/api/lots/**")
-                                .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
                         .anyRequest().authenticated())
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(authenticationEntryPoint)
