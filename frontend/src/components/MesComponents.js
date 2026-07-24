@@ -8,7 +8,7 @@ const LABELS = {
   AVAILABLE: "사용 가능", USED: "사용 완료", DISCARDED: "폐기",
   ACTIVE: "활성", LOCKED: "잠김", RETIRED: "퇴직", INACTIVE: "비활성",
   OK: "OK", NG: "NG", INITIAL: "최초", SUPPLEMENT: "보충",
-  ADMIN: "관리자", MANAGER: "매니저", OPERATOR: "작업자", VIEWER: "조회자",
+  ADMIN: "관리자", MANAGER: "매니저", OPERATOR: "운영자", VIEWER: "운영자",
   RM: "원자재", SA: "반제품", FG: "완제품", INFO: "정보", WARN: "경고", WARNING: "경고", CRITICAL: "심각",
 };
 

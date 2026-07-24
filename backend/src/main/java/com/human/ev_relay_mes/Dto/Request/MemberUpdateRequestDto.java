@@ -11,7 +11,7 @@ import lombok.Setter;
 @NoArgsConstructor
 public class MemberUpdateRequestDto {
 
-    @Pattern(regexp = "(?i)ADMIN|MANAGER|OPERATOR|VIEWER")
+    @Pattern(regexp = "(?i)ADMIN|OPERATOR")
     private String role;
     @Pattern(regexp = "(?i)ACTIVE|LOCKED|RETIRED")
     private String status;

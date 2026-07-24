@@ -4,7 +4,6 @@ import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MemberUpdateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MemberResponseDto;
-import com.human.ev_relay_mes.Dto.Response.TemporaryPasswordResponseDto;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
@@ -14,7 +13,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.security.SecureRandom;
 import java.util.List;
 
 @Service
@@ -22,13 +20,9 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class MemberService {
 
-    private static final String TEMP_PASSWORD_CHARACTERS =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
-    private static final int TEMP_PASSWORD_LENGTH = 12;
 
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
-    private final SecureRandom secureRandom = new SecureRandom();
 
     // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
@@ -44,7 +38,7 @@ public class MemberService {
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .memberName(dto.getMemberName())
                 .role(role)
-                .status(Member.Status.ACTIVE)
+                .status(dto.getStatus() == null ? Member.Status.ACTIVE : parseStatus(dto.getStatus()))
                 .department(dto.getDepartment())
                 .position(dto.getPosition())
                 .createdBy(createdBy)
@@ -94,18 +88,6 @@ public class MemberService {
         member.setPassword(passwordEncoder.encode(dto.getNewPassword()));
     }
 
-    @Transactional
-    public TemporaryPasswordResponseDto resetPassword(Long memberId) {
-        Member member = findMember(memberId);
-        String temporaryPassword = generateTemporaryPassword();
-        member.setPassword(passwordEncoder.encode(temporaryPassword));
-
-        return TemporaryPasswordResponseDto.builder()
-                .memberId(member.getMemberId())
-                .loginId(member.getLoginId())
-                .temporaryPassword(temporaryPassword)
-                .build();
-    }
 
     // 회원 관련 업무에서 대상 회원의 존재 여부를 확인하고 Entity를 가져올 때 사용한다.
     private Member findMember(Long memberId) {
@@ -113,19 +95,15 @@ public class MemberService {
                 .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
     }
 
-    private String generateTemporaryPassword() {
-        StringBuilder password = new StringBuilder(TEMP_PASSWORD_LENGTH);
-        for (int index = 0; index < TEMP_PASSWORD_LENGTH; index++) {
-            password.append(TEMP_PASSWORD_CHARACTERS.charAt(
-                    secureRandom.nextInt(TEMP_PASSWORD_CHARACTERS.length())));
-        }
-        return password.toString();
-    }
 
     // 화면에서 받은 권한 문자열을 Member.Role Enum으로 안전하게 변환할 때 사용한다.
     private Member.Role parseRole(String role) {
         try {
-            return Member.Role.valueOf(role.toUpperCase());
+            String normalized = role.toUpperCase();
+            if ("VIEWER".equals(normalized)) {
+                normalized = "OPERATOR";
+            }
+            return Member.Role.valueOf(normalized);
         } catch (RuntimeException exception) {
             throw new CustomException(ErrorCode.INVALID_MEMBER_ROLE);
         }
@@ -147,7 +125,7 @@ public class MemberService {
                 .memberId(member.getMemberId())
                 .loginId(member.getLoginId())
                 .memberName(member.getMemberName())
-                .role(member.getRole().name())
+                .role(member.getRole() == Member.Role.VIEWER ? Member.Role.OPERATOR.name() : member.getRole().name())
                 .status(member.getStatus().name())
                 .department(member.getDepartment())
                 .position(member.getPosition())

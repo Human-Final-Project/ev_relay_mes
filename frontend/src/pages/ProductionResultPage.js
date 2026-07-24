@@ -5,14 +5,13 @@ import { EmptyState, ErrorState, Field, LoadingState, PageHeader, formatDate } f
 import { DonutChart, StackedBarChart, summarizeByProcess } from "../components/MesCharts";
 
 const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
-const emptyFilters = { workOrderId: "", lotNo: "", conditionType: "process", conditionValue: "", startAt: "", endAt: "" };
+const emptyFilters = { workOrderId: "", lotNo: "", machineId: "", startAt: "", endAt: "" };
 
 export default function ProductionResultPage() {
   const [filters, setFilters] = useState(emptyFilters);
   const [applied, setApplied] = useState({ status: "COMPLETED" });
   const workOrders = useApiData(() => MesApi.getWorkOrders({}), []);
   const machines = useApiData(MesApi.getMachines, []);
-  const processes = useApiData(MesApi.getProcesses, []);
   const lots = useApiData(
     () => filters.workOrderId
       ? MesApi.getLots({ workOrderId: filters.workOrderId })
@@ -20,30 +19,29 @@ export default function ProductionResultPage() {
     [filters.workOrderId]
   );
   const logs = useApiData(() => MesApi.getProductionLogs(applied), [JSON.stringify(applied)]);
+  const allLogs = useApiData(() => MesApi.getProductionLogs({ status: "COMPLETED" }), []);
 
-  const summary = useMemo(() => {
+  const overallProcessRows = useMemo(
+    () => summarizeByProcess(allLogs.data || [], processOrder),
+    [allLogs.data]
+  );
+
+  const filteredSummary = useMemo(() => {
     const rows = logs.data || [];
     const ok = rows.reduce((sum, row) => sum + (Number(row.okQty) || 0), 0);
     const ng = rows.reduce((sum, row) => sum + (Number(row.ngQty) || 0), 0);
-    return { ok, ng, processes: summarizeByProcess(rows, processOrder) };
+    return { ok, ng };
   }, [logs.data]);
 
-  const conditionOptions = filters.conditionType === "machine"
-    ? (machines.data || []).map((machine) => ({ value: machine.machineId, label: `${machine.machineId} · ${machine.machineName}` }))
-    : (processes.data || []).map((process) => ({ value: process.processCode, label: `${process.processCode} · ${process.processName}` }));
-
   const apply = () => {
-    const next = {
+    setApplied({
       workOrderId: filters.workOrderId || undefined,
       lotNo: filters.lotNo || undefined,
+      machineId: filters.machineId || undefined,
       status: "COMPLETED",
       startAt: filters.startAt || undefined,
       endAt: filters.endAt || undefined,
-    };
-    if (filters.conditionValue) {
-      next[filters.conditionType === "machine" ? "machineId" : "processCode"] = filters.conditionValue;
-    }
-    setApplied(next);
+    });
   };
 
   const reset = () => {
@@ -51,8 +49,10 @@ export default function ProductionResultPage() {
     setApplied({ status: "COMPLETED" });
   };
 
+  const reloadAll = () => Promise.all([logs.reload(), allLogs.reload()]);
+
   return <div className="mes-page">
-    <PageHeader title="생산 실적" description="작업지시를 선택한 뒤 해당 작업지시의 전체 LOT 또는 특정 LOT 생산 실적을 조회합니다." actions={<button className="btn secondary" onClick={logs.reload}>새로고침</button>}/>
+    <PageHeader title="생산 실적" description="작업지시와 LOT, 설비 조건으로 완료 생산 실적을 조회합니다." actions={<button className="btn secondary" onClick={reloadAll}>새로고침</button>}/>
 
     <section className="mes-card">
       <div className="mes-filter">
@@ -83,16 +83,12 @@ export default function ProductionResultPage() {
             )}
           </select>
         </Field>
-        <Field label="조건">
-          <select value={filters.conditionType} onChange={(event) => setFilters({ ...filters, conditionType: event.target.value, conditionValue: "" })}>
-            <option value="process">공정</option>
-            <option value="machine">설비</option>
-          </select>
-        </Field>
-        <Field label={filters.conditionType === "machine" ? "설비 선택" : "공정 선택"}>
-          <select value={filters.conditionValue} onChange={(event) => setFilters({ ...filters, conditionValue: event.target.value })}>
-            <option value="">전체</option>
-            {conditionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        <Field label="설비">
+          <select value={filters.machineId} onChange={(event) => setFilters({ ...filters, machineId: event.target.value })}>
+            <option value="">전체 설비</option>
+            {(machines.data || []).map((machine) =>
+              <option key={machine.machineId} value={machine.machineId}>{machine.machineId} · {machine.machineName}</option>
+            )}
           </select>
         </Field>
         <Field label="시작 시각"><input type="datetime-local" value={filters.startAt} onChange={(event) => setFilters({ ...filters, startAt: event.target.value })}/></Field>
@@ -102,12 +98,23 @@ export default function ProductionResultPage() {
       </div>
     </section>
 
-    {logs.loading ? <LoadingState/> : logs.error ? <ErrorState error={logs.error} onRetry={logs.reload}/> : !(logs.data || []).length ? <EmptyState/> : <>
-      <section className="mes-card production-analytics">
-        <div><div className="chart-heading"><div><h3>공정별 생산량</h3><p>조회 조건 내 완료 실적</p></div><div className="chart-key"><span className="ok">OK</span><span className="ng">NG</span></div></div><StackedBarChart rows={summary.processes}/></div>
-        <DonutChart ariaLabel="조회 생산 실적 OK 및 NG 비율" centerValue={summary.ok + summary.ng ? `${(summary.ok / (summary.ok + summary.ng) * 100).toFixed(1)}%` : "0%"} centerLabel="양품률" segments={[{ label: "OK", value: summary.ok, color: "#0ea5a4" }, { label: "NG", value: summary.ng, color: "#f43f5e" }]}/>
-      </section>
+    <section className="mes-card production-analytics">
+      <div>
+        <div className="chart-heading">
+          <div><h3>공정별 생산량</h3><p>검색 조건과 무관한 전체 완료 실적 기준</p></div>
+          <div className="chart-key"><span className="ok">OK</span><span className="ng">NG</span></div>
+        </div>
+        {allLogs.loading ? <LoadingState/> : allLogs.error ? <ErrorState error={allLogs.error} onRetry={allLogs.reload}/> : <StackedBarChart rows={overallProcessRows}/>} 
+      </div>
+      <DonutChart
+        ariaLabel="조회 생산 실적 OK 및 NG 비율"
+        centerValue={filteredSummary.ok + filteredSummary.ng ? `${(filteredSummary.ok / (filteredSummary.ok + filteredSummary.ng) * 100).toFixed(1)}%` : "0%"}
+        centerLabel="조회 양품률"
+        segments={[{ label: "OK", value: filteredSummary.ok, color: "#0ea5a4" }, { label: "NG", value: filteredSummary.ng, color: "#f43f5e" }]}
+      />
+    </section>
 
+    {logs.loading ? <LoadingState/> : logs.error ? <ErrorState error={logs.error} onRetry={logs.reload}/> : !(logs.data || []).length ? <EmptyState message="조회 조건에 해당하는 생산 실적이 없습니다."/> :
       <div className="mes-table-wrap"><table className="mes-table">
         <thead><tr><th>LOT</th><th>공정/설비</th><th>투입</th><th>OK</th><th>NG</th><th>공정효율</th><th>종료</th></tr></thead>
         <tbody>{logs.data.map((log) => <tr key={log.productionLogId}>
@@ -118,6 +125,6 @@ export default function ProductionResultPage() {
           <td>{formatDate(log.endedAt)}</td>
         </tr>)}</tbody>
       </table></div>
-    </>}
+    }
   </div>;
 }

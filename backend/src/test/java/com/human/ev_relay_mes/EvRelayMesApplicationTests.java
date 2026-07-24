@@ -13,7 +13,9 @@ import org.springframework.test.context.ActiveProfiles;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -74,7 +76,7 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
-	@WithMockUser(roles = "VIEWER")
+	@WithMockUser(roles = "OPERATOR")
 	void returnsDashboardSummaryToAuthenticatedUser() throws Exception {
 		mockMvc.perform(get("/api/mes/dashboard/summary"))
 				.andExpect(status().isOk())
@@ -87,7 +89,7 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
-	@WithMockUser(roles = "VIEWER")
+	@WithMockUser(roles = "OPERATOR")
 	void bindsOptionalWorkOrderAndLotFilters() throws Exception {
 		mockMvc.perform(get("/api/work-orders"))
 				.andExpect(status().isOk());
@@ -98,5 +100,45 @@ class EvRelayMesApplicationTests {
 		mockMvc.perform(get("/api/lots").param("status", "WAITING"))
 				.andExpect(status().isOk());
 	}
+
+
+    @Test
+    @WithMockUser(roles = "OPERATOR")
+    void operatorCanCreateItem() throws Exception {
+        mockMvc.perform(post("/api/items")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"itemCode\":\"RM-OP-001\",\"itemName\":\"운영자 등록 품목\",\"itemType\":\"RM\"}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    @WithMockUser(roles = "OPERATOR")
+    void operatorCannotCreateWorkOrderOrMaterialLot() throws Exception {
+        mockMvc.perform(post("/api/work-orders")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/material-lots")
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "OPERATOR")
+    void operatorCannotOpenWorkerManagementApi() throws Exception {
+        mockMvc.perform(get("/api/workers"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "OPERATOR")
+    void operatorCanReachAlarmClearEndpoint() throws Exception {
+        mockMvc.perform(patch("/api/machines/alarms/999999/clear").with(csrf()))
+                .andExpect(status().isNotFound());
+    }
 
 }

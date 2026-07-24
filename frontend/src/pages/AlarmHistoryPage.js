@@ -4,8 +4,7 @@ import useApiData from "../hooks/useApiData";
 import { EmptyState, ErrorState, Field, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
 
 const emptyFilters = {
-  conditionType: "process",
-  conditionValue: "",
+  machineId: "",
   alarmCode: "",
   alarmLevel: "",
   cleared: "",
@@ -20,13 +19,8 @@ export default function AlarmHistoryPage({ currentUser }) {
   const [actionError, setActionError] = useState(null);
   const alarms = useApiData(() => MesApi.getMachineAlarms(applied), [JSON.stringify(applied)]);
   const machines = useApiData(MesApi.getMachines, []);
-  const processes = useApiData(MesApi.getProcesses, []);
   const alarmCodes = useApiData(MesApi.getAlarmCodes, []);
   const canClear = ["ADMIN", "MANAGER", "OPERATOR"].includes(currentUser?.role);
-
-  const conditionOptions = filters.conditionType === "machine"
-    ? (machines.data || []).map((machine) => ({ value: machine.machineId, label: `${machine.machineId} · ${machine.machineName}` }))
-    : (processes.data || []).map((process) => ({ value: process.processCode, label: `${process.processCode} · ${process.processName}` }));
 
   const applyFilters = () => {
     const next = {
@@ -35,9 +29,7 @@ export default function AlarmHistoryPage({ currentUser }) {
       startAt: filters.startAt || undefined,
       endAt: filters.endAt || undefined,
     };
-    if (filters.conditionValue) {
-      next[filters.conditionType === "machine" ? "machineId" : "processCode"] = filters.conditionValue;
-    }
+    if (filters.machineId) next.machineId = filters.machineId;
     if (filters.cleared !== "") next.cleared = filters.cleared === "true";
     setApplied(next);
   };
@@ -72,16 +64,10 @@ export default function AlarmHistoryPage({ currentUser }) {
 
     <section className="mes-card">
       <div className="mes-filter">
-        <Field label="조건">
-          <select value={filters.conditionType} onChange={(event) => setFilters({ ...filters, conditionType: event.target.value, conditionValue: "" })}>
-            <option value="process">공정</option>
-            <option value="machine">설비</option>
-          </select>
-        </Field>
-        <Field label={filters.conditionType === "machine" ? "설비 선택" : "공정 선택"}>
-          <select value={filters.conditionValue} onChange={(event) => setFilters({ ...filters, conditionValue: event.target.value })}>
-            <option value="">전체</option>
-            {conditionOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        <Field label="설비">
+          <select value={filters.machineId} onChange={(event) => setFilters({ ...filters, machineId: event.target.value })}>
+            <option value="">전체 설비</option>
+            {(machines.data || []).map((machine) => <option key={machine.machineId} value={machine.machineId}>{machine.machineId} · {machine.machineName}</option>)}
           </select>
         </Field>
         <Field label="알람 코드">
