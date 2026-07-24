@@ -1,0 +1,11 @@
+*.o
+*.exe
+mes_collector
+protocol_tests
+collector_tests
+connection_registry_tests
+api_client_tests
+retry_queue_tests
+mes_http_retry.queue
+mes_http_retry.queue.tmp
+mes_http_dead_letter.queue
