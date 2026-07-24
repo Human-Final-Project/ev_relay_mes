@@ -270,7 +270,7 @@
 .process-status-legend { display:flex; align-items:center; gap:13px; color:#536985; font-size:9px; font-weight:800; }
 .process-status-legend span { display:flex; align-items:center; gap:5px; }
 .live-process-scroll { width:100%; min-width:0; overflow-x:auto; overflow-y:hidden; padding:4px 0 10px; scrollbar-gutter:stable; }
-.live-process-flow { display:grid; grid-template-columns:minmax(160px,1.15fr) 34px repeat(3,minmax(18px,22px) minmax(138px,1fr)) minmax(138px,1fr); align-items:center; width:100%; min-width:800px; padding:0 2px; box-sizing:border-box; }
+.live-process-flow { display:grid; grid-template-columns:minmax(175px,1.15fr) 38px repeat(3,minmax(150px,1fr) 22px) minmax(150px,1fr); align-items:center; column-gap:6px; width:100%; min-width:920px; padding:0 2px; box-sizing:border-box; }
 .live-parallel-stack { display:grid; gap:8px; }
 .parallel-merge { position:relative; align-self:stretch; min-height:144px; }
 .parallel-merge::before { content:""; position:absolute; left:0; top:25%; bottom:25%; width:18px; border-top:1px solid #aab9ca; border-bottom:1px solid #aab9ca; border-right:1px solid #aab9ca; }
@@ -286,6 +286,7 @@
 .live-machine-card.status-stopped { border-left-color:#f59e0b; }
 .live-machine-card.compact { min-height:68px; padding-top:9px; padding-bottom:8px; }
 .live-machine-status-dot { position:absolute; top:10px; right:10px; width:7px; height:7px; border-radius:50%; background:#94a3b8; }
+.live-machine-status-dot.status-idle { background:#94a3b8; }
 .live-machine-status-dot.status-running { background:#10b75d; }
 .live-machine-status-dot.status-error { background:#dc2626; }
 .live-machine-status-dot.status-stopped { background:#f59e0b; }
@@ -302,5 +303,5 @@
 .live-machine-badge .mes-status { padding:3px 7px; border-radius:3px; font-size:8px; }
 .live-machine-card.compact .live-machine-lot,.live-machine-card.compact .live-machine-progress { display:none; }
 .live-machine-card.compact .live-machine-badge { padding-top:5px; }
-@media(max-width:1100px){.live-process-flow{min-width:800px}.live-machine-card{padding-left:10px;padding-right:10px}.live-machine-code{font-size:8px}.live-machine-card>strong{font-size:10px}}
-@media(max-width:900px){.live-process-heading{flex-direction:column}.process-status-legend{flex-wrap:wrap}.live-process-flow{min-width:800px}}
+@media(max-width:1100px){.live-machine-card{padding-left:10px;padding-right:10px}.live-machine-code{font-size:8px}.live-machine-card>strong{font-size:10px}}
+@media(max-width:900px){.live-process-heading{flex-direction:column}.process-status-legend{flex-wrap:wrap}}
