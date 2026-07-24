@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 
 const TITLES = {
   "/dashboard": "대시보드", "/work-orders": "작업지시", "/lots": "LOT 추적",
-  "/production": "생산 모니터링", "/alarms": "설비 알람", "/quality": "품질 관리", "/materials": "자재 LOT",
+  "/production": "생산 모니터링", "/production-results": "생산 실적", "/alarms": "설비 알람", "/quality": "품질 관리", "/materials": "원자재 관리",
   "/master-data": "기준정보", "/workers": "작업자 배정", "/members": "사용자 관리",
   "/account": "내 계정",
 };

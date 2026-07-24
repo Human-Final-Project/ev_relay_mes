@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -35,6 +36,7 @@ public class ProductionSchedulerService {
     private final ProcessRepository processRepository;
     private final ProductionLogRepository productionLogRepository;
     private final WorkCommandService workCommandService;
+    private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     /** 현재 LOT이 대기 중인 공정을 즉시 예약할 수 있으면 START를 생성한다. */
     @Transactional
@@ -110,12 +112,21 @@ public class ProductionSchedulerService {
 
         int inputQty = expectedInputQty(lot, lot.getCurrentProcess());
         if (inputQty <= 0) {
-            lot.setStatus(Lot.Status.HOLD);
+            finishScrappedLot(lot);
             return false;
         }
         return workCommandService
                 .tryCreateStartCommand(lot, lot.getCurrentProcess(), inputQty)
                 .isPresent();
+    }
+
+    private void finishScrappedLot(Lot lot) {
+        lot.setOkQty(0);
+        lot.setNgQty(lot.getInputQty());
+        lot.setStatus(Lot.Status.SCRAPPED);
+        lot.setCompletedAt(LocalDateTime.now());
+        workOrderContinuationRequestService.requestEvaluation(
+                lot.getWorkOrder().getWorkOrderId());
     }
 
     private boolean isWaitingForProcess(Lot lot, String machineProcessCode) {

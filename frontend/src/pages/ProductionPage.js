@@ -1,34 +1,178 @@
 import React, { useEffect, useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
-import { DonutChart, StackedBarChart, summarizeByProcess } from "../components/MesCharts";
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
 
-const order=["OP20","OP30","OP40_OP50","OP60","OP70","OP80"];
+const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
+const sequentialProcessCodes = ["OP40_OP50", "OP60", "OP70", "OP80"];
 
-export default function ProductionPage({currentUser}){
-  const [filters,setFilters]=useState({lotNo:"",processCode:"",machineId:""}); const [applied,setApplied]=useState({}); const [selected,setSelected]=useState(null); const [machineDetail,setMachineDetail]=useState(null); const [detailError,setDetailError]=useState(null); const [clearingId,setClearingId]=useState(null); const [alarmActionError,setAlarmActionError]=useState(null);
-  const machines=useApiData(MesApi.getMachines,[]); const pipelineLots=useApiData(MesApi.getPipelineLots,[]); const alarms=useApiData(()=>MesApi.getMachineAlarms({cleared:false}),[]); const logs=useApiData(()=>MesApi.getProductionLogs({...applied,status:"COMPLETED"}),[JSON.stringify(applied)]);
-  // reload 함수는 useApiData에서 memoize되며 polling 대상은 최초 마운트 시 고정한다.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(()=>{const machineTimer=setInterval(()=>{machines.reload();pipelineLots.reload()},1000);const dataTimer=setInterval(()=>{alarms.reload();logs.reload()},5000);return()=>{clearInterval(machineTimer);clearInterval(dataTimer)}},[machines.reload,pipelineLots.reload,alarms.reload,logs.reload]);
-  useEffect(()=>{if(!selected){setMachineDetail(null);return;} Promise.all([MesApi.getMachineStatusHistory(selected.machineId),MesApi.getMachineAssignments(selected.machineId)]).then(([history,assignments])=>setMachineDetail({history:history.data,assignments:assignments.data})).catch(setDetailError)},[selected]);
-  const sorted=[...(machines.data||[])].sort((a,b)=>order.indexOf(a.processCode)-order.indexOf(b.processCode)); const canClear=["ADMIN","MANAGER","OPERATOR"].includes(currentUser?.role);
-  const productionSummary=useMemo(()=>{const rows=logs.data||[];const ok=rows.reduce((sum,row)=>sum+(Number(row.okQty)||0),0);const ng=rows.reduce((sum,row)=>sum+(Number(row.ngQty)||0),0);return{ok,ng,processes:summarizeByProcess(rows,order)}},[logs.data]);
-  const statusLoading=(machines.loading&&machines.data===null)||(pipelineLots.loading&&pipelineLots.data===null)||(alarms.loading&&alarms.data===null);
-  const statusError=(machines.data===null&&machines.error)||(pipelineLots.data===null&&pipelineLots.error)||(alarms.data===null&&alarms.error);
-  const logsLoading=logs.loading&&logs.data===null;
-  const logsError=logs.data===null?logs.error:null;
-  const reload=()=>{machines.reload();pipelineLots.reload();alarms.reload();logs.reload()};
-  const clearAlarm=async(alarmId)=>{try{setClearingId(alarmId);setAlarmActionError(null);await MesApi.clearMachineAlarm(alarmId);await Promise.all([alarms.reload(),machines.reload()])}catch(error){setAlarmActionError(error)}finally{setClearingId(null)}};
-  return <div className="mes-page"><PageHeader title="생산 모니터링" description="공정 진행률은 1초마다, 생산 실적과 활성 알람은 5초마다 갱신합니다." actions={<><span style={{fontSize:12,color:"#16a34a",alignSelf:"center"}}>● REST 자동 갱신</span><button className="btn secondary" onClick={reload}>지금 갱신</button></>}/>
-    {statusLoading?<LoadingState/>:statusError?<ErrorState error={statusError} onRetry={reload}/>:<>
-    <section className="mes-card"><h2>공정·설비 현황</h2><div className="process-flow"><div className="parallel-processes">{sorted.filter(m=>["OP20","OP30"].includes(m.processCode)).map(m=><MachineCard key={m.machineId} machine={m} selected={selected?.machineId===m.machineId} onClick={()=>setSelected(m)}/>)}</div><div style={{textAlign:"center",color:"#94a3b8"}}>합류 →</div>{sorted.filter(m=>!["OP20","OP30"].includes(m.processCode)).map(m=><MachineCard key={m.machineId} machine={m} selected={selected?.machineId===m.machineId} onClick={()=>setSelected(m)}/>)}</div></section>
-    <section className="mes-card"><div className="pipeline-heading"><div><h2>파이프라인 LOT 현황</h2><p>서로 다른 공정에서 동시에 진행 중인 LOT과 공정 대기 상태를 표시합니다.</p></div><strong>{(pipelineLots.data||[]).length}개 진행</strong></div>{!(pipelineLots.data||[]).length?<EmptyState message="현재 파이프라인에 투입된 LOT이 없습니다."/>:<div className="mes-table-wrap"><table className="mes-table pipeline-table"><thead><tr><th>작업지시</th><th>LOT</th><th>현재 공정</th><th>구분</th><th>투입</th><th>상태</th><th>시작</th></tr></thead><tbody>{pipelineLots.data.map(l=><tr key={l.lotId}><td>{l.orderNo}<br/><small>WO #{l.workOrderId}</small></td><td className="mono">{l.lotNo}</td><td><strong>{l.currentProcessCode||"-"}</strong><br/><small>{l.currentProcessName||"공정 대기"}</small></td><td>{l.lotType} · {l.productionRound}차</td><td>{l.inputQty}</td><td><StatusBadge value={l.status}/></td><td>{formatDate(l.startedAt)}</td></tr>)}</tbody></table></div>}</section>
-    <div className="mes-grid two"><section className="mes-card"><h2>활성 알람</h2>{alarmActionError&&<ErrorState error={alarmActionError}/>} {!(alarms.data||[]).length?<EmptyState message="활성 알람이 없습니다."/>:<div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>설비</th><th>공정/LOT</th><th>알람</th><th>레벨</th><th>발생</th><th></th></tr></thead><tbody>{alarms.data.map(a=><tr key={a.machineAlarmHistoryId}><td className="mono">{a.machineId}</td><td>{a.processCode||"-"}<br/><small className="mono">{a.lotNo||"-"}</small></td><td><strong>{a.alarmName||a.alarmCode}</strong><br/><small>{a.message}</small></td><td><StatusBadge value={a.alarmLevel}/></td><td>{formatDate(a.occurredAt)}</td><td>{canClear&&<button className="btn small" disabled={clearingId===a.machineAlarmHistoryId} onClick={()=>clearAlarm(a.machineAlarmHistoryId)}>{clearingId===a.machineAlarmHistoryId?"처리 중":"해제"}</button>}</td></tr>)}</tbody></table></div>}</section>
-    <section className="mes-card"><h2>선택 설비 상세</h2>{!selected?<EmptyState message="공정 카드를 선택하세요."/>:detailError?<ErrorState error={detailError}/>:!machineDetail?<LoadingState/>:<><dl className="detail-list"><dt>설비</dt><dd>{selected.machineName} ({selected.machineId})</dd><dt>공정</dt><dd>{selected.processName} ({selected.processCode})</dd><dt>상태</dt><dd><StatusBadge value={selected.status}/></dd><dt>담당자</dt><dd>{machineDetail.assignments.map(a=>`${a.workerName}(${a.assignmentRole})`).join(", ")||"미배정"}</dd></dl><h3 style={{marginTop:18}}>최근 상태 이력</h3>{machineDetail.history.slice(0,5).map(h=><div key={h.machineStatusHistoryId} style={{padding:"8px 0",borderTop:"1px solid #e2e8f0",fontSize:12}}><StatusBadge value={h.status}/> {h.lotNo||"-"} · {formatDate(h.recordedAt)}</div>)}</>}</section></div></>}
-    <section className="mes-card"><h2>생산 실적</h2><div className="mes-filter" style={{marginBottom:14}}><Field label="LOT"><input value={filters.lotNo} onChange={e=>setFilters({...filters,lotNo:e.target.value})}/></Field><Field label="공정"><select value={filters.processCode} onChange={e=>setFilters({...filters,processCode:e.target.value})}><option value="">전체</option>{order.map(v=><option key={v}>{v}</option>)}</select></Field><Field label="설비"><select value={filters.machineId} onChange={e=>setFilters({...filters,machineId:e.target.value})}><option value="">전체</option>{sorted.map(m=><option key={m.machineId}>{m.machineId}</option>)}</select></Field><button className="btn" onClick={()=>setApplied({...filters})}>조회</button></div>{logsLoading?<LoadingState/>:logsError?<ErrorState error={logsError} onRetry={logs.reload}/>:!(logs.data||[]).length?<EmptyState/>:<><div className="production-analytics"><div><div className="chart-heading"><div><h3>공정별 생산량</h3><p>완료된 생산 실적 기준</p></div><div className="chart-key"><span className="ok">OK</span><span className="ng">NG</span></div></div><StackedBarChart rows={productionSummary.processes}/></div><DonutChart ariaLabel="완료된 생산 실적 OK 및 NG 비율" centerValue={productionSummary.ok+productionSummary.ng?`${(productionSummary.ok/(productionSummary.ok+productionSummary.ng)*100).toFixed(1)}%`:"0%"} centerLabel="양품률" segments={[{label:"OK",value:productionSummary.ok,color:"#0ea5a4"},{label:"NG",value:productionSummary.ng,color:"#f43f5e"}]}/></div><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>공정/설비</th><th>투입</th><th>OK</th><th>NG</th><th>양품률</th><th>종료</th></tr></thead><tbody>{logs.data.map(l=><tr key={l.productionLogId}><td className="mono">{l.lotNo}</td><td>{l.processName}<br/><span className="mono">{l.processCode} · {l.machineId}</span></td><td>{l.inputQty}</td><td>{l.okQty}</td><td>{l.ngQty}</td><td>{l.inputQty?`${(l.okQty/l.inputQty*100).toFixed(1)}%`:"-"}</td><td>{formatDate(l.endedAt)}</td></tr>)}</tbody></table></div></>}</section>
-  </div>
+export default function ProductionPage() {
+  const machines = useApiData(MesApi.getMachines, []);
+  const pipelineLots = useApiData(MesApi.getPipelineLots, []);
+  const [selectedMachineId, setSelectedMachineId] = useState("");
+  const [assignments, setAssignments] = useState(null);
+  const [detailError, setDetailError] = useState(null);
+  const [updatedAt, setUpdatedAt] = useState(new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      machines.reload();
+      pipelineLots.reload();
+      setUpdatedAt(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [machines.reload, pipelineLots.reload]);
+
+  useEffect(() => {
+    if (!selectedMachineId) {
+      setAssignments(null);
+      return;
+    }
+    setDetailError(null);
+    setAssignments(null);
+    MesApi.getMachineAssignments(selectedMachineId)
+      .then((response) => setAssignments(response.data || []))
+      .catch(setDetailError);
+  }, [selectedMachineId]);
+
+  const sorted = useMemo(() => [...(machines.data || [])].sort(
+    (left, right) => processOrder.indexOf(left.processCode) - processOrder.indexOf(right.processCode)
+  ), [machines.data]);
+  const machineByProcess = useMemo(() => Object.fromEntries(
+    sorted.map((machine) => [machine.processCode, machine])
+  ), [sorted]);
+  const selected = sorted.find((machine) => machine.machineId === selectedMachineId) || null;
+  const loading = (machines.loading && machines.data === null)
+    || (pipelineLots.loading && pipelineLots.data === null);
+  const error = (machines.data === null && machines.error)
+    || (pipelineLots.data === null && pipelineLots.error);
+  const reload = () => {
+    machines.reload();
+    pipelineLots.reload();
+    setUpdatedAt(new Date());
+  };
+
+  return <div className="mes-page production-monitor-page">
+    <PageHeader
+      title="생산 모니터링"
+      description="병렬 선행 공정부터 완제품 포장까지 설비와 LOT 진행 상태를 실시간으로 확인합니다."
+      actions={<><span className="live-indicator">● 1초 자동 갱신</span><button className="btn secondary" onClick={reload}>지금 갱신</button></>}
+    />
+
+    {loading ? <LoadingState/> : error ? <ErrorState error={error} onRetry={reload}/> : <>
+      <section className="mes-card live-process-panel">
+        <div className="live-process-heading">
+          <div>
+            <h2><span className="material-symbols-outlined" aria-hidden="true">precision_manufacturing</span>실시간 생산 공정 현황</h2>
+            <p>{formatMonitorTime(updatedAt)} 기준</p>
+          </div>
+          <ProcessLegend/>
+        </div>
+
+        <div className="live-process-scroll">
+          <div className="live-process-flow" aria-label="EV Relay 생산 공정 흐름">
+            <div className="live-parallel-stack">
+            {["OP20", "OP30"].map((processCode) => <MachineCard
+              compact
+              key={processCode}
+              machine={machineByProcess[processCode] || placeholderMachine(processCode)}
+              selected={selectedMachineId === machineByProcess[processCode]?.machineId}
+              onClick={() => machineByProcess[processCode] && setSelectedMachineId(machineByProcess[processCode].machineId)}
+            />)}
+          </div>
+
+          <div className="parallel-merge" aria-hidden="true">
+            <span>병렬 공정 완료</span>
+          </div>
+
+          {sequentialProcessCodes.map((processCode, index) => <React.Fragment key={processCode}>
+            <MachineCard
+              machine={machineByProcess[processCode] || placeholderMachine(processCode)}
+              selected={selectedMachineId === machineByProcess[processCode]?.machineId}
+              onClick={() => machineByProcess[processCode] && setSelectedMachineId(machineByProcess[processCode].machineId)}
+            />
+            {index < sequentialProcessCodes.length - 1 && <div className="process-arrow" aria-hidden="true">→</div>}
+          </React.Fragment>)}
+          </div>
+        </div>
+      </section>
+
+      <div className="mes-grid two">
+        <section className="mes-card">
+          <div className="pipeline-heading"><div><h2>파이프라인 LOT 현황</h2><p>현재 생산 중이거나 설비 복구를 기다리는 LOT입니다.</p></div><strong>{(pipelineLots.data || []).length}개 진행</strong></div>
+          {!(pipelineLots.data || []).length ? <EmptyState message="현재 파이프라인에 투입된 LOT이 없습니다."/> :
+            <div className="mes-table-wrap"><table className="mes-table pipeline-table">
+              <thead><tr><th>작업지시</th><th>LOT</th><th>현재 공정</th><th>구분</th><th>투입</th><th>상태</th><th>시작</th></tr></thead>
+              <tbody>{pipelineLots.data.map((lot) => <tr key={lot.lotId}>
+                <td>{lot.orderNo}<br/><small>WO #{lot.workOrderId}</small></td>
+                <td className="mono">{lot.lotNo}</td>
+                <td><strong>{lot.currentProcessCode || "-"}</strong><br/><small>{lot.currentProcessName || "공정 대기"}</small></td>
+                <td>{lot.lotType} · {lot.productionRound}차</td>
+                <td>{lot.inputQty}</td>
+                <td><StatusBadge value={lot.status}/></td>
+                <td>{formatDate(lot.startedAt)}</td>
+              </tr>)}</tbody>
+            </table></div>}
+        </section>
+
+        <section className="mes-card">
+          <h2>선택 설비 배정 정보</h2>
+          {!selected ? <EmptyState message="공정 카드를 선택하세요."/> : detailError ? <ErrorState error={detailError}/> : assignments === null ? <LoadingState/> : <>
+            <dl className="detail-list">
+              <dt>설비</dt><dd>{selected.machineName} ({selected.machineId})</dd>
+              <dt>공정</dt><dd>{selected.processName} ({selected.processCode})</dd>
+              <dt>현재 상태</dt><dd><StatusBadge value={selected.status}/></dd>
+              <dt>현재 LOT</dt><dd>{selected.currentLotNo || "-"}</dd>
+              <dt>담당자</dt><dd>{assignments.map((assignment) => `${assignment.workerName}(${assignment.assignmentRole})`).join(", ") || "미배정"}</dd>
+            </dl>
+          </>}
+        </section>
+      </div>
+    </>}
+  </div>;
 }
 
-export function MachineCard({machine,onClick,selected}){const hasProgress=machine.targetQty>0;return <div className={`mes-card machine-card ${selected?"selected":""}`} onClick={onClick}><span className="machine-code">{machine.processCode} · {machine.machineId}</span><div className="machine-title">{machine.processName||machine.machineName}</div>{hasProgress&&<div className="machine-progress"><div><span>{machine.currentLotNo}</span><strong>{machine.processedQty} / {machine.targetQty} ({machine.progressPercent}%)</strong></div><div className="progress-track" role="progressbar" aria-label={`${machine.processName} 진행률`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={machine.progressPercent}><span style={{width:`${machine.progressPercent}%`}}/></div></div>}<div className="machine-meta"><StatusBadge value={machine.status}/><span style={{fontSize:11,color:"#64748b"}}>상세 보기</span></div></div>}
+export function MachineCard({ machine, onClick, selected, compact = false }) {
+  const hasProgress = Number(machine.targetQty) > 0;
+  const status = String(machine.status || "IDLE").toUpperCase();
+  const interactive = typeof onClick === "function" && !machine.placeholder;
+  return <button
+    type="button"
+    className={`live-machine-card ${compact ? "compact" : ""} status-${status.toLowerCase()} ${selected ? "selected" : ""}`}
+    onClick={onClick}
+    disabled={!interactive}
+    aria-pressed={selected}
+  >
+    <span className={`live-machine-status-dot status-${status.toLowerCase()}`} aria-hidden="true"/>
+    <span className="live-machine-code">{machine.processCode}</span>
+    <strong>{machine.machineId || "설비 미등록"}</strong>
+    <small>{machine.processName || machine.machineName || "공정 정보 없음"}</small>
+    <span className="live-machine-lot">{machine.currentLotNo || "대기 중"}</span>
+    {hasProgress && <span className="live-machine-progress">
+      <span className="live-progress-caption"><span>{machine.processedQty || 0} / {machine.targetQty} ({machine.progressPercent || 0}%)</span></span>
+      <span className="progress-track" role="progressbar" aria-label={`${machine.processName} 진행률`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={machine.progressPercent || 0}><span style={{ width: `${machine.progressPercent || 0}%` }}/></span>
+    </span>}
+    <span className="live-machine-badge"><StatusBadge value={status}/></span>
+  </button>;
+}
+
+function ProcessLegend() {
+  return <div className="process-status-legend" aria-label="설비 상태 범례">
+    {["RUNNING", "IDLE", "ERROR"].map((status) => <span key={status}><i className={`status-dot status-${status.toLowerCase()}`}/>{status}</span>)}
+  </div>;
+}
+
+function placeholderMachine(processCode) {
+  return {
+    placeholder: true,
+    processCode,
+    machineId: "-",
+    processName: "설비 정보 없음",
+    status: "IDLE",
+  };
+}
+
+function formatMonitorTime(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}. ${date.getMonth() + 1}. ${date.getDate()}. ${pad(date.getHours())}시 ${pad(date.getMinutes())}분 ${pad(date.getSeconds())}초`;
+}

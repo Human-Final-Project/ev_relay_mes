@@ -207,14 +207,14 @@ static ProtocolMessage parse_runtime_action(const L1RuntimeAction *action)
 
 static void test_error_resume_flow_is_accepted_by_l2(void)
 {
-    const L1DeviceConfig *device = l1_device_config_find("EQ-WIND-01");
+    const L1DeviceConfig *device = l1_device_config_find("EQ-SEAL-01");
     L1MachineRuntime runtime;
     L1RuntimeActions actions;
     L1Command command = {
         301,
         L1_COMMAND_START,
-        "EQ-WIND-01",
-        "OP20",
+        "EQ-SEAL-01",
+        "OP60",
         "EVR-LOT-003",
         10
     };
@@ -233,7 +233,7 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
         CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(runtime.state == L1_RUNTIME_ERROR_PAUSED);
-    CHECK(actions.count == 4);
+    CHECK(actions.count == 5);
 
     message = parse_runtime_action(&actions.actions[0]);
     CHECK(message.type == PROTOCOL_EVENT_JUDGMENT);
@@ -244,11 +244,15 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
     CHECK(message.data.inspection.unit_seq == 4);
 
     message = parse_runtime_action(&actions.actions[2]);
-    CHECK(message.type == PROTOCOL_EVENT_ALARM);
-    CHECK(strcmp(message.data.alarm.alarm_code, "WIRE_BREAK") == 0);
-    CHECK(strcmp(message.data.alarm.alarm_level, "ERROR") == 0);
+    CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
+    CHECK(message.data.inspection.unit_seq == 4);
 
     message = parse_runtime_action(&actions.actions[3]);
+    CHECK(message.type == PROTOCOL_EVENT_ALARM);
+    CHECK(strcmp(message.data.alarm.alarm_code, "VACUUM_PUMP_ERROR") == 0);
+    CHECK(strcmp(message.data.alarm.alarm_level, "ERROR") == 0);
+
+    message = parse_runtime_action(&actions.actions[4]);
     CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
     CHECK(strcmp(message.data.machine_status.status, "ERROR") == 0);
 
@@ -271,13 +275,15 @@ static void test_error_resume_flow_is_accepted_by_l2(void)
         CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
     }
     CHECK(runtime.state == L1_RUNTIME_IDLE);
-    CHECK(actions.count == 3);
+    CHECK(actions.count == 4);
     message = parse_runtime_action(&actions.actions[0]);
     CHECK(message.type == PROTOCOL_EVENT_JUDGMENT);
     CHECK(message.data.judgment.unit_seq == 10);
     message = parse_runtime_action(&actions.actions[1]);
     CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
     message = parse_runtime_action(&actions.actions[2]);
+    CHECK(message.type == PROTOCOL_EVENT_INSPECTION);
+    message = parse_runtime_action(&actions.actions[3]);
     CHECK(message.type == PROTOCOL_EVENT_MACHINE_STATUS);
 }
 

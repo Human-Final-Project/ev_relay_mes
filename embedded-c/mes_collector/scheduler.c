@@ -87,6 +87,47 @@ static void release_failed_command(const ProtocolCommand *command,
     fflush(stderr);
 }
 
+static void report_collector_status(void)
+{
+    const char *connected_machines[COLLECTOR_MAX_L1_CONNECTIONS];
+    size_t connected_count = 0U;
+    size_t index;
+    int http_status = 0;
+    ApiClientResult result;
+    static ApiClientResult previous_result = API_CLIENT_INVALID_ARGUMENT;
+    static size_t previous_count = (size_t)-1;
+
+    for (index = 0U; index < COLLECTOR_MAX_L1_CONNECTIONS; ++index) {
+        if (collector_is_machine_connected(configured_machines[index])) {
+            connected_machines[connected_count++] = configured_machines[index];
+        }
+    }
+
+    result = api_client_send_collector_heartbeat(
+        connected_machines,
+        connected_count,
+        COLLECTOR_MAX_L1_CONNECTIONS,
+        &http_status);
+
+    if (result == API_CLIENT_OK) {
+        if (previous_result != API_CLIENT_OK || previous_count != connected_count) {
+            printf("[L2 Status] Backend heartbeat OK connected=%u/%d\n",
+                   (unsigned int)connected_count,
+                   COLLECTOR_MAX_L1_CONNECTIONS);
+            fflush(stdout);
+        }
+    } else if (previous_result != result) {
+        fprintf(stderr,
+                "[L2 Status] Backend heartbeat failed result=%s http=%d\n",
+                api_client_result_name(result),
+                http_status);
+        fflush(stderr);
+    }
+
+    previous_result = result;
+    previous_count = connected_count;
+}
+
 static void dispatch_commands_for_machine(const char *machine_id)
 {
     ProtocolCommand commands[API_CLIENT_MAX_COMMANDS];
@@ -162,6 +203,9 @@ static void scheduler_worker(void *context)
              scheduler_running && index < COLLECTOR_MAX_L1_CONNECTIONS;
              ++index) {
             dispatch_commands_for_machine(configured_machines[index]);
+        }
+        if (scheduler_running) {
+            report_collector_status();
         }
         while (scheduler_running
                && waited < COMMAND_POLL_INTERVAL_SECONDS * 1000U) {

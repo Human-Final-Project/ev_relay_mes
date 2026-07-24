@@ -7,19 +7,13 @@ jest.mock("../api/MesApi", () => ({
   default: {
     getMachines: jest.fn(),
     getPipelineLots: jest.fn(),
-    getMachineAlarms: jest.fn(),
-    getProductionLogs: jest.fn(),
-    getMachineStatusHistory: jest.fn(),
     getMachineAssignments: jest.fn(),
-    clearMachineAlarm: jest.fn(),
   },
 }));
 
 beforeEach(() => {
   MesApi.getMachines.mockResolvedValue({ data: [] });
   MesApi.getPipelineLots.mockResolvedValue({ data: [] });
-  MesApi.getMachineAlarms.mockResolvedValue({ data: [] });
-  MesApi.getProductionLogs.mockResolvedValue({ data: [] });
 });
 
 test("가동 중인 공정의 LOT와 진행률을 표시한다", () => {
@@ -41,29 +35,14 @@ test("가동 중인 공정의 LOT와 진행률을 표시한다", () => {
     .toHaveAttribute("aria-valuenow", "40");
 });
 
-test("생산 실적은 완료 상태만 요청하고 상태 선택 항목을 표시하지 않는다", async () => {
-  MesApi.getProductionLogs.mockResolvedValue({ data: [{
-    productionLogId: 1,
-    lotNo: "LOT-001",
-    processCode: "OP80",
-    processName: "마킹/포장",
-    machineId: "EQ-PACK-01",
-    inputQty: 10,
-    okQty: 9,
-    ngQty: 1,
-    status: "COMPLETED",
-    endedAt: "2026-07-22T10:00:00",
-  }] });
+test("활성 알람과 생산 실적을 생산 모니터링에서 분리한다", async () => {
   render(<ProductionPage currentUser={{ role: "VIEWER" }} />);
 
-  await waitFor(() => expect(MesApi.getProductionLogs)
-    .toHaveBeenCalledWith({ status: "COMPLETED" }));
-  expect(screen.queryByLabelText("상태")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "생산 실적" })).toBeInTheDocument();
-  expect(screen.queryByRole("columnheader", { name: "상태" })).not.toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "실시간 생산 공정 현황" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "활성 알람" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "생산 실적" })).not.toBeInTheDocument();
+  expect(screen.queryByText("최근 상태 이력")).not.toBeInTheDocument();
 });
-
-
 test("서로 다른 공정의 여러 LOT을 파이프라인 현황에 표시한다", async () => {
   MesApi.getPipelineLots.mockResolvedValue({ data: [
     { lotId: 1, lotNo: "LOT-001", orderNo: "WO-001", workOrderId: 1, currentProcessCode: "OP60", currentProcessName: "실링", lotType: "INITIAL", productionRound: 1, inputQty: 10, status: "RUNNING", startedAt: "2026-07-22T10:00:00" },

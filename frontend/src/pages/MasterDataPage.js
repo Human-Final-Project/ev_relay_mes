@@ -1,30 +1,131 @@
 import React, { useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader } from "../components/MesComponents";
 
-export default function MasterDataPage({currentUser}){
-  const [tab,setTab]=useState("items"); const [itemForm,setItemForm]=useState(null); const [bomForm,setBomForm]=useState(null); const [error,setError]=useState(null); const canEdit=["ADMIN","MANAGER"].includes(currentUser?.role);
-  const items=useApiData(MesApi.getItems,[]), boms=useApiData(MesApi.getBoms,[]), processes=useApiData(MesApi.getProcesses,[]), defects=useApiData(MesApi.getDefectCodes,[]), alarms=useApiData(MesApi.getAlarmCodes,[]);
-  const itemRows=items.data||[];
-  const bomSelectableItems=bomForm?.bomId?itemRows:itemRows.filter(item=>item.useYn==="Y");
-  const parentItems=bomSelectableItems.filter(item=>item.itemType!=="RM"||item.itemCode===bomForm?.parentItemCode);
-  const childItems=bomSelectableItems.filter(item=>item.itemCode!==bomForm?.parentItemCode);
-  const validBom=!!bomForm?.parentItemCode&&!!bomForm?.childItemCode&&bomForm.parentItemCode!==bomForm.childItemCode&&Number(bomForm.quantity)>0&&!!bomForm.processCode;
-  const active={items,boms,processes,codes:processes}[tab];
-  const run=async(action,reload,close)=>{setError(null);try{await action();await reload();close()}catch(e){setError(e)}};
-  const saveItem=()=>run(()=>itemForm.originalCode?MesApi.updateItem(itemForm.originalCode,{itemCode:itemForm.itemCode,itemName:itemForm.itemName,itemType:itemForm.itemType}):MesApi.createItem(itemForm),items.reload,()=>setItemForm(null));
-  const saveBom=()=>{const data={parentItemCode:bomForm.parentItemCode,childItemCode:bomForm.childItemCode,quantity:Number(bomForm.quantity),processCode:bomForm.processCode};return run(()=>bomForm.bomId?MesApi.updateBom(bomForm.bomId,data):MesApi.createBom(data),boms.reload,()=>setBomForm(null))};
-  return <div className="mes-page"><PageHeader title="기준정보" description="품목, BOM, 공정 및 코드 마스터를 관리합니다." actions={<button className="btn secondary" onClick={active.reload}>새로고침</button>}/><div className="tabs">{[["items","품목"],["boms","BOM"],["processes","공정"],["codes","불량·알람 코드"]].map(([k,l])=><button key={k} className={`tab ${tab===k?"active":""}`} onClick={()=>setTab(k)}>{l}</button>)}</div>
-    {tab==="items"&&<section className="mes-card"><div className="mes-page-header"><h2>품목</h2>{canEdit&&<button className="btn" onClick={()=>setItemForm({itemCode:"",itemName:"",itemType:"RM"})}>품목 등록</button>}</div>{items.loading?<LoadingState/>:items.error?<ErrorState error={items.error}/>:<ItemTable rows={items.data} canEdit={canEdit} onEdit={r=>setItemForm({...r,originalCode:r.itemCode})} onActive={(r,a)=>run(()=>MesApi.setItemActive(r.itemCode,a),items.reload,()=>{})}/>}</section>}
-    {tab==="boms"&&<section className="mes-card"><div className="mes-page-header"><div><h2>BOM 구성</h2><p style={{margin:"4px 0 0",color:"#64748b",fontSize:13}}>상위 품목 1개를 생산할 때 필요한 구성품 한 줄을 추가·관리합니다.</p></div>{canEdit&&<button className="btn" disabled={items.loading||processes.loading} onClick={()=>setBomForm({parentItemCode:"",childItemCode:"",quantity:"1",processCode:""})}>구성품 추가</button>}</div>{boms.loading?<LoadingState/>:boms.error?<ErrorState error={boms.error}/>:<BomTable rows={boms.data} items={itemRows} canEdit={canEdit} onEdit={setBomForm} onActive={(r,a)=>run(()=>MesApi.setBomActive(r.bomId,a),boms.reload,()=>{})}/>}</section>}
-    {tab==="processes"&&<section className="mes-card"><h2>공정</h2>{processes.loading?<LoadingState/>:<SimpleTable heads={["순서","공정 코드","공정명","설명"]} rows={(processes.data||[]).map(r=>[r.processOrder,r.processCode,r.processName,r.description||"-"])}/>}</section>}
-    {tab==="codes"&&<div className="mes-grid two"><section className="mes-card"><h2>불량 코드</h2><SimpleTable heads={["코드","불량명","공정","설명"]} rows={(defects.data||[]).map(r=>[r.defectCode,r.defectName,r.processName||r.processCode,r.description||"-"])}/></section><section className="mes-card"><h2>알람 코드</h2><SimpleTable heads={["코드","알람명","설비 유형","설명"]} rows={(alarms.data||[]).map(r=>[r.alarmCode,r.alarmName,r.machineType,r.description||"-"])}/></section></div>}
-    {error&&<ErrorState error={error}/>} {itemForm&&<Modal title={itemForm.originalCode?"품목 수정":"품목 등록"} onClose={()=>setItemForm(null)} footer={<><button className="btn secondary" onClick={()=>setItemForm(null)}>취소</button><button className="btn" onClick={saveItem}>저장</button></>}><div className="mes-form-grid"><Field label="품목 코드"><input value={itemForm.itemCode} disabled={!!itemForm.originalCode} onChange={e=>setItemForm({...itemForm,itemCode:e.target.value})}/></Field><Field label="품목명"><input value={itemForm.itemName} onChange={e=>setItemForm({...itemForm,itemName:e.target.value})}/></Field><Field label="유형"><select value={itemForm.itemType} onChange={e=>setItemForm({...itemForm,itemType:e.target.value})}><option>RM</option><option>SA</option><option>FG</option></select></Field></div>{error&&<ErrorState error={error}/>}</Modal>}
-    {bomForm&&<Modal title={bomForm.bomId?"BOM 구성품 수정":"BOM 구성품 추가"} onClose={()=>setBomForm(null)} footer={<><button className="btn secondary" onClick={()=>setBomForm(null)}>취소</button><button className="btn" disabled={!validBom} onClick={saveBom}>저장</button></>}><div className="mes-form-grid"><Field label="상위 품목"><select value={bomForm.parentItemCode} onChange={e=>setBomForm({...bomForm,parentItemCode:e.target.value,childItemCode:e.target.value===bomForm.childItemCode?"":bomForm.childItemCode})}><option value="">반제품·완제품 선택</option>{parentItems.map(item=><option key={item.itemCode} value={item.itemCode}>{itemLabel(item)}</option>)}</select></Field><Field label="하위 품목"><select value={bomForm.childItemCode} onChange={e=>setBomForm({...bomForm,childItemCode:e.target.value})}><option value="">구성품 선택</option>{childItems.map(item=><option key={item.itemCode} value={item.itemCode}>{itemLabel(item)}</option>)}</select></Field><Field label="필요 수량"><input type="number" min="0.001" step="0.001" value={bomForm.quantity} onChange={e=>setBomForm({...bomForm,quantity:e.target.value})}/></Field><Field label="적용 공정"><select value={bomForm.processCode} onChange={e=>setBomForm({...bomForm,processCode:e.target.value})}><option value="">공정 선택</option>{(processes.data||[]).map(p=><option key={p.processCode} value={p.processCode}>{p.processCode} · {p.processName}</option>)}</select></Field></div><p style={{marginBottom:0,color:"#64748b",fontSize:12}}>원자재(RM)는 상위 품목에서 제외되며, 상위 품목과 같은 품목은 구성품으로 선택할 수 없습니다.</p>{error&&<ErrorState error={error}/>}</Modal>}
-  </div>
+export default function MasterDataPage({ currentUser }) {
+  const [tab, setTab] = useState("boms");
+  const [bomForm, setBomForm] = useState(null);
+  const [error, setError] = useState(null);
+  const canEdit = ["ADMIN", "MANAGER"].includes(currentUser?.role);
+  const items = useApiData(MesApi.getItems, []);
+  const boms = useApiData(MesApi.getBoms, []);
+  const processes = useApiData(MesApi.getProcesses, []);
+  const defects = useApiData(MesApi.getDefectCodes, []);
+  const alarms = useApiData(MesApi.getAlarmCodes, []);
+
+  const itemRows = items.data || [];
+  const selectableItems = bomForm?.bomId ? itemRows : itemRows.filter((item) => item.useYn === "Y");
+  const parentItems = selectableItems.filter((item) => item.itemType !== "RM" || item.itemCode === bomForm?.parentItemCode);
+  const childItems = selectableItems.filter((item) => item.itemCode !== bomForm?.parentItemCode);
+  const validBom = Boolean(
+    bomForm?.parentItemCode
+      && bomForm?.childItemCode
+      && bomForm.parentItemCode !== bomForm.childItemCode
+      && Number(bomForm.quantity) > 0
+      && bomForm.processCode
+  );
+  const active = tab === "boms" ? boms : tab === "processes" ? processes : defects;
+
+  const run = async (action, reload, close) => {
+    setError(null);
+    try {
+      await action();
+      await reload();
+      close();
+    } catch (requestError) {
+      setError(requestError);
+    }
+  };
+
+  const saveBom = () => {
+    const data = {
+      parentItemCode: bomForm.parentItemCode,
+      childItemCode: bomForm.childItemCode,
+      quantity: Number(bomForm.quantity),
+      processCode: bomForm.processCode,
+    };
+    return run(
+      () => bomForm.bomId ? MesApi.updateBom(bomForm.bomId, data) : MesApi.createBom(data),
+      boms.reload,
+      () => setBomForm(null)
+    );
+  };
+
+  return <div className="mes-page">
+    <PageHeader title="기준정보" description="BOM, 공정, 불량·알람 코드 마스터를 관리합니다. 품목 등록은 원자재 관리 메뉴에서 처리합니다." actions={<button className="btn secondary" onClick={active.reload}>새로고침</button>}/>
+
+    <div className="tabs">
+      {[["boms", "BOM"], ["processes", "공정"], ["codes", "불량·알람 코드"]].map(([key, label]) =>
+        <button key={key} className={`tab ${tab === key ? "active" : ""}`} onClick={() => setTab(key)}>{label}</button>
+      )}
+    </div>
+
+    {tab === "boms" && <section className="mes-card">
+      <div className="mes-page-header">
+        <div><h2>BOM 구성</h2><p className="section-description">상위 품목 1개를 생산할 때 필요한 구성품과 적용 공정을 관리합니다.</p></div>
+        {canEdit && <button className="btn" disabled={items.loading || processes.loading} onClick={() => setBomForm({ parentItemCode: "", childItemCode: "", quantity: "1", processCode: "" })}>구성품 추가</button>}
+      </div>
+      {boms.loading ? <LoadingState/> : boms.error ? <ErrorState error={boms.error}/> : <BomTable rows={boms.data} items={itemRows} canEdit={canEdit} onEdit={setBomForm} onActive={(row, activeValue) => run(() => MesApi.setBomActive(row.bomId, activeValue), boms.reload, () => {})}/>} 
+    </section>}
+
+    {tab === "processes" && <section className="mes-card">
+      <h2>공정</h2>
+      {processes.loading ? <LoadingState/> : <SimpleTable heads={["순서", "공정 코드", "공정명", "설명"]} rows={(processes.data || []).map((row) => [row.processOrder, row.processCode, row.processName, row.description || "-"])}/>} 
+    </section>}
+
+    {tab === "codes" && <div className="mes-grid two">
+      <section className="mes-card"><h2>불량 코드</h2><SimpleTable heads={["코드", "불량명", "공정", "설명"]} rows={(defects.data || []).map((row) => [row.defectCode, row.defectName, row.processName || row.processCode, row.description || "-"])}/></section>
+      <section className="mes-card"><h2>알람 코드</h2><SimpleTable heads={["코드", "알람명", "설비 유형", "설명"]} rows={(alarms.data || []).map((row) => [row.alarmCode, row.alarmName, row.machineType, row.description || "-"])}/></section>
+    </div>}
+
+    {error && <ErrorState error={error}/>} 
+    {bomForm && <Modal title={bomForm.bomId ? "BOM 구성품 수정" : "BOM 구성품 추가"} onClose={() => setBomForm(null)} footer={<><button className="btn secondary" onClick={() => setBomForm(null)}>취소</button><button className="btn" disabled={!validBom} onClick={saveBom}>저장</button></>}>
+      <div className="mes-form-grid">
+        <Field label="상위 품목">
+          <select value={bomForm.parentItemCode} onChange={(event) => setBomForm({ ...bomForm, parentItemCode: event.target.value, childItemCode: event.target.value === bomForm.childItemCode ? "" : bomForm.childItemCode })}>
+            <option value="">반제품·완제품 선택</option>
+            {parentItems.map((item) => <option key={item.itemCode} value={item.itemCode}>{itemLabel(item)}</option>)}
+          </select>
+        </Field>
+        <Field label="하위 품목">
+          <select value={bomForm.childItemCode} onChange={(event) => setBomForm({ ...bomForm, childItemCode: event.target.value })}>
+            <option value="">구성품 선택</option>
+            {childItems.map((item) => <option key={item.itemCode} value={item.itemCode}>{itemLabel(item)}</option>)}
+          </select>
+        </Field>
+        <Field label="필요 수량"><input type="number" min="0.001" step="0.001" value={bomForm.quantity} onChange={(event) => setBomForm({ ...bomForm, quantity: event.target.value })}/></Field>
+        <Field label="적용 공정">
+          <select value={bomForm.processCode} onChange={(event) => setBomForm({ ...bomForm, processCode: event.target.value })}>
+            <option value="">공정 선택</option>
+            {(processes.data || []).map((process) => <option key={process.processCode} value={process.processCode}>{process.processCode} · {process.processName}</option>)}
+          </select>
+        </Field>
+      </div>
+      <p className="form-help">원자재(RM)는 상위 품목에서 제외되며, 상위 품목과 같은 품목은 구성품으로 선택할 수 없습니다.</p>
+      {error && <ErrorState error={error}/>} 
+    </Modal>}
+  </div>;
 }
-function ItemTable({rows=[],canEdit,onEdit,onActive}){if(!rows.length)return <EmptyState/>;return <SimpleTable heads={["품목 코드","품목명","유형","사용","작업"]} rows={rows.map(r=>[r.itemCode,r.itemName,<StatusBadge value={r.itemType}/>,r.useYn,canEdit&&<div className="mes-actions"><button className="btn small secondary" onClick={()=>onEdit(r)}>수정</button><button className="btn small secondary" onClick={()=>onActive(r,r.useYn!=="Y")}>{r.useYn==="Y"?"비활성":"활성"}</button></div>])}/>}
-function BomTable({rows=[],items=[],canEdit,onEdit,onActive}){if(!rows.length)return <EmptyState/>;const names=Object.fromEntries(items.map(item=>[item.itemCode,item.itemName]));return <SimpleTable heads={["상위 품목","하위 품목","수량","공정","사용","작업"]} rows={rows.map(r=>[<><strong>{names[r.parentItemCode]||"-"}</strong><br/><span className="mono">{r.parentItemCode}</span></>,<><strong>{names[r.childItemCode]||"-"}</strong><br/><span className="mono">{r.childItemCode}</span></>,r.quantity,r.processCode,r.useYn,canEdit&&<div className="mes-actions"><button className="btn small secondary" onClick={()=>onEdit({...r})}>수정</button><button className="btn small secondary" onClick={()=>onActive(r,r.useYn!=="Y")}>{r.useYn==="Y"?"비활성":"활성"}</button></div>])}/>}
-function itemLabel(item){return `${item.itemCode} · ${item.itemName} (${item.itemType})${item.useYn==="Y"?"":" · 비활성"}`}
-function SimpleTable({heads,rows=[]}){if(!rows.length)return <EmptyState/>;return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>}
+
+function BomTable({ rows = [], items = [], canEdit, onEdit, onActive }) {
+  if (!rows.length) return <EmptyState/>;
+  const names = Object.fromEntries(items.map((item) => [item.itemCode, item.itemName]));
+  return <SimpleTable heads={["상위 품목", "하위 품목", "수량", "적용 공정", "사용", "작업"]} rows={rows.map((row) => [
+    <><strong>{names[row.parentItemCode] || "-"}</strong><br/><span className="mono">{row.parentItemCode}</span></>,
+    <><strong>{names[row.childItemCode] || "-"}</strong><br/><span className="mono">{row.childItemCode}</span></>,
+    row.quantity,
+    row.processCode,
+    row.useYn,
+    canEdit && <div className="mes-actions"><button className="btn small secondary" onClick={() => onEdit({ ...row })}>수정</button><button className="btn small secondary" onClick={() => onActive(row, row.useYn !== "Y")}>{row.useYn === "Y" ? "비활성" : "활성"}</button></div>,
+  ])}/>;
+}
+
+function itemLabel(item) {
+  return `${item.itemCode} · ${item.itemName} (${item.itemType})${item.useYn === "Y" ? "" : " · 비활성"}`;
+}
+
+function SimpleTable({ heads, rows = [] }) {
+  if (!rows.length) return <EmptyState/>;
+  return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cellIndex) => <td key={cellIndex}>{value}</td>)}</tr>)}</tbody></table></div>;
+}

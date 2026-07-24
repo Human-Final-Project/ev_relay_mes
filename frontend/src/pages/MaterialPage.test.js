@@ -8,6 +8,9 @@ jest.mock("../api/MesApi",()=>({
     getMaterialLots:jest.fn(),
     getItems:jest.fn(),
     createMaterialLot:jest.fn(),
+    createItem:jest.fn(),
+    updateItem:jest.fn(),
+    setItemActive:jest.fn(),
   },
 }));
 
@@ -24,13 +27,13 @@ beforeEach(()=>{
 
 test("자재 입고 품목을 활성 원자재 선택 목록으로 표시한다",async()=>{
   render(<MaterialPage currentUser={{memberId:1,role:"OPERATOR"}}/>);
-  const inboundButton=await screen.findByRole("button",{name:"자재 입고"});
+  const inboundButton=await screen.findByRole("button",{name:"원자재 입고"});
   await waitFor(()=>expect(inboundButton).toBeEnabled());
   fireEvent.click(inboundButton);
 
-  const material=screen.getByLabelText("자재(코드)");
+  const material=screen.getByLabelText("품목(코드)");
   expect(material).toHaveTextContent("구리선 (RM-001)");
   expect(material).not.toHaveTextContent("RM-OLD");
-  expect(material).not.toHaveTextContent("SA-001");
+  expect(material).toHaveTextContent("반제품 (SA-001)");
   expect(material).not.toHaveTextContent("FG-001");
 });

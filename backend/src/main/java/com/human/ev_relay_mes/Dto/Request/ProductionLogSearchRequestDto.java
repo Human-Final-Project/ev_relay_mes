@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class ProductionLogSearchRequestDto {
 
+    private Long workOrderId;
     private String lotNo;
     private String processCode;
     private String machineId;

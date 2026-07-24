@@ -27,6 +27,7 @@
 #define API_PATH_ALARM "/api/collector/machine-alarms"
 #define API_PATH_MACHINE_STATUS "/api/collector/machine-statuses"
 #define API_PATH_COMMAND_ACK "/api/collector/command-acks"
+#define API_PATH_COLLECTOR_HEARTBEAT "/api/collector/status-heartbeat"
 #define API_PATH_PENDING_COMMANDS "/api/collector/commands/pending"
 #define API_PATH_RELEASE_COMMAND_PREFIX "/api/collector/commands/"
 #define API_QUEUE_LINE_CAPACITY (API_CLIENT_PATH_CAPACITY + API_CLIENT_JSON_CAPACITY + 16)
@@ -1222,6 +1223,57 @@ static ApiClientResult api_client_post_with_retries(const char *path,
         }
     }
     return result;
+}
+
+ApiClientResult api_client_send_collector_heartbeat(
+    const char *const *machine_ids,
+    size_t machine_count,
+    size_t total_capacity,
+    int *http_status)
+{
+    char json[API_CLIENT_JSON_CAPACITY];
+    JsonBuilder builder;
+    size_t index;
+    int first = 1;
+
+    if ((machine_count > 0U && machine_ids == NULL)
+        || total_capacity == 0U
+        || machine_count > total_capacity) {
+        return API_CLIENT_INVALID_ARGUMENT;
+    }
+
+    builder.buffer = json;
+    builder.capacity = sizeof(json);
+    builder.length = 0U;
+    builder.failed = 0;
+    json[0] = '\0';
+
+    json_append_byte(&builder, '{');
+    json_append_field_name(&builder, "connectedMachineIds", &first);
+    json_append_byte(&builder, '[');
+    for (index = 0U; index < machine_count; ++index) {
+        if (machine_ids[index] == NULL || machine_ids[index][0] == '\0') {
+            return API_CLIENT_INVALID_ARGUMENT;
+        }
+        if (index > 0U) {
+            json_append_byte(&builder, ',');
+        }
+        json_append_string(&builder, machine_ids[index]);
+    }
+    json_append_byte(&builder, ']');
+    json_append_int_field(&builder,
+                          "totalCapacity",
+                          (int)total_capacity,
+                          &first);
+    json_append_byte(&builder, '}');
+
+    if (builder.failed) {
+        return API_CLIENT_BUFFER_TOO_SMALL;
+    }
+    return api_client_post_with_retries(
+        API_PATH_COLLECTOR_HEARTBEAT,
+        json,
+        http_status);
 }
 
 static int api_append_record(const char *file_name,

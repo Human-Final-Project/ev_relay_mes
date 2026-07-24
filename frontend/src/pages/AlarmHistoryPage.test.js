@@ -7,6 +7,7 @@ jest.mock("../api/MesApi", () => ({
   default: {
     getMachineAlarms: jest.fn(),
     getMachines: jest.fn(),
+    getProcesses: jest.fn(),
     getAlarmCodes: jest.fn(),
     clearMachineAlarm: jest.fn(),
   },
@@ -15,6 +16,7 @@ jest.mock("../api/MesApi", () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   MesApi.getMachines.mockResolvedValue({ data: [] });
+  MesApi.getProcesses.mockResolvedValue({ data: [] });
   MesApi.getAlarmCodes.mockResolvedValue({ data: [] });
   MesApi.getMachineAlarms.mockResolvedValue({ data: [{
     machineAlarmHistoryId: 1,

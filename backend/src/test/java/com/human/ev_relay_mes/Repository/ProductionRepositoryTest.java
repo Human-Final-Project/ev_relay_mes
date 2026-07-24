@@ -57,13 +57,16 @@ class ProductionRepositoryTest extends RepositoryTestSupport {
                 order.getWorkOrderId(), Lot.Status.COMPLETED)).isEqualTo(30L);
         assertThat(lotRepository.sumOkQtyByWorkOrderIdAndStatus(
                 order.getWorkOrderId(), Lot.Status.COMPLETED)).isEqualTo(25L);
+        assertThat(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                order.getWorkOrderId(), List.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED)))
+                .isEqualTo(25L);
         assertThat(lotRepository.findMaxProductionRoundByWorkOrderId(
                 order.getWorkOrderId())).isEqualTo(1);
     }
 
 
     @Test
-    void 파이프라인_후보는_작업지시와_생산차수_FIFO로_잠금조회한다() {
+    void 파이프라인_후보는_LOT_생성순서_FIFO로_잠금조회한다() {
         Item product = item("FG-PIPE", Item.ItemType.FG);
         Process op60 = process("OP60-PIPE", 60);
         WorkOrder firstOrder = workOrder("WO-PIPE-001", product, WorkOrder.Status.RUNNING, 10);

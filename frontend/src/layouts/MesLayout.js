@@ -159,8 +159,14 @@ const MesLayout = ({ onLogout, currentUser }) => {
   useEffect(() => {
     let active = true;
     const loadStatus = () => MesApi.getCollectorStatus()
-      .then((response) => active && setCollectorStatus(response.data))
-      .catch(() => active && setCollectorStatus((previous) => previous ? {...previous,l2Online:false,connectedL1Count:0} : null));
+      .then((response) => active && setCollectorStatus({ ...response.data, statusAvailable: true }))
+      .catch(() => active && setCollectorStatus({
+        statusAvailable: false,
+        l2Online: false,
+        connectedL1Count: 0,
+        totalL1Count: 6,
+        connectedMachineIds: [],
+      }));
     loadStatus();
     const timer = setInterval(loadStatus, 1000);
     return () => { active = false; clearInterval(timer); };

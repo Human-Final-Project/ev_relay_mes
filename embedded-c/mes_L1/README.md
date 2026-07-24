@@ -174,7 +174,7 @@ l1_simulator.exe EQ-WELD-01
 Fixed alarm for repeatable testing:
 
 ```text
-l1_simulator.exe EQ-WELD-01 127.0.0.1 9000 --alarm WELD_POWER_ERROR --error-after 3
+l1_simulator.exe EQ-WELD-01 127.0.0.1 9000 --alarm WELD_TIP_WEAR_WARN --error-after 3
 ```
 
 Random alarm per START job:
@@ -183,10 +183,10 @@ Random alarm per START job:
 l1_simulator.exe EQ-WELD-01 127.0.0.1 9000 --alarm-random --alarm-rate 25
 ```
 
-A START job schedules at most one alarm. `WARNING` alarms are reported while production continues. `ERROR` alarms report the alarm and machine `ERROR`, pause the runtime, and require a Backend `RESUME` command. When the L1-L2 connection is lost during production, the runtime also pauses and waits for `RESUME` after reconnect.
+A START job schedules at most one alarm. `WARNING` alarms are reported while production continues. OP20 and OP30 register WARNING-only equipment scenarios so their parallel prerequisite work cannot be blocked. `ERROR` alarms remain available on OP40_OP50 through OP80; they report the alarm and machine `ERROR`, pause the runtime, and require a Backend `RESUME` command. When the L1-L2 connection is lost during production, the runtime also pauses and waits for `RESUME` after reconnect.
 
 Batch files at the embedded-c root:
 
 - `start_all.bat`: normal production
 - `start_all_alarm.bat`: random alarm demonstration
-- `start_op30_alarm.bat`: deterministic OP30 `WELD_POWER_ERROR` after three products
+- `start_op30_alarm.bat`: deterministic non-blocking OP30 `WELD_TIP_WEAR_WARN` after three products

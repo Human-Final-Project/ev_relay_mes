@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 public class MachineAlarmSearchRequestDto {
 
     private String machineId;
+    private String processCode;
     private String alarmCode;
     private String alarmLevel;
     private Boolean cleared;

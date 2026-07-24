@@ -175,6 +175,8 @@ public class InspectionService {
     public List<InspectionResponseDto> search(InspectionSearchRequestDto condition) {
         validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return inspectionRepository.findAll(Sort.by(Sort.Direction.DESC, "inspectedAt")).stream()
+                .filter(item -> condition.getWorkOrderId() == null
+                        || item.getLot().getWorkOrder().getWorkOrderId().equals(condition.getWorkOrderId()))
                 .filter(item -> isBlank(condition.getLotNo())
                         || item.getLot().getLotNo().equals(condition.getLotNo()))
                 .filter(item -> isBlank(condition.getMachineId())

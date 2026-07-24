@@ -7,6 +7,7 @@ import DashboardPage from "./pages/DashboardPage";
 import WorkOrderPage from "./pages/WorkOrderPage";
 import LotPage from "./pages/LotPage";
 import ProductionPage from "./pages/ProductionPage";
+import ProductionResultPage from "./pages/ProductionResultPage";
 import AlarmHistoryPage from "./pages/AlarmHistoryPage";
 import QualityPage from "./pages/QualityPage";
 import MaterialPage from "./pages/MaterialPage";
@@ -27,6 +28,7 @@ function App() {
       <Route path="/work-orders" element={<WorkOrderPage currentUser={currentUser}/>}/>
       <Route path="/lots" element={<LotPage currentUser={currentUser}/>}/>
       <Route path="/production" element={<ProductionPage currentUser={currentUser}/>}/>
+      <Route path="/production-results" element={<ProductionResultPage/>}/>
       <Route path="/alarms" element={<AlarmHistoryPage currentUser={currentUser}/>}/>
       <Route path="/quality" element={<QualityPage currentUser={currentUser}/>}/>
       <Route path="/materials" element={<MaterialPage currentUser={currentUser}/>}/>

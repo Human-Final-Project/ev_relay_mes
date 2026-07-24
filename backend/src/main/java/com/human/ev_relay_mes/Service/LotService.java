@@ -14,6 +14,7 @@ import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +35,11 @@ public class LotService {
 
     private static final EnumSet<Lot.Status> NON_TERMINAL_STATUSES =
             EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+    private static final EnumSet<Lot.Status> TERMINAL_STATUSES =
+            EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
+
+    @Value("${mes.auto-lot.max-supplement-count:3}")
+    private int maxSupplementCount = 3;
 
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
@@ -89,10 +95,10 @@ public class LotService {
             throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
                     "생산 중이며 목표 수량이 부족한 작업지시만 추가 생산할 수 있습니다.");
         }
-        if (!lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(
-                workOrderId, Lot.Status.COMPLETED)) {
+        if (!lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                workOrderId, TERMINAL_STATUSES)) {
             throw new CustomException(ErrorCode.SUPPLEMENT_NOT_REQUIRED,
-                    "완료된 최초 LOT가 없어 추가 생산을 생성할 수 없습니다.");
+                    "종료된 최초 LOT가 없어 추가 생산을 생성할 수 없습니다.");
         }
         if (lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
                 workOrderId, NON_TERMINAL_STATUSES)) {
@@ -100,8 +106,8 @@ public class LotService {
         }
 
         int completedOkQty = Math.toIntExact(
-                lotRepository.sumOkQtyByWorkOrderIdAndStatus(
-                        workOrderId, Lot.Status.COMPLETED));
+                lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                        workOrderId, TERMINAL_STATUSES));
         int remainingQty = workOrder.getTargetQty() - completedOkQty;
         if (remainingQty <= 0) {
             throw new CustomException(ErrorCode.SUPPLEMENT_NOT_REQUIRED);
@@ -137,6 +143,10 @@ public class LotService {
         }
         int nextRound = lotRepository
                 .findMaxProductionRoundByWorkOrderId(workOrder.getWorkOrderId()) + 1;
+        if (nextRound > 1 + maxSupplementCount) {
+            throw new CustomException(ErrorCode.SUPPLEMENT_LIMIT_REACHED,
+                    "자동 보충 LOT는 최대 " + maxSupplementCount + "회까지 생성할 수 있습니다.");
+        }
         Lot saved = lotRepository.save(buildLot(
                 workOrder,
                 remainingQty,
@@ -249,8 +259,7 @@ public class LotService {
      */
     private boolean requestPipelineStart(Lot lot) {
         lot.setStartRequestedAt(LocalDateTime.now());
-        boolean consumed = materialLotService.tryConsumeMaterials(
-                lot.getItem().getItemCode(), lot.getInputQty());
+        boolean consumed = materialLotService.tryConsumeMaterials(lot);
         if (!consumed) {
             return false;
         }

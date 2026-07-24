@@ -41,17 +41,18 @@ public class DashboardService {
         LocalDateTime startAt = LocalDate.now().atStartOfDay();
         LocalDateTime endAt = startAt.plusDays(1);
 
-        List<Lot> completedLots = lotRepository.findByStatusOrderByCreatedAtDesc(Lot.Status.COMPLETED)
-                .stream()
+        List<Lot> terminalLots = lotRepository.findAll().stream()
+                .filter(lot -> lot.getStatus() == Lot.Status.COMPLETED
+                        || lot.getStatus() == Lot.Status.SCRAPPED)
                 .filter(lot -> lot.getCompletedAt() != null
                         && !lot.getCompletedAt().isBefore(startAt)
                         && lot.getCompletedAt().isBefore(endAt))
                 .toList();
 
         ProductionSummary production = new ProductionSummary(
-                completedLots.size(),
-                completedLots.stream().mapToInt(lot -> valueOrZero(lot.getOkQty())).sum(),
-                completedLots.stream().mapToInt(lot -> valueOrZero(lot.getNgQty())).sum());
+                terminalLots.size(),
+                terminalLots.stream().mapToInt(lot -> valueOrZero(lot.getOkQty())).sum(),
+                terminalLots.stream().mapToInt(lot -> valueOrZero(lot.getNgQty())).sum());
 
         List<WorkOrder> workOrders = workOrderRepository.findAll();
         WorkOrderSummary workOrderSummary = new WorkOrderSummary(

@@ -34,6 +34,7 @@ class ProductionSchedulerServiceTest {
     @Mock private ProcessRepository processRepository;
     @Mock private ProductionLogRepository productionLogRepository;
     @Mock private WorkCommandService workCommandService;
+    @Mock private WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     @InjectMocks
     private ProductionSchedulerService schedulerService;
@@ -91,6 +92,48 @@ class ProductionSchedulerServiceTest {
         verify(workCommandService).tryCreateStartCommand(first, sealing, 8);
         verify(workCommandService, never()).tryCreateStartCommand(
                 org.mockito.ArgumentMatchers.eq(second), any(), org.mockito.ArgumentMatchers.anyInt());
+    }
+
+    @Test
+    void scrapsLegacyZeroInputLotAndContinuesToNextWaitingLot() {
+        Process assembly = process("OP40_OP50", 3);
+        Process sealing = process("OP60", 4);
+        Machine machine = Machine.builder()
+                .machineId("EQ-SEAL-01")
+                .machineName("sealer")
+                .machineType("EQ-SEAL")
+                .process(sealing)
+                .status(Machine.Status.IDLE)
+                .build();
+        Lot zeroInputLot = lot(1L, "LOT-ZERO", sealing);
+        Lot nextLot = lot(2L, "LOT-NEXT", sealing);
+        ProductionLog zeroPrevious = ProductionLog.builder()
+                .lot(zeroInputLot).process(assembly).inputQty(10).okQty(0).ngQty(10).build();
+        ProductionLog nextPrevious = ProductionLog.builder()
+                .lot(nextLot).process(assembly).inputQty(10).okQty(8).ngQty(2).build();
+
+        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
+                .thenReturn(List.of(zeroInputLot, nextLot));
+        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+                .thenReturn(Optional.of(assembly));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-ZERO", "OP40_OP50"))
+                .thenReturn(List.of(zeroPrevious));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-NEXT", "OP40_OP50"))
+                .thenReturn(List.of(nextPrevious));
+        when(workCommandService.tryCreateStartCommand(nextLot, sealing, 8))
+                .thenReturn(Optional.of(org.mockito.Mockito.mock(WorkCommandResponseDto.class)));
+
+        boolean assigned = schedulerService.tryAssignMachine("EQ-SEAL-01");
+
+        assertThat(assigned).isTrue();
+        assertThat(zeroInputLot.getStatus()).isEqualTo(Lot.Status.SCRAPPED);
+        assertThat(zeroInputLot.getNgQty()).isEqualTo(10);
+        assertThat(zeroInputLot.getCompletedAt()).isNotNull();
+        verify(workOrderContinuationRequestService).requestEvaluation(1L);
+        verify(workCommandService).tryCreateStartCommand(nextLot, sealing, 8);
     }
 
     @Test

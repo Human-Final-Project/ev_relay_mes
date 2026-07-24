@@ -143,7 +143,7 @@ static void test_error_and_resume(void)
     L1RuntimeActions actions;
     L1Command resume;
     int index;
-    start_runtime(&runtime, "EQ-WIND-01", 5, 2, &actions);
+    start_runtime(&runtime, "EQ-ASSY-01", 5, 2, &actions);
     for (index = 0; index < 2; ++index) {
         CHECK(l1_machine_runtime_tick(&runtime, &actions) == 0);
         CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
@@ -163,6 +163,28 @@ static void test_error_and_resume(void)
     CHECK(runtime.state == L1_RUNTIME_RUNNING);
 }
 
+
+static void test_op20_op30_have_no_blocking_alarms(void)
+{
+    const char *machine_ids[] = {"EQ-WIND-01", "EQ-WELD-01"};
+    size_t machine_index;
+
+    for (machine_index = 0; machine_index < 2; ++machine_index) {
+        const L1DeviceConfig *device =
+            l1_device_config_find(machine_ids[machine_index]);
+        size_t alarm_index;
+
+        CHECK(device != NULL);
+        CHECK(device->alarm_count > 0);
+        for (alarm_index = 0; alarm_index < device->alarm_count; ++alarm_index) {
+            const L1AlarmScenario *alarm =
+                l1_device_alarm_at(device, alarm_index);
+            CHECK(alarm != NULL);
+            CHECK(alarm->level == L1_DEVICE_ALARM_WARNING);
+            CHECK(alarm->stop_required == 0);
+        }
+    }
+}
 
 static void test_warning_alarm_does_not_pause_production(void)
 {
@@ -275,6 +297,7 @@ int main(void)
     test_replays_unreported_unit();
     test_three_percent_combined_ng();
     test_error_and_resume();
+    test_op20_op30_have_no_blocking_alarms();
     test_warning_alarm_does_not_pause_production();
     test_random_alarm_is_planned_once_per_start();
     test_independent_lots_and_busy_start_rejection();
