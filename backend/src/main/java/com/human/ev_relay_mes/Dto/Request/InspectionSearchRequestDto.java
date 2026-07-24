@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 public class InspectionSearchRequestDto {
 
+    private Long workOrderId;
     private String lotNo;
     private String machineId;
     private String processCode;

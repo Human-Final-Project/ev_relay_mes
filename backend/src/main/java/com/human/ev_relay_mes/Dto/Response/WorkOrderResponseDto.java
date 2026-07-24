@@ -21,7 +21,8 @@ public class WorkOrderResponseDto {
     /** 하위 호환용. 자동 보충 구조에서는 보통 즉시 false로 전환된다. */
     private Boolean supplementRequired;
     /** DRAFT, INITIAL_LOT_PENDING, PIPELINE_ACTIVE, LOT_HOLD,
-     * AUTO_SUPPLEMENT_PENDING, AUTO_SUPPLEMENT_ACTIVE, COMPLETED, CANCELED */
+     * AUTO_SUPPLEMENT_PENDING, AUTO_SUPPLEMENT_ACTIVE,
+     * SUPPLEMENT_LIMIT_REACHED, COMPLETED, CANCELED */
     private String automationStatus;
     private String status;
     private LocalDateTime plannedStartAt;

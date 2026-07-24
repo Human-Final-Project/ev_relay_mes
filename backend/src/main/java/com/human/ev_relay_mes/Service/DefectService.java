@@ -75,6 +75,8 @@ public class DefectService {
     public List<DefectHistoryResponseDto> search(DefectHistorySearchRequestDto condition) {
         validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return defectHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()
+                .filter(item -> condition.getWorkOrderId() == null
+                        || item.getLot().getWorkOrder().getWorkOrderId().equals(condition.getWorkOrderId()))
                 .filter(item -> isBlank(condition.getLotNo()) || item.getLot().getLotNo().equals(condition.getLotNo()))
                 .filter(item -> isBlank(condition.getMachineId()) || item.getMachine().getMachineId().equals(condition.getMachineId()))
                 .filter(item -> isBlank(condition.getProcessCode()) || item.getProcess().getProcessCode().equals(condition.getProcessCode()))

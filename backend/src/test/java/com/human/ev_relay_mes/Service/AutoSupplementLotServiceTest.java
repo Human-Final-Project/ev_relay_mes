@@ -11,11 +11,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -34,11 +36,9 @@ class AutoSupplementLotServiceTest {
     void completesWorkOrderWhenAccumulatedOkMeetsTarget() {
         WorkOrder order = order(100);
         when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(order));
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
-                .thenReturn(false);
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
-                .thenReturn(true);
-        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+        mockNoActiveLotWithTerminalLot();
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
                 .thenReturn(100L);
 
         var result = service.evaluateAndContinue(1L);
@@ -52,12 +52,11 @@ class AutoSupplementLotServiceTest {
     void createsAutomaticSupplementForRemainingQuantity() {
         WorkOrder order = order(100);
         when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(order));
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
-                .thenReturn(false);
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
-                .thenReturn(true);
-        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+        mockNoActiveLotWithTerminalLot();
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
                 .thenReturn(94L);
+        when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
 
         var result = service.evaluateAndContinue(1L);
 
@@ -76,6 +75,56 @@ class AutoSupplementLotServiceTest {
 
         assertThat(result).isEqualTo(AutoSupplementLotService.EvaluationResult.ACTIVE_LOT_EXISTS);
         verify(lotService, never()).createAutomaticSupplementLot(any(), anyInt());
+    }
+
+    @Test
+    void createsSupplementAfterScrappedLot() {
+        WorkOrder order = order(5);
+        when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(order));
+        mockNoActiveLotWithTerminalLot();
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
+                .thenReturn(0L);
+        when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
+
+        var result = service.evaluateAndContinue(1L);
+
+        assertThat(result).isEqualTo(AutoSupplementLotService.EvaluationResult.SUPPLEMENT_CREATED);
+        verify(lotService).createAutomaticSupplementLot(order, 5);
+    }
+
+    @Test
+    void stopsAutomaticSupplementAfterThreeSupplementRounds() {
+        WorkOrder order = order(5);
+        when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(order));
+        mockNoActiveLotWithTerminalLot();
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
+                .thenReturn(0L);
+        when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(4);
+
+        var result = service.evaluateAndContinue(1L);
+
+        assertThat(result).isEqualTo(
+                AutoSupplementLotService.EvaluationResult.SUPPLEMENT_LIMIT_REACHED);
+        verify(lotService, never()).createAutomaticSupplementLot(any(), anyInt());
+    }
+
+    private void mockNoActiveLotWithTerminalLot() {
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(nonTerminalStatuses())))
+                .thenReturn(false);
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
+                .thenReturn(true);
+    }
+
+    private EnumSet<Lot.Status> nonTerminalStatuses() {
+        return EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+    }
+
+    private EnumSet<Lot.Status> terminalStatuses() {
+        return EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
     }
 
     private WorkOrder order(int targetQty) {

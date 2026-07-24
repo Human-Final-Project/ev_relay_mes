@@ -14,6 +14,7 @@ import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
+import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.DefectService;
 import com.human.ev_relay_mes.Service.InspectionService;
 import com.human.ev_relay_mes.Service.MachineAlarmService;
@@ -21,6 +22,8 @@ import com.human.ev_relay_mes.Service.MachineService;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -39,6 +42,16 @@ public class CollectorController {
     private final MachineService machineService;
     private final MachineAlarmService machineAlarmService;
     private final WorkCommandService workCommandService;
+    private final CollectorStatusService collectorStatusService;
+
+    @PostMapping("/status-heartbeat")
+    public ResponseEntity<Void> receiveCollectorHeartbeat(
+            @Valid @RequestBody CollectorHeartbeatRequest request) {
+        collectorStatusService.receiveHeartbeat(
+                request.connectedMachineIds(),
+                request.totalCapacity());
+        return ResponseEntity.noContent().build();
+    }
 
     @PostMapping("/production-logs")
     public ResponseEntity<ProductionLogResponseDto> receiveProductionResult(
@@ -93,5 +106,10 @@ public class CollectorController {
     public WorkCommandResponseDto acknowledgeCommand(
             @Valid @RequestBody WorkCommandAckRequestDto dto) {
         return workCommandService.acknowledge(dto);
+    }
+
+    public record CollectorHeartbeatRequest(
+            @NotNull List<String> connectedMachineIds,
+            @NotNull @Positive Integer totalCapacity) {
     }
 }

@@ -156,6 +156,8 @@ public class ProductionService {
     public List<ProductionLogResponseDto> search(ProductionLogSearchRequestDto condition) {
         validateSearchPeriod(condition);
         return productionLogRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
+                .filter(log -> condition.getWorkOrderId() == null
+                        || log.getLot().getWorkOrder().getWorkOrderId().equals(condition.getWorkOrderId()))
                 .filter(log -> isBlank(condition.getLotNo())
                         || log.getLot().getLotNo().equals(condition.getLotNo()))
                 .filter(log -> isBlank(condition.getMachineId())
@@ -233,7 +235,7 @@ public class ProductionService {
         productionScheduleRequestService.requestMachine(machine.getMachineId());
 
         if (isParallelProcess(process.getProcessCode())) {
-            advanceAfterParallelProcesses(lot);
+            advanceAfterParallelProcesses(lot, endedAt);
             return;
         }
 
@@ -241,11 +243,11 @@ public class ProductionService {
                 .findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(
                         process.getProcessOrder());
         if (nextProcess.isPresent()) {
-            lot.setCurrentProcess(nextProcess.get());
             if (totalOkQty > 0) {
+                lot.setCurrentProcess(nextProcess.get());
                 productionScheduleRequestService.requestLot(lot.getLotNo());
             } else {
-                lot.setStatus(Lot.Status.HOLD);
+                finishScrappedLot(lot, endedAt);
             }
             return;
         }
@@ -259,7 +261,7 @@ public class ProductionService {
                 lot.getWorkOrder().getWorkOrderId());
     }
 
-    private void advanceAfterParallelProcesses(Lot lot) {
+    private void advanceAfterParallelProcesses(Lot lot, LocalDateTime endedAt) {
         if (!isProcessCompleted(lot, PARALLEL_PROCESS_1)
                 || !isProcessCompleted(lot, PARALLEL_PROCESS_2)) {
             return;
@@ -271,12 +273,23 @@ public class ProductionService {
         int assemblyInputQty = Math.min(
                 processOkQty(lot, PARALLEL_PROCESS_1),
                 processOkQty(lot, PARALLEL_PROCESS_2));
-        lot.setCurrentProcess(assembly);
         if (assemblyInputQty > 0) {
+            lot.setCurrentProcess(assembly);
             productionScheduleRequestService.requestLot(lot.getLotNo());
         } else {
-            lot.setStatus(Lot.Status.HOLD);
+            finishScrappedLot(lot, endedAt);
         }
+    }
+
+    private void finishScrappedLot(Lot lot, LocalDateTime endedAt) {
+        lot.setOkQty(0);
+        lot.setNgQty(lot.getInputQty());
+        lot.setStatus(Lot.Status.SCRAPPED);
+        lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
+        lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
+        workOrderContinuationRequestService.requestEvaluation(
+                lot.getWorkOrder().getWorkOrderId());
+        productionScheduleRequestService.requestAllIdleMachines();
     }
 
     private int expectedInputQty(Lot lot, Process process) {
@@ -292,7 +305,6 @@ public class ProductionService {
                 .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(
                         process.getProcessOrder())
                 .map(previous -> processOkQty(lot, previous.getProcessCode()))
-                .filter(quantity -> quantity > 0)
                 .orElse(lot.getInputQty());
     }
 

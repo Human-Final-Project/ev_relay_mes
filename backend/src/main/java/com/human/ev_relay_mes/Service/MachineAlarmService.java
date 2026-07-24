@@ -89,6 +89,9 @@ public class MachineAlarmService {
         validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return machineAlarmHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()
                 .filter(item -> isBlank(condition.getMachineId()) || item.getMachine().getMachineId().equals(condition.getMachineId()))
+                .filter(item -> isBlank(condition.getProcessCode())
+                        || (item.getProcess() != null
+                        && item.getProcess().getProcessCode().equals(condition.getProcessCode())))
                 .filter(item -> isBlank(condition.getAlarmCode()) || item.getAlarmCode().getAlarmCode().equals(condition.getAlarmCode()))
                 .filter(item -> isBlank(condition.getAlarmLevel()) || item.getAlarmLevel().equalsIgnoreCase(condition.getAlarmLevel()))
                 .filter(item -> condition.getCleared() == null

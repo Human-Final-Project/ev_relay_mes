@@ -8,18 +8,21 @@
 #define WARNING_ALARM(code, message) \
     {code, message, L1_DEVICE_ALARM_WARNING, 0}
 
+/*
+ * OP20 and OP30 are the parallel prerequisite processes for OP40_OP50.
+ * A blocking alarm on either process can prevent the downstream merge from
+ * ever starting in the non-individual-stop MVP.  Therefore these two devices
+ * expose WARNING-only scenarios: alarms are still reported, but production
+ * continues and no RESUME command is required.
+ */
 static const L1AlarmScenario WIND_ALARMS[] = {
     WARNING_ALARM("WIRE_TENSION_WARN", "wire_tension_warn"),
-    WARNING_ALARM("WINDING_VIBRATION_WARN", "winding_vibration_warn"),
-    ERROR_ALARM("WIRE_BREAK", "wire_break"),
-    ERROR_ALARM("WINDING_MOTOR_ERROR", "winding_motor_error")
+    WARNING_ALARM("WINDING_VIBRATION_WARN", "winding_vibration_warn")
 };
 
 static const L1AlarmScenario WELD_ALARMS[] = {
     WARNING_ALARM("WELD_TIP_WEAR_WARN", "weld_tip_wear_warn"),
-    WARNING_ALARM("WELD_TEMPERATURE_WARN", "weld_temperature_warn"),
-    ERROR_ALARM("WELD_POWER_ERROR", "weld_power_error"),
-    ERROR_ALARM("ELECTRODE_ALIGNMENT_ERROR", "electrode_alignment_error")
+    WARNING_ALARM("WELD_TEMPERATURE_WARN", "weld_temperature_warn")
 };
 
 static const L1AlarmScenario ASSY_ALARMS[] = {

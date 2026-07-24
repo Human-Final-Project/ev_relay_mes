@@ -2,9 +2,11 @@ package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.LotStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LotResponseDto;
+import com.human.ev_relay_mes.Dto.Response.LotMaterialUsageResponseDto;
 import com.human.ev_relay_mes.Dto.Response.LotProcessResponsibleResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Service.LotService;
+import com.human.ev_relay_mes.Service.LotMaterialUsageService;
 import com.human.ev_relay_mes.Service.LotProcessResponsibleService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
@@ -22,6 +24,7 @@ public class LotController {
     private final LotService lotService;
     private final WorkCommandService workCommandService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
+    private final LotMaterialUsageService lotMaterialUsageService;
 
     @GetMapping
     public List<LotResponseDto> getLots(
@@ -51,6 +54,13 @@ public class LotController {
             @PathVariable String lotNo) {
         lotService.getLotByNo(lotNo);
         return lotProcessResponsibleService.getByLotNo(lotNo);
+    }
+
+    @GetMapping("/by-no/{lotNo}/materials")
+    public List<LotMaterialUsageResponseDto> getMaterialUsages(
+            @PathVariable String lotNo) {
+        lotService.getLotByNo(lotNo);
+        return lotMaterialUsageService.getByLotNo(lotNo);
     }
 
     @PatchMapping("/{id}/status")

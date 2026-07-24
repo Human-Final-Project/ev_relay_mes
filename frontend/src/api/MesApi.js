@@ -52,6 +52,8 @@ const MesApi = {
     httpClient.get(`/api/lots/by-no/${encodeURIComponent(lotNo)}/commands`),
   getLotResponsibles: (lotNo) =>
     httpClient.get(`/api/lots/by-no/${encodeURIComponent(lotNo)}/responsibles`),
+  getLotMaterialUsages: (lotNo) =>
+    httpClient.get(`/api/lots/by-no/${encodeURIComponent(lotNo)}/materials`),
   updateLotStatus: (id, status) => mutate("patch", `/api/lots/${id}/status`, { status }),
   deleteLot: (id) => mutate("delete", `/api/lots/${id}`),
 

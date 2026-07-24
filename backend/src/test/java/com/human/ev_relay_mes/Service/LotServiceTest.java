@@ -18,11 +18,13 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.EnumSet;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -52,7 +54,7 @@ class LotServiceTest {
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
         when(memberRepository.findById(7L)).thenReturn(Optional.of(creator));
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
-        when(materialLotService.tryConsumeMaterials("FG-001", 10)).thenReturn(true);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
             Lot saved = invocation.getArgument(0);
             saved.setLotId(1L);
@@ -78,7 +80,7 @@ class LotServiceTest {
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
         when(memberRepository.findById(7L)).thenReturn(Optional.of(creator));
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
-        when(materialLotService.tryConsumeMaterials("FG-001", 10)).thenReturn(false);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = lotService.createInitialLotAndRequestStart(order, 7L);
@@ -94,14 +96,14 @@ class LotServiceTest {
         Lot lot = createLot(1L, "LOT-001");
         when(lotRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(lot));
         LotStatusRequestDto request = status("RUNNING");
-        when(materialLotService.tryConsumeMaterials("FG-001", 10)).thenReturn(true);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
 
         var response = lotService.updateStatus(1L, request);
 
         assertThat(response.getStatus()).isEqualTo("RUNNING");
         assertThat(lot.getStartedAt()).isNotNull();
         assertThat(lot.getWorkOrder().getStatus()).isEqualTo(WorkOrder.Status.RUNNING);
-        verify(materialLotService).tryConsumeMaterials("FG-001", 10);
+        verify(materialLotService).tryConsumeMaterials(any(Lot.class));
         verify(productionScheduleRequestService).requestAllIdleMachines();
     }
 
@@ -109,7 +111,7 @@ class LotServiceTest {
     void keepsStartRequestedLotWaitingWhenMaterialIsInsufficient() {
         Lot lot = createLot(1L, "LOT-001");
         when(lotRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(lot));
-        when(materialLotService.tryConsumeMaterials("FG-001", 10)).thenReturn(false);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
 
         var response = lotService.updateStatus(1L, status("RUNNING"));
 
@@ -123,7 +125,7 @@ class LotServiceTest {
         Lot secondLot = createLot(2L, "LOT-002");
         secondLot.getWorkOrder().setStatus(WorkOrder.Status.RELEASED);
         when(lotRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(secondLot));
-        when(materialLotService.tryConsumeMaterials("FG-001", 10)).thenReturn(true);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
 
         var response = lotService.updateStatus(2L, status("RUNNING"));
 
@@ -156,16 +158,19 @@ class LotServiceTest {
         Process op20 = process("OP20", 1);
 
         when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(workOrder));
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
                 .thenReturn(true);
-        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(any(), any()))
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(nonTerminalStatuses())))
                 .thenReturn(false);
-        when(lotRepository.sumOkQtyByWorkOrderIdAndStatus(1L, Lot.Status.COMPLETED))
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
                 .thenReturn(92L);
         when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
         when(memberRepository.findById(7L)).thenReturn(Optional.of(member));
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
-        when(materialLotService.tryConsumeMaterials("FG-001", 8)).thenReturn(true);
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
             Lot saved = invocation.getArgument(0);
             saved.setLotId(2L);
@@ -177,8 +182,52 @@ class LotServiceTest {
         assertThat(response.getProductionRound()).isEqualTo(2);
         assertThat(response.getInputQty()).isEqualTo(8);
         assertThat(response.getStatus()).isEqualTo("RUNNING");
-        verify(materialLotService).tryConsumeMaterials("FG-001", 8);
+        verify(materialLotService).tryConsumeMaterials(any(Lot.class));
         verify(productionScheduleRequestService).requestAllIdleMachines();
+    }
+
+    @Test
+    void allowsSupplementAfterInitialLotWasScrapped() {
+        Item item = item();
+        WorkOrder workOrder = WorkOrder.builder()
+                .workOrderId(1L)
+                .orderNo("WO-001")
+                .item(item)
+                .targetQty(3)
+                .status(WorkOrder.Status.RUNNING)
+                .build();
+        Member member = Member.builder().memberId(7L).memberName("관리자").build();
+        Process op20 = process("OP20", 1);
+
+        when(workOrderRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(workOrder));
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
+                .thenReturn(true);
+        when(lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                eq(1L), eq(nonTerminalStatuses())))
+                .thenReturn(false);
+        when(lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                eq(1L), eq(terminalStatuses())))
+                .thenReturn(0L);
+        when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
+        when(memberRepository.findById(7L)).thenReturn(Optional.of(member));
+        when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
+        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var response = lotService.createSupplementLot(1L, 7L);
+
+        assertThat(response.getProductionRound()).isEqualTo(2);
+        assertThat(response.getInputQty()).isEqualTo(3);
+        assertThat(response.getStatus()).isEqualTo("RUNNING");
+    }
+
+    private EnumSet<Lot.Status> nonTerminalStatuses() {
+        return EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+    }
+
+    private EnumSet<Lot.Status> terminalStatuses() {
+        return EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
     }
 
     private LotStatusRequestDto status(String value) {

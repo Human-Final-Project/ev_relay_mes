@@ -62,6 +62,13 @@ ApiClientResult api_client_release_command(int64_t command_id,
                                            const char *machine_id,
                                            int *http_status);
 
+/* Reports the L2 process and currently registered L1 machine connections. */
+ApiClientResult api_client_send_collector_heartbeat(
+    const char *const *machine_ids,
+    size_t machine_count,
+    size_t total_capacity,
+    int *http_status);
+
 const char *api_client_result_name(ApiClientResult result);
 
 #endif

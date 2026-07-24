@@ -61,13 +61,18 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
             @Param("workOrderId") Long workOrderId,
             @Param("status") Lot.Status status);
 
+    @Query("select coalesce(sum(l.okQty), 0) from Lot l "
+            + "where l.workOrder.workOrderId = :workOrderId and l.status in :statuses")
+    Long sumOkQtyByWorkOrderIdAndStatusIn(
+            @Param("workOrderId") Long workOrderId,
+            @Param("statuses") Collection<Lot.Status> statuses);
+
     @Query("select coalesce(max(l.productionRound), 0) from Lot l "
             + "where l.workOrder.workOrderId = :workOrderId")
     Integer findMaxProductionRoundByWorkOrderId(@Param("workOrderId") Long workOrderId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select l from Lot l where l.status = :status "
-            + "order by l.workOrder.workOrderId asc, l.productionRound asc, "
-            + "l.createdAt asc, l.lotId asc")
+            + "order by l.createdAt asc, l.lotId asc")
     List<Lot> findPipelineCandidatesForUpdate(@Param("status") Lot.Status status);
 }

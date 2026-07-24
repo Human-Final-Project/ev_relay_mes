@@ -14,6 +14,7 @@ import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +31,11 @@ public class WorkOrderService {
 
     private static final EnumSet<Lot.Status> NON_TERMINAL_LOT_STATUSES =
             EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+    private static final EnumSet<Lot.Status> TERMINAL_LOT_STATUSES =
+            EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
+
+    @Value("${mes.auto-lot.max-supplement-count:3}")
+    private int maxSupplementCount = 3;
 
     private final WorkOrderRepository workOrderRepository;
     private final ItemRepository itemRepository;
@@ -217,24 +223,33 @@ public class WorkOrderService {
                 .mapToInt(Lot::getOkQty)
                 .sum();
         int remainingQty = Math.max(workOrder.getTargetQty() - completedOkQty, 0);
-        boolean hasCompletedLot = lots.stream()
-                .anyMatch(lot -> lot.getStatus() == Lot.Status.COMPLETED);
+        boolean hasTerminalLot = lots.stream()
+                .anyMatch(lot -> TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
         boolean hasNonTerminalLot = lots.stream()
                 .anyMatch(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
+        int maxProductionRound = lots.stream()
+                .map(Lot::getProductionRound)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+        boolean supplementLimitReached = maxProductionRound >= 1 + maxSupplementCount;
         boolean supplementRequired = workOrder.getStatus() == WorkOrder.Status.RUNNING
-                && hasCompletedLot
+                && hasTerminalLot
                 && !hasNonTerminalLot
-                && remainingQty > 0;
+                && remainingQty > 0
+                && !supplementLimitReached;
 
         return WorkOrderResponseDto.fromEntity(
                 workOrder,
                 completedOkQty,
                 remainingQty,
                 supplementRequired,
-                resolveAutomationStatus(workOrder, lots));
+                resolveAutomationStatus(workOrder, lots, remainingQty));
     }
 
-    private String resolveAutomationStatus(WorkOrder workOrder, List<Lot> lots) {
+    private String resolveAutomationStatus(
+            WorkOrder workOrder, List<Lot> lots, int remainingQty) {
         if (workOrder.getStatus() == WorkOrder.Status.CREATED) {
             return "DRAFT";
         }
@@ -244,6 +259,21 @@ public class WorkOrderService {
         if (workOrder.getStatus() == WorkOrder.Status.COMPLETED) {
             return "COMPLETED";
         }
+        int maxProductionRound = lots.stream()
+                .map(Lot::getProductionRound)
+                .filter(java.util.Objects::nonNull)
+                .mapToInt(Integer::intValue)
+                .max()
+                .orElse(0);
+        boolean hasTerminalLot = lots.stream()
+                .anyMatch(lot -> TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
+        if (workOrder.getStatus() == WorkOrder.Status.RUNNING
+                && hasTerminalLot
+                && remainingQty > 0
+                && maxProductionRound >= 1 + maxSupplementCount) {
+            return "SUPPLEMENT_LIMIT_REACHED";
+        }
+
         Lot active = lots.stream()
                 .filter(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()))
                 .findFirst()

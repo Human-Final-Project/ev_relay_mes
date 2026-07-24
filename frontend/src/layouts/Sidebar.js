@@ -6,15 +6,17 @@ const menus = [
   ["/work-orders", "assignment", "작업지시"],
   ["/lots", "conversion_path", "LOT 추적"],
   ["/production", "precision_manufacturing", "생산 모니터링"],
+  ["/production-results", "table_view", "생산 실적"],
   ["/alarms", "warning", "설비 알람"],
   ["/quality", "verified_user", "품질 관리"],
-  ["/materials", "inventory_2", "자재 LOT"],
+  ["/materials", "inventory_2", "원자재 관리"],
   ["/master-data", "database", "기준정보"],
   ["/workers", "engineering", "작업자 배정"],
 ];
 
 export default function Sidebar({ collapsed, onToggle, collectorStatus, currentUser }) {
-  const online = Boolean(collectorStatus?.l2Online);
+  const statusAvailable = collectorStatus !== null && collectorStatus?.statusAvailable !== false;
+  const online = statusAvailable && Boolean(collectorStatus?.l2Online);
   const isAdmin = currentUser?.role === "ADMIN";
   return <aside className={`sidebar ${collapsed ? "collapsed" : ""}`}>
     <div className="sidebar-brand">
@@ -34,13 +36,13 @@ export default function Sidebar({ collapsed, onToggle, collectorStatus, currentU
       </NavLink>}
     </nav>
     <div className="sidebar-footer">
-      <div className="connection-tile" title={online ? "L2 Collector heartbeat 정상" : "L2 Collector heartbeat 없음"}>
+      <div className="connection-tile" title={!statusAvailable ? "Collector 상태 API를 확인할 수 없습니다." : online ? "L2 Collector 상태 보고 정상" : "최근 10초 동안 L2 Collector 상태 보고가 없습니다."}>
         <span className="connection-name"><span className="connection-short-label">L2</span><i className={`connection-dot ${online ? "" : "offline"}`}/><span>L2 Collector</span></span>
-        <span className={`connection-value ${online ? "" : "offline"}`}>{online ? "ONLINE" : "OFFLINE"}</span>
+        <span className={`connection-value ${online ? "" : "offline"}`}>{!statusAvailable ? "확인 불가" : online ? "ONLINE" : "OFFLINE"}</span>
       </div>
-      <div className="connection-tile" title={(collectorStatus?.connectedMachineIds || []).join(", ") || "연결된 L1 설비 없음"}>
+      <div className="connection-tile" title={!statusAvailable ? "Collector 상태 API를 확인할 수 없습니다." : (collectorStatus?.connectedMachineIds || []).join(", ") || "연결된 L1 설비 없음"}>
         <span className="connection-name"><span className="connection-short-label">L1</span><i className={`connection-dot ${online && collectorStatus?.connectedL1Count > 0 ? "" : "offline"}`}/><span>L1 Machines</span></span>
-        <span className={`connection-value ${online ? "" : "offline"}`}>{collectorStatus?.connectedL1Count || 0} / {collectorStatus?.totalL1Count || 6}</span>
+        <span className={`connection-value ${online ? "" : "offline"}`}>{statusAvailable ? `${collectorStatus?.connectedL1Count || 0} / ${collectorStatus?.totalL1Count || 6}` : "- / 6"}</span>
       </div>
     </div>
   </aside>;

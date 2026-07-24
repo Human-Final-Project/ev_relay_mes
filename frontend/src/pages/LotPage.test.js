@@ -9,6 +9,7 @@ jest.mock("../api/MesApi",()=>({
     getLotByNo:jest.fn(),
     getLotCommands:jest.fn(),
     getLotResponsibles:jest.fn(),
+    getLotMaterialUsages:jest.fn(),
     getProductionLogs:jest.fn(),
     getInspections:jest.fn(),
     getDefects:jest.fn(),
@@ -36,6 +37,7 @@ beforeEach(()=>{
   MesApi.getLotByNo.mockResolvedValue({data:waitingLot});
   MesApi.getLotCommands.mockResolvedValue({data:[]});
   MesApi.getLotResponsibles.mockResolvedValue({data:[]});
+  MesApi.getLotMaterialUsages.mockResolvedValue({data:[]});
   MesApi.getProductionLogs.mockResolvedValue({data:[]});
   MesApi.getInspections.mockResolvedValue({data:[]});
   MesApi.getDefects.mockResolvedValue({data:[]});

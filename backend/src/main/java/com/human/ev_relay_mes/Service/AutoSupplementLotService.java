@@ -7,6 +7,7 @@ import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,6 +20,11 @@ public class AutoSupplementLotService {
 
     private static final EnumSet<Lot.Status> NON_TERMINAL_STATUSES =
             EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
+    private static final EnumSet<Lot.Status> TERMINAL_STATUSES =
+            EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
+
+    @Value("${mes.auto-lot.max-supplement-count:3}")
+    private int maxSupplementCount = 3;
 
     private final WorkOrderRepository workOrderRepository;
     private final LotRepository lotRepository;
@@ -39,18 +45,24 @@ public class AutoSupplementLotService {
                 workOrderId, NON_TERMINAL_STATUSES)) {
             return EvaluationResult.ACTIVE_LOT_EXISTS;
         }
-        if (!lotRepository.existsByWorkOrder_WorkOrderIdAndStatus(
-                workOrderId, Lot.Status.COMPLETED)) {
-            return EvaluationResult.NO_COMPLETED_LOT;
+        if (!lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
+                workOrderId, TERMINAL_STATUSES)) {
+            return EvaluationResult.NO_TERMINAL_LOT;
         }
 
         int completedOkQty = Math.toIntExact(
-                lotRepository.sumOkQtyByWorkOrderIdAndStatus(
-                        workOrderId, Lot.Status.COMPLETED));
+                lotRepository.sumOkQtyByWorkOrderIdAndStatusIn(
+                        workOrderId, TERMINAL_STATUSES));
         int remainingQty = workOrder.getTargetQty() - completedOkQty;
         if (remainingQty <= 0) {
             workOrder.setStatus(WorkOrder.Status.COMPLETED);
             return EvaluationResult.WORK_ORDER_COMPLETED;
+        }
+
+        int maxProductionRound = lotRepository
+                .findMaxProductionRoundByWorkOrderId(workOrderId);
+        if (maxProductionRound >= 1 + maxSupplementCount) {
+            return EvaluationResult.SUPPLEMENT_LIMIT_REACHED;
         }
 
         lotService.createAutomaticSupplementLot(workOrder, remainingQty);
@@ -61,7 +73,8 @@ public class AutoSupplementLotService {
         WORK_ORDER_COMPLETED,
         SUPPLEMENT_CREATED,
         ACTIVE_LOT_EXISTS,
-        NO_COMPLETED_LOT,
+        NO_TERMINAL_LOT,
+        SUPPLEMENT_LIMIT_REACHED,
         ALREADY_COMPLETED,
         NOT_APPLICABLE
     }

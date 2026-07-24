@@ -69,6 +69,7 @@ public enum ErrorCode {
     SUPPLEMENT_NOT_REQUIRED(HttpStatus.CONFLICT, "WO010", "추가 생산이 필요하지 않습니다."),
     SUPPLEMENT_ALREADY_EXISTS(HttpStatus.CONFLICT, "WO011", "진행 중인 추가 생산 LOT가 이미 존재합니다."),
     EARLIER_WORK_ORDER_NOT_COMPLETED(HttpStatus.CONFLICT, "WO012", "먼저 확정된 작업지시가 아직 완료되지 않았습니다."),
+    SUPPLEMENT_LIMIT_REACHED(HttpStatus.CONFLICT, "WO013", "자동 보충 생산 횟수 제한에 도달했습니다."),
 
     // Lot
     LOT_NOT_FOUND(HttpStatus.NOT_FOUND, "L001", "생산 LOT를 찾을 수 없습니다."),

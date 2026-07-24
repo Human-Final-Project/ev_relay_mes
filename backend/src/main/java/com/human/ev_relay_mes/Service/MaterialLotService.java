@@ -4,12 +4,15 @@ import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MaterialLotResponseDto;
 import com.human.ev_relay_mes.Entity.Bom;
 import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.Entity.LotMaterialUsage;
 import com.human.ev_relay_mes.Entity.MaterialLot;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.BomRepository;
 import com.human.ev_relay_mes.Repository.ItemRepository;
+import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
 import com.human.ev_relay_mes.Repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +37,7 @@ public class MaterialLotService {
     private final ItemRepository itemRepository;
     private final MemberRepository memberRepository;
     private final BomRepository bomRepository;
+    private final LotMaterialUsageRepository lotMaterialUsageRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Transactional
@@ -85,7 +89,15 @@ public class MaterialLotService {
      */
     @Transactional
     public void consumeMaterials(String parentItemCode, int productionQty) {
-        consumeMaterialsInternal(parentItemCode, productionQty);
+        consumeMaterialsInternal(parentItemCode, productionQty, null);
+    }
+
+    @Transactional
+    public void consumeMaterials(Lot productionLot) {
+        consumeMaterialsInternal(
+                productionLot.getItem().getItemCode(),
+                productionLot.getInputQty(),
+                productionLot);
     }
 
     /**
@@ -95,7 +107,7 @@ public class MaterialLotService {
     @Transactional
     public boolean tryConsumeMaterials(String parentItemCode, int productionQty) {
         try {
-            consumeMaterialsInternal(parentItemCode, productionQty);
+            consumeMaterialsInternal(parentItemCode, productionQty, null);
             return true;
         } catch (CustomException exception) {
             if (exception.getErrorCode() == ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY) {
@@ -105,7 +117,23 @@ public class MaterialLotService {
         }
     }
 
-    private void consumeMaterialsInternal(String parentItemCode, int productionQty) {
+    @Transactional
+    public boolean tryConsumeMaterials(Lot productionLot) {
+        try {
+            consumeMaterialsInternal(
+                    productionLot.getItem().getItemCode(),
+                    productionLot.getInputQty(),
+                    productionLot);
+            return true;
+        } catch (CustomException exception) {
+            if (exception.getErrorCode() == ErrorCode.INSUFFICIENT_MATERIAL_QUANTITY) {
+                return false;
+            }
+            throw exception;
+        }
+    }
+
+    private void consumeMaterialsInternal(String parentItemCode, int productionQty, Lot productionLot) {
         Map<String, Integer> requiredQtyByItem = calculateRequiredQuantities(parentItemCode, productionQty);
         Map<String, List<MaterialLot>> availableLotsByItem = new LinkedHashMap<>();
 
@@ -117,7 +145,7 @@ public class MaterialLotService {
         });
 
         requiredQtyByItem.forEach((itemCode, requiredQty) ->
-                deductLots(availableLotsByItem.get(itemCode), requiredQty));
+                deductLots(availableLotsByItem.get(itemCode), requiredQty, productionLot));
     }
 
     private Map<String, Integer> calculateRequiredQuantities(
@@ -219,7 +247,7 @@ public class MaterialLotService {
         List<MaterialLot> lots = materialLotRepository.findAvailableLotsForUpdate(
                 itemCode, MaterialLot.Status.AVAILABLE);
         validateAvailableQuantity(itemCode, requiredQty, lots);
-        deductLots(lots, requiredQty);
+        deductLots(lots, requiredQty, null);
     }
 
     private void validateAvailableQuantity(String itemCode, int requiredQty, List<MaterialLot> lots) {
@@ -234,7 +262,7 @@ public class MaterialLotService {
                 itemCode + " 재고가 부족합니다. 필요: " + requiredQty + ", 가용: " + availableQty);
     }
 
-    private void deductLots(List<MaterialLot> lots, int requiredQty) {
+    private void deductLots(List<MaterialLot> lots, int requiredQty, Lot productionLot) {
         int remainingQty = requiredQty;
         for (MaterialLot lot : lots) {
             if (remainingQty == 0) {
@@ -243,6 +271,13 @@ public class MaterialLotService {
             int consumedQty = Math.min(lot.getCurrentQty(), remainingQty);
             lot.setCurrentQty(lot.getCurrentQty() - consumedQty);
             remainingQty -= consumedQty;
+            if (productionLot != null && consumedQty > 0) {
+                lotMaterialUsageRepository.save(LotMaterialUsage.builder()
+                        .lot(productionLot)
+                        .materialLot(lot)
+                        .usedQty(consumedQty)
+                        .build());
+            }
             if (lot.getCurrentQty() == 0) {
                 lot.setStatus(MaterialLot.Status.USED);
             }
