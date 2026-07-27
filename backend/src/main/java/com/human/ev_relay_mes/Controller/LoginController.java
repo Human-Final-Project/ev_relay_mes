@@ -20,6 +20,7 @@ import org.springframework.security.web.authentication.logout.SecurityContextLog
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -39,10 +40,16 @@ public class LoginController {
     private final MemberService memberService;
     private final SessionAuthenticationStrategy sessionAuthenticationStrategy;
     private final SecurityContextRepository securityContextRepository;
+    private final CsrfTokenRepository csrfTokenRepository;
 
     // 로그인 전에 POST 요청에 사용할 CSRF 토큰 정보를 발급한다.
     @GetMapping("/csrf")
-    public Map<String, String> csrf(CsrfToken csrfToken) {
+    public Map<String, String> csrf(
+            CsrfToken csrfToken,
+            HttpServletRequest request,
+            HttpServletResponse response) {
+        // 지연 생성된 토큰을 쿠키에도 명시적으로 저장해 React와 Swagger UI가 모두 사용할 수 있게 한다.
+        csrfTokenRepository.saveToken(csrfToken, request, response);
         return Map.of(
                 "token", csrfToken.getToken(),
                 "headerName", csrfToken.getHeaderName(),
@@ -74,6 +81,7 @@ public class LoginController {
             HttpServletResponse response,
             Authentication authentication) {
         new SecurityContextLogoutHandler().logout(request, response, authentication);
+        csrfTokenRepository.saveToken(null, request, response);
         return ResponseEntity.noContent().build();
     }
 
@@ -86,6 +94,7 @@ public class LoginController {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
         memberService.changePassword(userDetails.getMemberId(), dto);
         new SecurityContextLogoutHandler().logout(request, response, authentication);
+        csrfTokenRepository.saveToken(null, request, response);
         return ResponseEntity.noContent().build();
     }
 

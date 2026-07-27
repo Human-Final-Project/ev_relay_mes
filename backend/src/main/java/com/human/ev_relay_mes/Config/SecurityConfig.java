@@ -52,6 +52,7 @@ public class SecurityConfig {
 
     @Bean
     public CsrfTokenRepository csrfTokenRepository() {
+        // React Axios와 Springdoc Swagger UI가 XSRF-TOKEN 쿠키를 같은 방식으로 사용한다.
         return CookieCsrfTokenRepository.withHttpOnlyFalse();
     }
 
