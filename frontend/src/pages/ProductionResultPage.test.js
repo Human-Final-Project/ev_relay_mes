@@ -36,6 +36,8 @@ test("작업지시를 선택하면 해당 작업지시의 LOT만 표시한다", 
   const lotSelect = screen.getByLabelText("LOT");
   expect(lotSelect).toBeDisabled();
 
+  // select 자체는 먼저 렌더링되므로 비동기 작업지시 옵션이 추가될 때까지 기다린다.
+  await screen.findByRole("option", { name: "WO-001 · EV Relay" });
   fireEvent.change(workOrderSelect, { target: { value: "1" } });
 
   await waitFor(() => expect(MesApi.getLots).toHaveBeenCalledWith({ workOrderId: "1" }));

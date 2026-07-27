@@ -37,6 +37,8 @@ test("품질관리에서도 작업지시 선택 후 해당 LOT를 고른다", as
   const lotSelect = screen.getByLabelText("LOT");
   expect(lotSelect).toBeDisabled();
 
+  // select 자체는 먼저 렌더링되므로 비동기 작업지시 옵션이 추가될 때까지 기다린다.
+  await screen.findByRole("option", { name: "WO-007 · EV Relay" });
   fireEvent.change(workOrderSelect, { target: { value: "7" } });
 
   await waitFor(() => expect(MesApi.getLots).toHaveBeenCalledWith({ workOrderId: "7" }));

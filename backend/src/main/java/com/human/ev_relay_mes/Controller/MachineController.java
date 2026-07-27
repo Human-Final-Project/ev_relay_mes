@@ -5,6 +5,8 @@ import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.Exception.CustomException;
+import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Service.MachineAlarmService;
 import com.human.ev_relay_mes.Service.MachineService;
 import jakarta.validation.Valid;
@@ -39,6 +41,9 @@ public class MachineController {
     @PatchMapping("/alarms/{id}/clear")
     public MachineAlarmResponseDto clearAlarm(@PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
+        if (userDetails == null) {
+            throw new CustomException(ErrorCode.UNAUTHORIZED);
+        }
         return machineAlarmService.clearAlarm(id, userDetails.getMemberId());
     }
 }

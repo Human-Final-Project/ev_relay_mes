@@ -1,11 +1,17 @@
 package com.human.ev_relay_mes;
 
 import jakarta.servlet.http.Cookie;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.Repository.MemberRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
@@ -27,6 +33,15 @@ class EvRelayMesApplicationTests {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private ObjectMapper objectMapper;
+
+	@Autowired
+	private MemberRepository memberRepository;
+
+	@Autowired
+	private PasswordEncoder passwordEncoder;
 
 	@Test
 	void contextLoads() {
@@ -60,16 +75,21 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
-	void acceptsCookieCsrfTokenSentBySwagger() throws Exception {
+	void issuesMatchingJsonAndCookieCsrfTokenForReactAndSwagger() throws Exception {
 		MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
 				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.token").isNotEmpty())
+				.andExpect(jsonPath("$.headerName").value("X-XSRF-TOKEN"))
 				.andReturn();
+
 		Cookie csrfCookie = csrfResult.getResponse().getCookie("XSRF-TOKEN");
 		assertNotNull(csrfCookie);
+		JsonNode csrfBody = objectMapper.readTree(csrfResult.getResponse().getContentAsString());
+		org.junit.jupiter.api.Assertions.assertEquals(csrfBody.get("token").asText(), csrfCookie.getValue());
 
 		mockMvc.perform(post("/api/auth/login")
 					.cookie(csrfCookie)
-					.header("X-XSRF-TOKEN", csrfCookie.getValue())
+					.header(csrfBody.get("headerName").asText(), csrfCookie.getValue())
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{\"loginId\":\"unknown-user\",\"password\":\"wrong-password\"}"))
 				.andExpect(status().isUnauthorized());
@@ -135,10 +155,50 @@ class EvRelayMesApplicationTests {
     }
 
     @Test
-    @WithMockUser(roles = "OPERATOR")
-    void operatorCanReachAlarmClearEndpoint() throws Exception {
-        mockMvc.perform(patch("/api/machines/alarms/999999/clear").with(csrf()))
-                .andExpect(status().isNotFound());
+    void operatorCanReachAlarmClearEndpointWithRealLoginPrincipal() throws Exception {
+        String loginId = "operator-alarm-test";
+        String rawPassword = "operator-password";
+        memberRepository.findByLoginId(loginId).orElseGet(() -> memberRepository.save(
+                Member.builder()
+                        .loginId(loginId)
+                        .password(passwordEncoder.encode(rawPassword))
+                        .memberName("알람 해제 테스트 운영자")
+                        .role(Member.Role.OPERATOR)
+                        .status(Member.Status.ACTIVE)
+                        .build()));
+
+        MvcResult initialCsrfResult = mockMvc.perform(get("/api/auth/csrf"))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie initialCsrfCookie = initialCsrfResult.getResponse().getCookie("XSRF-TOKEN");
+        assertNotNull(initialCsrfCookie);
+        JsonNode initialCsrf = objectMapper.readTree(initialCsrfResult.getResponse().getContentAsString());
+
+        MvcResult loginResult = mockMvc.perform(post("/api/auth/login")
+                        .cookie(initialCsrfCookie)
+                        .header(initialCsrf.get("headerName").asText(), initialCsrfCookie.getValue())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"loginId\":\"" + loginId + "\",\"password\":\"" + rawPassword + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.role").value("OPERATOR"))
+                .andReturn();
+        MockHttpSession session = (MockHttpSession) loginResult.getRequest().getSession(false);
+        assertNotNull(session);
+
+        // 로그인 성공 시 CsrfAuthenticationStrategy가 기존 토큰을 폐기하므로 같은 세션에서 다시 발급한다.
+        MvcResult refreshedCsrfResult = mockMvc.perform(get("/api/auth/csrf").session(session))
+                .andExpect(status().isOk())
+                .andReturn();
+        Cookie refreshedCsrfCookie = refreshedCsrfResult.getResponse().getCookie("XSRF-TOKEN");
+        assertNotNull(refreshedCsrfCookie);
+        JsonNode refreshedCsrf = objectMapper.readTree(refreshedCsrfResult.getResponse().getContentAsString());
+
+        mockMvc.perform(patch("/api/machines/alarms/999999/clear")
+                        .session(session)
+                        .cookie(refreshedCsrfCookie)
+                        .header(refreshedCsrf.get("headerName").asText(), refreshedCsrfCookie.getValue()))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("A004"));
     }
 
 }
