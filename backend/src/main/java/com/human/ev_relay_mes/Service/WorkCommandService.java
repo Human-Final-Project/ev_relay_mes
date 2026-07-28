@@ -50,6 +50,9 @@ public class WorkCommandService {
     private static final EnumSet<WorkCommand.Status> INTERRUPTIBLE_STATUSES = EnumSet.of(
             WorkCommand.Status.DISPATCHED,
             WorkCommand.Status.ACCEPTED);
+    private static final EnumSet<Lot.Status> TERMINAL_LOT_STATUSES = EnumSet.of(
+            Lot.Status.COMPLETED,
+            Lot.Status.SCRAPPED);
 
     private final WorkCommandRepository workCommandRepository;
     private final MachineRepository machineRepository;
@@ -153,6 +156,10 @@ public class WorkCommandService {
         List<WorkCommandResponseDto> claimed = new ArrayList<>();
         Set<String> reservedDuringClaim = new HashSet<>();
         for (WorkCommand command : pending) {
+            if (isTerminalLot(command.getLot())) {
+                cancelCommand(command, now);
+                continue;
+            }
             String commandMachineId = command.getMachine().getMachineId();
             if (!canDispatch(command)
                     || reservedDuringClaim.contains(commandMachineId)
@@ -175,9 +182,37 @@ public class WorkCommandService {
                 : workCommandRepository.findStaleDispatchedByMachineForUpdate(
                         machineId, WorkCommand.Status.DISPATCHED, cutoff);
         stale.forEach(command -> {
-            command.setStatus(WorkCommand.Status.PENDING);
-            command.setDispatchedAt(null);
+            if (isTerminalLot(command.getLot())) {
+                cancelCommand(command, LocalDateTime.now());
+            } else {
+                command.setStatus(WorkCommand.Status.PENDING);
+                command.setDispatchedAt(null);
+            }
         });
+    }
+
+    /**
+     * LOT이 종료될 때 아직 전달 대기/전달 중/실행 중으로 남은 명령을 모두 종료한다.
+     * 늦은 ACK가 도착하더라도 CANCELED 상태를 유지해 유령 명령이 설비를 점유하지 않게 한다.
+     */
+    @Transactional
+    public int cancelActiveCommandsForLot(String lotNo) {
+        List<WorkCommand> commands = workCommandRepository.findByLotAndStatusInForUpdate(
+                lotNo, ACTIVE_STATUSES);
+        LocalDateTime now = LocalDateTime.now();
+        commands.forEach(command -> cancelCommand(command, now));
+        return commands.size();
+    }
+
+    /** 서버 재시작이나 이벤트 순서 경쟁으로 남은 종료 LOT의 활성 명령을 정리한다. */
+    @Transactional
+    public int cancelActiveCommandsForTerminalLots() {
+        List<WorkCommand> commands =
+                workCommandRepository.findActiveCommandsOfTerminalLotsForUpdate(
+                        TERMINAL_LOT_STATUSES, ACTIVE_STATUSES);
+        LocalDateTime now = LocalDateTime.now();
+        commands.forEach(command -> cancelCommand(command, now));
+        return commands.size();
     }
 
     @Transactional
@@ -329,6 +364,15 @@ public class WorkCommandService {
         }
         WorkCommand.Status acknowledgedStatus =
                 WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase());
+        if (command.getStatus() == WorkCommand.Status.CANCELED) {
+            recordLateAcknowledgement(command, dto);
+            return WorkCommandResponseDto.fromEntity(command);
+        }
+        if (isTerminalLot(command.getLot()) && ACTIVE_STATUSES.contains(command.getStatus())) {
+            cancelCommand(command, LocalDateTime.now());
+            recordLateAcknowledgement(command, dto);
+            return WorkCommandResponseDto.fromEntity(command);
+        }
         boolean acceptedAlreadyProcessed =
                 acknowledgedStatus == WorkCommand.Status.ACCEPTED
                         && EnumSet.of(
@@ -337,7 +381,8 @@ public class WorkCommandService {
                                 WorkCommand.Status.CANCELED)
                         .contains(command.getStatus());
         if (command.getStatus() == acknowledgedStatus || acceptedAlreadyProcessed) {
-            if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
+            if (acknowledgedStatus == WorkCommand.Status.ACCEPTED
+                    && command.getStatus() != WorkCommand.Status.CANCELED) {
                 captureStartContext(command);
             }
             if (command.getAcknowledgedAt() == null) {
@@ -412,6 +457,25 @@ public class WorkCommandService {
     public boolean hasActiveCommandForMachine(String machineId) {
         return workCommandRepository.existsByMachine_MachineIdAndStatusIn(
                 machineId, ACTIVE_STATUSES);
+    }
+
+    private void cancelCommand(WorkCommand command, LocalDateTime completedAt) {
+        command.setStatus(WorkCommand.Status.CANCELED);
+        command.setCompletedAt(completedAt);
+    }
+
+    private boolean isTerminalLot(Lot lot) {
+        return lot != null && TERMINAL_LOT_STATUSES.contains(lot.getStatus());
+    }
+
+    private void recordLateAcknowledgement(
+            WorkCommand command, WorkCommandAckRequestDto dto) {
+        if (command.getAcknowledgedAt() == null) {
+            command.setAcknowledgedAt(LocalDateTime.now());
+        }
+        if (command.getAckMessage() == null || command.getAckMessage().isBlank()) {
+            command.setAckMessage(dto.getMessage());
+        }
     }
 
     private boolean canDispatch(WorkCommand command) {

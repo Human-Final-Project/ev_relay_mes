@@ -57,3 +57,39 @@ test("서로 다른 공정의 여러 LOT을 파이프라인 현황에 표시한�
   expect(screen.getAllByText("OP60").length).toBeGreaterThan(0);
   expect(screen.getAllByText("OP40_OP50").length).toBeGreaterThan(0);
 });
+
+
+test("OP20과 OP30 병렬 카드에도 생산 진행률을 표시한다", async () => {
+  MesApi.getMachines.mockResolvedValue({ data: [
+    {
+      machineId: "EQ-WIND-01",
+      machineName: "코일 권선기",
+      processCode: "OP20",
+      processName: "코일 권선",
+      status: "RUNNING",
+      currentLotNo: "LOT-001",
+      processedQty: 4,
+      targetQty: 10,
+      progressPercent: 40,
+    },
+    {
+      machineId: "EQ-WELD-01",
+      machineName: "접점 용접기",
+      processCode: "OP30",
+      processName: "접점 가공/용접",
+      status: "RUNNING",
+      currentLotNo: "LOT-001",
+      processedQty: 6,
+      targetQty: 10,
+      progressPercent: 60,
+    },
+  ] });
+
+  render(<ProductionPage/>);
+
+  expect(await screen.findByRole("progressbar", { name: "코일 권선 진행률" }))
+    .toHaveAttribute("aria-valuenow", "40");
+  expect(screen.getByRole("progressbar", { name: "접점 가공/용접 진행률" }))
+    .toHaveAttribute("aria-valuenow", "60");
+  expect(screen.getAllByText("LOT-001").length).toBeGreaterThanOrEqual(2);
+});

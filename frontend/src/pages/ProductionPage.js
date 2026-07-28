@@ -73,7 +73,6 @@ export default function ProductionPage() {
           <div className="live-process-flow" aria-label="EV Relay 생산 공정 흐름">
             <div className="live-parallel-stack">
             {["OP20", "OP30"].map((processCode) => <MachineCard
-              compact
               key={processCode}
               machine={machineByProcess[processCode] || placeholderMachine(processCode)}
               selected={selectedMachineId === machineByProcess[processCode]?.machineId}

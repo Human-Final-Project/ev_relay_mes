@@ -284,7 +284,7 @@
 .live-machine-card.status-running { border-left-color:#0abf68; }
 .live-machine-card.status-error { border-left-color:#dc2626; }
 .live-machine-card.status-stopped { border-left-color:#f59e0b; }
-.live-machine-card.compact { min-height:68px; padding-top:9px; padding-bottom:8px; }
+.live-machine-card.compact { min-height:108px; padding-top:9px; padding-bottom:8px; }
 .live-machine-status-dot { position:absolute; top:10px; right:10px; width:7px; height:7px; border-radius:50%; background:#94a3b8; }
 .live-machine-status-dot.status-idle { background:#94a3b8; }
 .live-machine-status-dot.status-running { background:#10b75d; }
@@ -301,7 +301,6 @@
 .live-machine-progress .progress-track>span { background:#0db7d3; }
 .live-machine-badge { margin-top:auto; padding-top:7px; }
 .live-machine-badge .mes-status { padding:3px 7px; border-radius:3px; font-size:8px; }
-.live-machine-card.compact .live-machine-lot,.live-machine-card.compact .live-machine-progress { display:none; }
 .live-machine-card.compact .live-machine-badge { padding-top:5px; }
 @media(max-width:1100px){.live-machine-card{padding-left:10px;padding-right:10px}.live-machine-code{font-size:8px}.live-machine-card>strong{font-size:10px}}
 @media(max-width:900px){.live-process-heading{flex-direction:column}.process-status-legend{flex-wrap:wrap}}

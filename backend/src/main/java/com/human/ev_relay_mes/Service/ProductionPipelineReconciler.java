@@ -20,13 +20,20 @@ import org.springframework.stereotype.Component;
 public class ProductionPipelineReconciler {
 
     private final ProductionSchedulerService productionSchedulerService;
+    private final WorkCommandService workCommandService;
 
     @Scheduled(
             initialDelayString = "${mes.pipeline.reconcile-initial-delay-ms:3000}",
             fixedDelayString = "${mes.pipeline.reconcile-delay-ms:3000}")
     public void reconcile() {
         try {
-            productionSchedulerService.tryAssignAllIdleMachines();
+            int canceledGhostCommands =
+                    workCommandService.cancelActiveCommandsForTerminalLots();
+            int assignedMachines = productionSchedulerService.tryAssignAllIdleMachines();
+            if (canceledGhostCommands > 0 || assignedMachines > 0) {
+                log.info("파이프라인 정합성 복구: 유령 명령 {}건 취소, IDLE 설비 {}건 재배정",
+                        canceledGhostCommands, assignedMachines);
+            }
         } catch (RuntimeException exception) {
             log.error("파이프라인 정합성 재확인 실패", exception);
         }
