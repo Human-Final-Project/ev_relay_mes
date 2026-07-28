@@ -110,13 +110,16 @@ public class ProductionSchedulerService {
             return false;
         }
 
-        int inputQty = expectedInputQty(lot, lot.getCurrentProcess());
-        if (inputQty <= 0) {
+        ProcessInputAvailability input = expectedInput(lot, lot.getCurrentProcess());
+        if (!input.isReady()) {
+            return false;
+        }
+        if (input.getInputQty() <= 0) {
             finishScrappedLot(lot);
             return false;
         }
         return workCommandService
-                .tryCreateStartCommand(lot, lot.getCurrentProcess(), inputQty)
+                .tryCreateStartCommand(lot, lot.getCurrentProcess(), input.getInputQty())
                 .isPresent();
     }
 
@@ -125,6 +128,7 @@ public class ProductionSchedulerService {
         lot.setNgQty(lot.getInputQty());
         lot.setStatus(Lot.Status.SCRAPPED);
         lot.setCompletedAt(LocalDateTime.now());
+        workCommandService.cancelActiveCommandsForLot(lot.getLotNo());
         workOrderContinuationRequestService.requestEvaluation(
                 lot.getWorkOrder().getWorkOrderId());
     }
@@ -149,23 +153,71 @@ public class ProductionSchedulerService {
                 && !workCommandService.hasActiveExecution(lot.getLotNo(), OP30);
     }
 
-    private int expectedInputQty(Lot lot, Process process) {
+    private ProcessInputAvailability expectedInput(Lot lot, Process process) {
         String processCode = process.getProcessCode();
         if (ASSEMBLY.equals(processCode)) {
-            return Math.min(processOkQty(lot, OP20), processOkQty(lot, OP30));
+            List<ProductionLog> op20Logs = processLogs(lot, OP20);
+            List<ProductionLog> op30Logs = processLogs(lot, OP30);
+            if (!hasCompletedResult(op20Logs) || !hasCompletedResult(op30Logs)) {
+                return ProcessInputAvailability.waiting();
+            }
+            return ProcessInputAvailability.ready(Math.min(
+                    completedOkQty(op20Logs), completedOkQty(op30Logs)));
         }
+
         return processRepository
                 .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(process.getProcessOrder())
-                .map(previous -> processOkQty(lot, previous.getProcessCode()))
-                .orElse(0);
+                .map(previous -> {
+                    List<ProductionLog> previousLogs =
+                            processLogs(lot, previous.getProcessCode());
+                    if (!hasCompletedResult(previousLogs)) {
+                        return ProcessInputAvailability.waiting();
+                    }
+                    return ProcessInputAvailability.ready(completedOkQty(previousLogs));
+                })
+                .orElseGet(ProcessInputAvailability::waiting);
     }
 
-    private int processOkQty(Lot lot, String processCode) {
+    private List<ProductionLog> processLogs(Lot lot, String processCode) {
         return productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), processCode)
-                .stream()
+                        lot.getLotNo(), processCode);
+    }
+
+    private boolean hasCompletedResult(List<ProductionLog> logs) {
+        return logs.stream().anyMatch(log -> "COMPLETED".equalsIgnoreCase(log.getStatus()));
+    }
+
+    private int completedOkQty(List<ProductionLog> logs) {
+        return logs.stream()
+                .filter(log -> "COMPLETED".equalsIgnoreCase(log.getStatus()))
                 .mapToInt(ProductionLog::getOkQty)
                 .sum();
+    }
+
+    private static final class ProcessInputAvailability {
+        private final boolean ready;
+        private final int inputQty;
+
+        private ProcessInputAvailability(boolean ready, int inputQty) {
+            this.ready = ready;
+            this.inputQty = inputQty;
+        }
+
+        static ProcessInputAvailability waiting() {
+            return new ProcessInputAvailability(false, 0);
+        }
+
+        static ProcessInputAvailability ready(int inputQty) {
+            return new ProcessInputAvailability(true, inputQty);
+        }
+
+        boolean isReady() {
+            return ready;
+        }
+
+        int getInputQty() {
+            return inputQty;
+        }
     }
 }

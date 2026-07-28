@@ -253,6 +253,72 @@ class WorkCommandServiceTest {
     }
 
     @Test
+    void keepsCanceledStatusWhenAcceptedAckArrivesAfterLotWasScrapped() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder()
+                .lotNo("LOT-SCRAPPED")
+                .status(Lot.Status.SCRAPPED)
+                .build();
+        WorkCommand command = command(101L, lot, machine, process);
+        command.setStatus(WorkCommand.Status.DISPATCHED);
+        WorkCommandAckRequestDto dto = ack(101L, "EQ-WIND-01", "ACCEPTED");
+
+        when(workCommandRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(command));
+
+        var result = workCommandService.acknowledge(dto);
+
+        assertThat(result.getStatus()).isEqualTo("CANCELED");
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+        assertThat(command.getCompletedAt()).isNotNull();
+        org.mockito.Mockito.verify(lotProcessResponsibleService, org.mockito.Mockito.never())
+                .captureIfAbsent(any(), any(), any());
+    }
+
+    @Test
+    void keepsCanceledStatusWhenRejectedAckArrivesLate() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-HOLD").status(Lot.Status.HOLD).build();
+        WorkCommand command = command(101L, lot, machine, process);
+        command.setStatus(WorkCommand.Status.CANCELED);
+        WorkCommandAckRequestDto dto = ack(101L, "EQ-WIND-01", "REJECTED");
+
+        when(workCommandRepository.findByIdForUpdate(101L)).thenReturn(Optional.of(command));
+
+        var result = workCommandService.acknowledge(dto);
+
+        assertThat(result.getStatus()).isEqualTo("CANCELED");
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+    }
+
+    @Test
+    void cancelsAllActiveCommandsForScrappedLot() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder()
+                .lotNo("LOT-SCRAPPED")
+                .status(Lot.Status.SCRAPPED)
+                .build();
+        WorkCommand pending = command(101L, lot, machine, process);
+        WorkCommand dispatched = command(102L, lot, machine, process);
+        dispatched.setStatus(WorkCommand.Status.DISPATCHED);
+        WorkCommand accepted = command(103L, lot, machine, process);
+        accepted.setStatus(WorkCommand.Status.ACCEPTED);
+
+        when(workCommandRepository.findByLotAndStatusInForUpdate(
+                eq("LOT-SCRAPPED"), anyCollection()))
+                .thenReturn(List.of(pending, dispatched, accepted));
+
+        int canceled = workCommandService.cancelActiveCommandsForLot("LOT-SCRAPPED");
+
+        assertThat(canceled).isEqualTo(3);
+        assertThat(List.of(pending, dispatched, accepted))
+                .allMatch(command -> command.getStatus() == WorkCommand.Status.CANCELED)
+                .allMatch(command -> command.getCompletedAt() != null);
+    }
+
+    @Test
     void rejectsAckWhenMachineDoesNotMatchCommand() {
         Process process = process("OP20", 1);
         Machine machine = machine("EQ-WIND-01", process);

@@ -132,8 +132,87 @@ class ProductionSchedulerServiceTest {
         assertThat(zeroInputLot.getStatus()).isEqualTo(Lot.Status.SCRAPPED);
         assertThat(zeroInputLot.getNgQty()).isEqualTo(10);
         assertThat(zeroInputLot.getCompletedAt()).isNotNull();
+        verify(workCommandService).cancelActiveCommandsForLot("LOT-ZERO");
         verify(workOrderContinuationRequestService).requestEvaluation(1L);
         verify(workCommandService).tryCreateStartCommand(nextLot, sealing, 8);
+    }
+
+    @Test
+    void waitsInsteadOfScrappingWhenPreviousProcessResultIsStillRunning() {
+        Process assembly = process("OP40_OP50", 3);
+        Process sealing = process("OP60", 4);
+        Machine machine = Machine.builder()
+                .machineId("EQ-SEAL-01")
+                .machineName("sealer")
+                .machineType("EQ-SEAL")
+                .process(sealing)
+                .status(Machine.Status.IDLE)
+                .build();
+        Lot waitingLot = lot(1L, "LOT-WAIT", sealing);
+        ProductionLog runningPrevious = ProductionLog.builder()
+                .lot(waitingLot)
+                .process(assembly)
+                .inputQty(0)
+                .okQty(0)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+
+        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
+                .thenReturn(List.of(waitingLot));
+        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+                .thenReturn(Optional.of(assembly));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        "LOT-WAIT", "OP40_OP50"))
+                .thenReturn(List.of(runningPrevious));
+
+        boolean assigned = schedulerService.tryAssignMachine("EQ-SEAL-01");
+
+        assertThat(assigned).isFalse();
+        assertThat(waitingLot.getStatus()).isEqualTo(Lot.Status.RUNNING);
+        assertThat(waitingLot.getCompletedAt()).isNull();
+        verify(workCommandService, never()).cancelActiveCommandsForLot("LOT-WAIT");
+        verify(workOrderContinuationRequestService, never()).requestEvaluation(1L);
+    }
+
+    @Test
+    void waitsForBothParallelCompletedResultsBeforeAssemblyDecision() {
+        Process assembly = process("OP40_OP50", 3);
+        Lot lot = lot(1L, "LOT-PAIR", assembly);
+        ProductionLog completedOp20 = ProductionLog.builder()
+                .lot(lot)
+                .process(process("OP20", 1))
+                .inputQty(10)
+                .okQty(10)
+                .ngQty(0)
+                .status("COMPLETED")
+                .build();
+        ProductionLog runningOp30 = ProductionLog.builder()
+                .lot(lot)
+                .process(process("OP30", 2))
+                .inputQty(0)
+                .okQty(0)
+                .ngQty(0)
+                .status("RUNNING")
+                .build();
+
+        when(lotRepository.findByLotNoForUpdate("LOT-PAIR")).thenReturn(Optional.of(lot));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-PAIR", "OP20"))
+                .thenReturn(List.of(completedOp20));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-PAIR", "OP30"))
+                .thenReturn(List.of(runningOp30));
+
+        boolean scheduled = schedulerService.tryScheduleLot("LOT-PAIR");
+
+        assertThat(scheduled).isFalse();
+        assertThat(lot.getStatus()).isEqualTo(Lot.Status.RUNNING);
+        verify(workCommandService, never()).cancelActiveCommandsForLot("LOT-PAIR");
+        verify(workCommandService, never()).tryCreateStartCommand(
+                any(), any(), org.mockito.ArgumentMatchers.anyInt());
     }
 
     @Test

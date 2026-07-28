@@ -286,6 +286,7 @@ public class ProductionService {
         lot.setNgQty(lot.getInputQty());
         lot.setStatus(Lot.Status.SCRAPPED);
         lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
+        workCommandService.cancelActiveCommandsForLot(lot.getLotNo());
         lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
         workOrderContinuationRequestService.requestEvaluation(
                 lot.getWorkOrder().getWorkOrderId());
