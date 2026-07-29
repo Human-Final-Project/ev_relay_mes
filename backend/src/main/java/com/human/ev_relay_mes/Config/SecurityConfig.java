@@ -3,7 +3,7 @@ package com.human.ev_relay_mes.Config;
 import com.human.ev_relay_mes.Security.RestAccessDeniedHandler;
 import com.human.ev_relay_mes.Security.RestAuthenticationEntryPoint;
 import com.human.ev_relay_mes.Security.RestSessionInformationExpiredStrategy;
-import com.human.ev_relay_mes.Security.CollectorApiKeyAuthenticationFilter;
+import com.human.ev_relay_mes.feature.collector.api.CollectorApiKeyFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,7 +44,7 @@ public class SecurityConfig {
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final RestSessionInformationExpiredStrategy sessionInformationExpiredStrategy;
-    private final CollectorApiKeyAuthenticationFilter collectorApiKeyAuthenticationFilter;
+    private final CollectorApiKeyFilter collectorApiKeyFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -145,7 +145,7 @@ public class SecurityConfig {
                 .logout(logout -> logout.disable());
 
         http.addFilterBefore(
-                collectorApiKeyAuthenticationFilter,
+                collectorApiKeyFilter,
                 AnonymousAuthenticationFilter.class);
 
         return http.build();

@@ -96,7 +96,7 @@ final_project
 ├ embedded-c
 │  ├ mes_L1       # C 기반 L1 설비 시뮬레이터
 │  └ mes_collector # C 기반 L2 TCP 수집기
-├ docs            # 요구사항, ERD, API 명세, TCP 프로토콜, 테스트 문서
+├ docs            # 모듈 구조, 요구사항, ERD, TCP 프로토콜, 참고 문서
 └ README.md       # 프로젝트 소개 문서
 ```
 
@@ -122,15 +122,16 @@ React 기반 사용자 화면을 담당합니다.
 
 ### backend
 
-Spring Boot JPA 기반 MES API 서버와 DB 저장 로직을 담당합니다. TCP 수신은 L2가 담당하며 Backend에는 TCP 패키지를 두지 않습니다.
+Spring Boot JPA 기반 MES API 서버와 DB 저장 로직을 담당합니다. TCP 수신은 L2가 담당하며 Backend에는 TCP 패키지를 두지 않습니다. 기능 코드는 `feature/<module>/api`와 `feature/<module>/internal`로 분리한 모듈형 모놀리스 구조입니다.
 
 주요 구현 대상:
 
 - 회원가입 / 로그인
 - 관리자 권한 처리
 - 제품 / BOM / 공정 / LOT REST API
-- L2 전용 Collector 요청 DTO / Controller / Service
+- L2 Collector 상태, 작업명령, ACK 처리
 - Collector REST API 경로 `/api/collector/**`
+- `X-Collector-Key` 기반 Collector 전용 인증
 - L2가 전달한 JSON 검증 및 업무 처리
 - LOT 상태 자동 변경
 - 공정별 생산 요약 저장
@@ -170,19 +171,20 @@ V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-20260708-001,100,97,3,COMPLETED
 
 프로젝트 산출물을 관리합니다.
 
-추천 구조:
+현재 구조:
 
 ```text
 docs
-├ requirements.md       # 요구사항 정의
-├ backlog.md            # 기능 백로그
-├ erd.md                # ERD 및 DB 설계
-├ api-spec.md           # REST API 명세
-├ tcp-protocol.md       # TCP 메시지 포맷
-├ screen.md             # 화면 설계
-├ test-case.md          # 테스트 케이스
-├ troubleshooting.md    # 문제 해결 기록
-└ presentation          # 발표 자료
+├ module-architecture.md          # 현재 모듈 책임, 공개 경계와 검수 기준
+├ tcp-protocol.md                 # L1/L2 메시지와 Collector HTTP 계약
+├ team-change-summary-2026-07-13.md
+├ ev-relay-mini-mes-flow.png
+└ reference
+   ├ EV_Relay_MES_Overall_Flow.md
+   ├ EV_Relay_MES_Folder_Structure_ver.2.2.md
+   ├ Guide.md
+   ├ PageList.md
+   └ ERD 이미지 및 SQL 참고 자료
 ```
 
 ---
@@ -337,6 +339,10 @@ cd backend
 ./gradlew bootRun
 ```
 
+Collector를 함께 실행할 때는 Backend의 `MES_COLLECTOR_API_KEY`와 L2의
+`MES_COLLECTOR_API_KEY` 컴파일 매크로를 같은 값으로 설정합니다. 기본 개발 키와
+변경 방법은 [`embedded-c/mes_collector/README.md`](embedded-c/mes_collector/README.md)를 참고합니다.
+
 ### L1 Simulator
 
 ```bash
@@ -352,6 +358,29 @@ cd embedded-c/mes_collector
 make
 ./mes_collector
 ```
+
+### 전체 테스트
+
+Windows:
+
+```powershell
+cd backend
+.\gradlew.bat cleanTest test
+
+cd ..\frontend
+$env:CI='true'
+npm test -- --watchAll=false
+npm run build
+
+cd ..\embedded-c\mes_collector
+mingw32-make test
+
+cd ..\mes_L1
+mingw32-make test
+```
+
+모듈 책임, 공개 API와 의존 규칙은
+[`docs/module-architecture.md`](docs/module-architecture.md)를 기준으로 합니다.
 
 ---
 

@@ -2,6 +2,7 @@
 
 > **주의: 구조 참고용 v2.2 문서**
 > 현재 통신 구현에서는 Spring Boot의 `tcp` 패키지를 사용하지 않는다. L1은 L2 C 수집기에 TCP로 연결하고 L2는 Backend Collector REST API에 JSON을 전송한다. Backend에는 Collector 전용 Request DTO, Controller, Service가 필요하다. 실제 통신 구조는 [`../tcp-protocol.md`](../tcp-protocol.md)와 [`EV_Relay_MES_Overall_Flow.md`](EV_Relay_MES_Overall_Flow.md)를 우선한다.
+> 현재 Backend 패키지 구조와 모듈 의존 규칙은 [`../module-architecture.md`](../module-architecture.md)를 우선한다.
 
 > 기준: 학원 수업에서 배운 단순 구조를 유지하되, DB/Java/화면 용어가 서로 충돌하지 않도록 정리한다.  
 > 품목은 `items` 테이블 하나로 통합하고, 그 외 용어는 Java 파일명 기준으로 맞춘다.

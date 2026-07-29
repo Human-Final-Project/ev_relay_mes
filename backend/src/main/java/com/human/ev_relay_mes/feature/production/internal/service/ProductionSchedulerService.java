@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
@@ -36,7 +36,7 @@ public class ProductionSchedulerService {
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
-    private final WorkCommandService workCommandService;
+    private final WorkCommandOperations workCommandService;
     private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     /** 현재 LOT이 대기 중인 공정을 즉시 예약할 수 있으면 START를 생성한다. */

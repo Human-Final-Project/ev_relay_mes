@@ -1,14 +1,14 @@
 package com.human.ev_relay_mes.feature.machine.internal.service;
 
 import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmHistory;
 import com.human.ev_relay_mes.feature.production.api.Lot;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -16,7 +16,6 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHi
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -43,8 +42,7 @@ class MachineAlarmServiceTest {
     @Mock MasterDataLookup masterDataLookup;
     @Mock MemberLookup memberLookup;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
-    @Mock WorkCommandRepository workCommandRepository;
-    @Mock WorkCommandService workCommandService;
+    @Mock WorkCommandOperations workCommandService;
     @Mock ProductionSchedulingRequests productionSchedulingRequests;
 
     @InjectMocks MachineAlarmService machineAlarmService;
@@ -73,7 +71,7 @@ class MachineAlarmServiceTest {
 
         assertThat(response.getMachineAlarmHistoryId()).isEqualTo(12L);
         verifyNoInteractions(machineRepository, masterDataLookup,
-                machineStatusHistoryRepository, workCommandRepository, workCommandService);
+                machineStatusHistoryRepository, workCommandService);
     }
 
     @Test
@@ -123,8 +121,8 @@ class MachineAlarmServiceTest {
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
         when(masterDataLookup.getRequiredAlarmCode("WIRE_TENSION_WARN")).thenReturn(warningCode);
-        when(workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+        when(workCommandService
+                .findLatestCommandForMachine(
                         org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))
                 .thenReturn(Optional.of(command));
         when(machineAlarmHistoryRepository.save(any(MachineAlarmHistory.class)))

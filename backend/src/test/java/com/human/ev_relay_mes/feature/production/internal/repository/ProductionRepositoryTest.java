@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.feature.production.internal.repository;
 
 import com.human.ev_relay_mes.Repository.RepositoryTestSupport;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
+import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.material.internal.repository.MaterialLotRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
@@ -10,7 +10,7 @@ import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.material.api.MaterialLot;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.production.api.ProductionLog;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

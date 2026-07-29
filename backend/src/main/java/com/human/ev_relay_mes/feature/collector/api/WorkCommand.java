@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Entity;
+package com.human.ev_relay_mes.feature.collector.api;
 
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.production.api.Lot;

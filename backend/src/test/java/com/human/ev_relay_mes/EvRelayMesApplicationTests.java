@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
-import com.human.ev_relay_mes.Security.CollectorApiKeyAuthenticationFilter;
+import com.human.ev_relay_mes.feature.collector.api.CollectorApiKeyFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -67,7 +67,7 @@ class EvRelayMesApplicationTests {
 	@Test
 	void collectorApiRejectsInvalidApiKey() throws Exception {
 		mockMvc.perform(post("/api/collector/production-logs")
-					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "wrong-key")
+					.header(CollectorApiKeyFilter.HEADER_NAME, "wrong-key")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{}"))
 				.andExpect(status().isUnauthorized())
@@ -77,7 +77,7 @@ class EvRelayMesApplicationTests {
 	@Test
 	void collectorApiAcceptsConfiguredApiKeyAndStillValidatesRequestBody() throws Exception {
 		mockMvc.perform(post("/api/collector/production-logs")
-					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key")
+					.header(CollectorApiKeyFilter.HEADER_NAME, "test-collector-api-key")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{}"))
 				.andExpect(status().isBadRequest());
@@ -86,7 +86,7 @@ class EvRelayMesApplicationTests {
 	@Test
 	void collectorApiKeyAllowsHeartbeatWithoutUserSessionOrCsrf() throws Exception {
 		mockMvc.perform(post("/api/collector/status-heartbeat")
-					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key")
+					.header(CollectorApiKeyFilter.HEADER_NAME, "test-collector-api-key")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("""
 							{
@@ -107,7 +107,7 @@ class EvRelayMesApplicationTests {
 	@Test
 	void collectorApiKeyDoesNotGrantAccessToUserApi() throws Exception {
 		mockMvc.perform(get("/api/mes/dashboard/summary")
-					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key"))
+					.header(CollectorApiKeyFilter.HEADER_NAME, "test-collector-api-key"))
 				.andExpect(status().isUnauthorized());
 	}
 

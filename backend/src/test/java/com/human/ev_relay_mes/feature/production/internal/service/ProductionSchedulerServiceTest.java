@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
-import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
@@ -34,7 +34,7 @@ class ProductionSchedulerServiceTest {
     @Mock private MachineRegistry machineRegistry;
     @Mock private MasterDataLookup masterDataLookup;
     @Mock private ProductionLogRepository productionLogRepository;
-    @Mock private WorkCommandService workCommandService;
+    @Mock private WorkCommandOperations workCommandService;
     @Mock private WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
     @InjectMocks

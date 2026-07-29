@@ -7,9 +7,9 @@ import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
@@ -18,7 +18,6 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusH
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,8 +39,7 @@ public class MachineService implements MachineMonitoring {
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final MasterDataLookup masterDataLookup;
     private final ProductionData productionData;
-    private final WorkCommandService workCommandService;
-    private final WorkCommandRepository workCommandRepository;
+    private final WorkCommandOperations workCommandService;
     private final QualityMetrics qualityMetrics;
     private final ProductionSchedulingRequests productionSchedulingRequests;
 
@@ -212,8 +210,8 @@ public class MachineService implements MachineMonitoring {
                 .createdAt(machine.getCreatedAt())
                 .updatedAt(machine.getUpdatedAt());
         if (machine.getStatus() == Machine.Status.RUNNING) {
-            workCommandRepository
-                    .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+            workCommandService
+                    .findLatestCommandForMachine(
                             machine.getMachineId(), ACTIVE_COMMAND_STATUSES)
                     .ifPresent(command -> appendProgress(builder, command));
         }
@@ -230,7 +228,7 @@ public class MachineService implements MachineMonitoring {
         int productionQty = productionData.sumInputQuantity(lotNo, processCode);
         int processedQty = Math.max(evaluatedQty, productionQty);
         int targetQty = command.getCommandType() == WorkCommand.CommandType.RESUME
-                ? workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo).stream()
+                ? workCommandService.findCommandsForLot(lotNo).stream()
                         .filter(item -> item.getCommandType() == WorkCommand.CommandType.START)
                         .filter(item -> item.getProcess().getProcessCode().equals(processCode))
                         .mapToInt(WorkCommand::getInputQty)

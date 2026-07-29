@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InOrder;
@@ -13,7 +13,7 @@ import static org.mockito.Mockito.inOrder;
 @ExtendWith(MockitoExtension.class)
 class ProductionPipelineReconcilerTest {
 
-    @Mock private WorkCommandService workCommandService;
+    @Mock private WorkCommandOperations workCommandService;
     @Mock private ProductionSchedulerService productionSchedulerService;
 
     @InjectMocks

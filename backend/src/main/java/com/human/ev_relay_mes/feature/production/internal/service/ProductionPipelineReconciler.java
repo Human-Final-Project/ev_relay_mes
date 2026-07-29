@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
         matchIfMissing = true)
 public class ProductionPipelineReconciler {
 
-    private final WorkCommandService workCommandService;
+    private final WorkCommandOperations workCommandService;
     private final ProductionSchedulerService productionSchedulerService;
 
     @Scheduled(

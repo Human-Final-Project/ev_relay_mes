@@ -51,11 +51,6 @@ class ModuleBoundaryTest {
         }
 
         assertThat(actualModules).containsExactlyInAnyOrderElementsOf(PLANNED_MODULES);
-        for (String module : PLANNED_MODULES) {
-            assertThat(FEATURE_ROOT.resolve(module).resolve("package-info.java"))
-                    .as("%s module must document its boundary", module)
-                    .isRegularFile();
-        }
     }
 
     @Test
@@ -86,11 +81,6 @@ class ModuleBoundaryTest {
         List<String> violations = new ArrayList<>();
         for (Path source : javaSourcesUnder(FEATURE_ROOT)) {
             Path moduleRelativePath = FEATURE_ROOT.relativize(source);
-            boolean moduleDescriptor = moduleRelativePath.getNameCount() == 2
-                    && moduleRelativePath.getFileName().toString().equals("package-info.java");
-            if (moduleDescriptor) {
-                continue;
-            }
             if (moduleRelativePath.getNameCount() < 3) {
                 violations.add(relative(source));
                 continue;

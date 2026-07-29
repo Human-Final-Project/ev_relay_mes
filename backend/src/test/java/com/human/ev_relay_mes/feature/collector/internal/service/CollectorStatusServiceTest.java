@@ -1,5 +1,6 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.collector.internal.service;
 
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatus;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -14,7 +15,7 @@ class CollectorStatusServiceTest {
     void reportsOfflineUntilFirstHeartbeat() {
         CollectorStatusService service = new CollectorStatusService();
 
-        CollectorStatusService.CollectorStatus status = service.getStatus();
+        CollectorStatus status = service.getStatus();
 
         assertFalse(status.l2Online());
         assertEquals(0, status.connectedL1Count());
@@ -28,7 +29,7 @@ class CollectorStatusServiceTest {
         service.receiveHeartbeat(
                 List.of("EQ-WELD-01", "EQ-WIND-01", "EQ-WIND-01"),
                 6);
-        CollectorStatusService.CollectorStatus status = service.getStatus();
+        CollectorStatus status = service.getStatus();
 
         assertTrue(status.l2Online());
         assertEquals(2, status.connectedL1Count());

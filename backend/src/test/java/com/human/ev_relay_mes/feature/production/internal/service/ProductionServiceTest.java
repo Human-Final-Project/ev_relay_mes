@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.feature.production.api.Lot;
@@ -44,7 +44,7 @@ class ProductionServiceTest {
     @Mock
     private LotRepository lotRepository;
     @Mock
-    private WorkCommandService workCommandService;
+    private WorkCommandOperations workCommandService;
     @Mock
     private ProductionScheduleRequestService productionScheduleRequestService;
     @Mock

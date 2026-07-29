@@ -1,5 +1,7 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.collector.internal.service;
 
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatus;
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatusOperations;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
@@ -7,7 +9,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
-public class CollectorStatusService {
+public class CollectorStatusService implements CollectorStatusOperations {
 
     private static final Duration ONLINE_TIMEOUT = Duration.ofSeconds(10);
 
@@ -53,12 +55,4 @@ public class CollectorStatusService {
             LocalDateTime lastHeartbeatAt) {
     }
 
-    public record CollectorStatus(
-            boolean l2Online,
-            int connectedL1Count,
-            int totalL1Count,
-            List<String> connectedMachineIds,
-            LocalDateTime lastHeartbeatAt,
-            LocalDateTime checkedAt) {
-    }
 }

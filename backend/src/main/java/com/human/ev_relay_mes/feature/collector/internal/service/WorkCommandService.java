@@ -1,11 +1,12 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.collector.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
-import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandAckRequestDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
@@ -14,13 +15,14 @@ import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperation
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
+import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.EnumSet;
 import java.util.HashSet;
 import java.util.List;
@@ -30,7 +32,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class WorkCommandService {
+public class WorkCommandService implements WorkCommandOperations {
 
     private static final String PARALLEL_PROCESS_1 = "OP20";
     private static final String PARALLEL_PROCESS_2 = "OP30";
@@ -408,6 +410,19 @@ public class WorkCommandService {
     public List<WorkCommandResponseDto> getCommands(String lotNo) {
         return workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo)
                 .stream().map(WorkCommandResponseDto::fromEntity).toList();
+    }
+
+    @Override
+    public List<WorkCommand> findCommandsForLot(String lotNo) {
+        return workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo);
+    }
+
+    @Override
+    public Optional<WorkCommand> findLatestCommandForMachine(
+            String machineId, Collection<WorkCommand.Status> statuses) {
+        return workCommandRepository
+                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+                        machineId, statuses);
     }
 
     public boolean hasActiveExecution(String lotNo, String processCode) {

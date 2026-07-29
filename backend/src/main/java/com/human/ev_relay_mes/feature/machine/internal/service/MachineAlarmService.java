@@ -10,16 +10,15 @@ import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -43,8 +42,7 @@ public class MachineAlarmService implements MachineAlarmOperations {
     private final MasterDataLookup masterDataLookup;
     private final MemberLookup memberLookup;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
-    private final WorkCommandRepository workCommandRepository;
-    private final WorkCommandService workCommandService;
+    private final WorkCommandOperations workCommandService;
     private final ProductionSchedulingRequests productionSchedulingRequests;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
@@ -63,8 +61,8 @@ public class MachineAlarmService implements MachineAlarmOperations {
         AlarmCode alarmCode = masterDataLookup.getRequiredAlarmCode(dto.getAlarmCode());
         validateAlarm(machine, alarmCode, dto.getAlarmLevel());
         String alarmLevel = dto.getAlarmLevel().toUpperCase();
-        WorkCommand contextCommand = workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+        WorkCommand contextCommand = workCommandService
+                .findLatestCommandForMachine(
                         machine.getMachineId(), ALARM_CONTEXT_STATUSES)
                 .orElse(null);
 

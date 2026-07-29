@@ -1,26 +1,26 @@
-package com.human.ev_relay_mes.Controller;
+package com.human.ev_relay_mes.feature.collector.internal.controller;
 
 import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
-import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatusOperations;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResultResponseDto;
-import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.feature.quality.api.DefectOperations;
 import com.human.ev_relay_mes.feature.quality.api.InspectionOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
 import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
-import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -41,13 +41,13 @@ public class CollectorController {
     private final DefectOperations defectOperations;
     private final MachineMonitoring machineMonitoring;
     private final MachineAlarmOperations machineAlarmOperations;
-    private final WorkCommandService workCommandService;
-    private final CollectorStatusService collectorStatusService;
+    private final WorkCommandOperations workCommandOperations;
+    private final CollectorStatusOperations collectorStatusOperations;
 
     @PostMapping("/status-heartbeat")
     public ResponseEntity<Void> receiveCollectorHeartbeat(
             @Valid @RequestBody CollectorHeartbeatRequest request) {
-        collectorStatusService.receiveHeartbeat(
+        collectorStatusOperations.receiveHeartbeat(
                 request.connectedMachineIds(),
                 request.totalCapacity());
         return ResponseEntity.noContent().build();
@@ -92,20 +92,20 @@ public class CollectorController {
     @GetMapping("/commands/pending")
     public List<WorkCommandResponseDto> claimPendingCommands(
             @RequestParam(required = false) String machineId) {
-        return workCommandService.claimPendingCommands(machineId);
+        return workCommandOperations.claimPendingCommands(machineId);
     }
 
     @PostMapping("/commands/{commandId}/release")
     public WorkCommandResponseDto releaseCommand(
             @PathVariable Long commandId,
             @RequestParam String machineId) {
-        return workCommandService.releaseDispatchedCommand(commandId, machineId);
+        return workCommandOperations.releaseDispatchedCommand(commandId, machineId);
     }
 
     @PostMapping("/command-acks")
     public WorkCommandResponseDto acknowledgeCommand(
             @Valid @RequestBody WorkCommandAckRequestDto dto) {
-        return workCommandService.acknowledge(dto);
+        return workCommandOperations.acknowledge(dto);
     }
 
     public record CollectorHeartbeatRequest(

@@ -33,7 +33,26 @@ feature.<module>
 └─ internal  # Controller, Service, Repository, Entity와 내부 구현
 ```
 
-모듈 루트의 `package-info.java`는 모듈의 책임과 공개 경계를 기록한다.
+## 현재 모듈 경계
+
+2026-07-29 기준으로 10개 기능 모듈의 이관을 완료했다.
+
+| 모듈 | 책임 | 대표 공개 계약 |
+|---|---|---|
+| `auth` | 로그인, 세션, 회원 계정 | 사용자 조회 및 인증 계약 |
+| `notice` | 공지사항 작성·조회 | 공지사항 DTO와 작업 계약 |
+| `masterdata` | 품목, BOM, 공정, 검사·불량·알람 기준정보 | 기준정보 조회·관리 계약 |
+| `material` | 자재 LOT 입고, 재고, 생산 투입 | 자재 재고·사용 계약 |
+| `workforce` | 작업자와 설비 배정 | 작업자 조회·배정 계약 |
+| `machine` | 설비 상태, 이력, 알람 | 설비 조회·상태·알람 계약 |
+| `quality` | 검사 결과, 제품 판정, 불량 이력 | 검사·판정·품질 지표 계약 |
+| `production` | 작업지시, LOT, 생산실적, 스케줄링 | 생산·LOT·스케줄링 계약 |
+| `collector` | L2 HTTP 인증, 상태, 작업명령 전달·ACK | `CollectorApiKeyFilter`, `CollectorStatusOperations`, `WorkCommandOperations` |
+| `dashboard` | 기능별 공개 API를 조합한 현황 조회 | `DashboardQuery` |
+
+`api`에는 다른 모듈이 사용할 수 있는 계약과 그 계약에 필요한 데이터 타입만 둔다.
+Controller, Service, Repository와 보안 필터 구현은 `internal`에 둔다. 현재 다른 기능
+모듈이 대상 모듈의 `internal`을 참조하는 경우는 자동 경계 테스트에서 허용하지 않는다.
 
 ## 의존 규칙
 
@@ -45,8 +64,9 @@ feature.<module>
 6. 순환 의존성이 생기면 한쪽 호출을 이벤트로 바꾸거나 공통 계약을 `api`로 올린다.
 7. 단순 재사용을 이유로 업무 로직을 `common`으로 이동하지 않는다.
 
-`Controller`, `Service`, `Repository`, `Entity` 등 기존 계층형 패키지는 단계적 이관이
-끝날 때까지 임시 레거시 영역으로 유지한다. 새 기능 코드는 이 영역에 추가하지 않는다.
+기능별 `Controller`, `Service`, `Repository`, `Entity`의 이관은 완료했다. 애플리케이션
+전체를 조합하는 `Config`, 공통 예외 처리와 최상위 MES 진입 Controller 등은 기능 모듈
+밖에 남을 수 있지만, 기능 구현을 최상위 계층형 패키지에 새로 추가하지 않는다.
 
 ## 호환성 규칙
 
@@ -64,16 +84,64 @@ feature.<module>
 
 ## 안전한 10단계
 
-1. 모듈 골격, 의존 규칙과 자동 경계 검사 마련
-2. 공지사항 모듈 이관
-3. 인증·사용자 모듈 이관
-4. 기준정보 모듈 이관
-5. 자재 모듈 이관
-6. 작업자·설비 모듈 이관
-7. 품질·대시보드 조회 모듈 이관
-8. 작업지시·LOT·생산실적 모듈 이관
-9. 스케줄링·작업명령·Collector와 프런트 기능 폴더 정리
-10. 전체 통합 시나리오, 의존성, 문서 최종 검수
+1. [x] 모듈 골격, 의존 규칙과 자동 경계 검사 마련
+2. [x] 공지사항 모듈 이관
+3. [x] 인증·사용자 모듈 이관
+4. [x] 기준정보 모듈 이관
+5. [x] 자재 모듈 이관
+6. [x] 작업자·설비 모듈 이관
+7. [x] 품질·대시보드 조회 모듈 이관
+8. [x] 작업지시·LOT·생산실적 모듈 이관
+9. [x] 스케줄링·작업명령·Collector와 프런트 기능 폴더 정리
+10. [x] 전체 통합 시나리오, 의존성, 문서 최종 검수
 
 각 단계가 끝날 때 백엔드, 프런트, L1, L2 테스트를 실행한다. 실패한 상태에서는 다음
 단계로 넘어가지 않는다.
+
+## Collector 인증과 작업명령 경계
+
+- `/api/collector/**`는 일반 사용자 세션이 아니라 `X-Collector-Key` 헤더로 인증한다.
+- Backend 키는 `MES_COLLECTOR_API_KEY` 환경 변수로 설정한다.
+- L2는 `embedded-c/mes_collector/config.h`의 `MES_COLLECTOR_API_KEY`와 같은 값을
+  사용해야 한다.
+- 올바른 키는 `ROLE_COLLECTOR` 권한으로 변환되며 Collector API에만 접근한다.
+- 일반 로그인 사용자는 `/api/collector/**`를 호출할 수 없다.
+- 작업명령 생성·조회·배정·해제·ACK는 `WorkCommandOperations`를 통해서만 호출한다.
+- 작업명령 저장소와 API 키 인증 구현은 Collector 모듈 외부에 공개하지 않는다.
+
+통신 메시지와 HTTP 경로의 상세 계약은 [TCP 프로토콜](tcp-protocol.md), L2 설정과
+실행 방법은 [L2 Collector README](../embedded-c/mes_collector/README.md)를 따른다.
+
+## 최종 검수 기준
+
+Windows 개발 환경에서는 다음 명령으로 전체 회귀 검사를 수행한다.
+
+```powershell
+cd backend
+.\gradlew.bat cleanTest test
+
+cd ..\frontend
+$env:CI='true'
+npm test -- --watchAll=false
+npm run build
+
+cd ..\embedded-c\mes_collector
+mingw32-make test
+
+cd ..\mes_L1
+mingw32-make test
+```
+
+Linux/macOS에서는 Gradle Wrapper를 `./gradlew`, C 테스트를 `make test`로 실행한다.
+
+2026-07-29 완료 기준:
+
+- Backend: 23개 테스트 스위트, 123개 테스트 통과
+- Frontend: 18개 테스트 스위트, 40개 테스트 통과 및 빌드 성공
+- L2 Collector와 L1: 총 1,888개 체크 통과
+- 다른 기능 모듈의 `internal` 직접 참조 0건
+- 이전 계층형 기능 패키지 참조 0건
+
+자동 경계 검사는 `ModuleBoundaryTest`가 담당한다. 기능을 추가할 때는 공개 계약을
+`feature.<module>.api`에 정의하고, 구현은 `feature.<module>.internal`에 둔 다음 전체
+회귀 검사를 다시 실행한다.

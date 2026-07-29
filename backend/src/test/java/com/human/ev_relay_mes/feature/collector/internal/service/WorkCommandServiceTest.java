@@ -1,11 +1,11 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.collector.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.production.api.ProductionLog;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
@@ -14,7 +14,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperation
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
+import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;

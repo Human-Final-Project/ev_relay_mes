@@ -1,5 +1,7 @@
-package com.human.ev_relay_mes.Security;
+package com.human.ev_relay_mes.feature.collector.internal.security;
 
+import com.human.ev_relay_mes.feature.collector.api.CollectorApiKeyFilter;
+import com.human.ev_relay_mes.Security.RestAuthenticationEntryPoint;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,10 +20,8 @@ import java.security.MessageDigest;
 import java.util.List;
 
 @Component
-public class CollectorApiKeyAuthenticationFilter extends OncePerRequestFilter {
-
-    public static final String HEADER_NAME = "X-Collector-Key";
-    public static final String COLLECTOR_ROLE = "ROLE_COLLECTOR";
+public class CollectorApiKeyAuthenticationFilter extends OncePerRequestFilter
+        implements CollectorApiKeyFilter {
 
     private final byte[] configuredApiKey;
     private final RestAuthenticationEntryPoint authenticationEntryPoint;

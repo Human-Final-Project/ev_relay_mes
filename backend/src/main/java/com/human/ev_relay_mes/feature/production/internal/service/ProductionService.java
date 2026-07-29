@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.production.api.ProductionLogSearchRequestDto;
 import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
@@ -39,7 +39,7 @@ public class ProductionService implements ProductionOperations {
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
-    private final WorkCommandService workCommandService;
+    private final WorkCommandOperations workCommandService;
     private final ProductionScheduleRequestService productionScheduleRequestService;
     private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
 

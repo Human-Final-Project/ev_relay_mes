@@ -1,6 +1,6 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.collector.internal.repository;
 
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;

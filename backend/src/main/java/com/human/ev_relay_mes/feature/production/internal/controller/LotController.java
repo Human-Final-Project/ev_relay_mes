@@ -4,11 +4,11 @@ import com.human.ev_relay_mes.feature.production.api.LotStatusRequestDto;
 import com.human.ev_relay_mes.feature.production.api.LotResponseDto;
 import com.human.ev_relay_mes.feature.material.api.LotMaterialUsageResponseDto;
 import com.human.ev_relay_mes.feature.production.api.LotProcessResponsibleResponseDto;
-import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.production.internal.service.LotService;
 import com.human.ev_relay_mes.feature.material.api.MaterialUsageQuery;
 import com.human.ev_relay_mes.feature.production.internal.service.LotProcessResponsibleService;
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -22,7 +22,7 @@ import java.util.List;
 public class LotController {
 
     private final LotService lotService;
-    private final WorkCommandService workCommandService;
+    private final WorkCommandOperations workCommandService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
     private final MaterialUsageQuery materialUsageQuery;
 

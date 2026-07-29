@@ -1,6 +1,6 @@
-package com.human.ev_relay_mes.Dto.Response;
+package com.human.ev_relay_mes.feature.collector.api;
 
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import lombok.Builder;
 import lombok.Getter;
 

@@ -6,7 +6,8 @@ import com.human.ev_relay_mes.feature.production.api.WorkOrderRequestDto;
 import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
 import com.human.ev_relay_mes.feature.production.api.WorkOrderResponseDto;
 import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
-import com.human.ev_relay_mes.Service.CollectorStatusService;
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatus;
+import com.human.ev_relay_mes.feature.collector.api.CollectorStatusOperations;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardQuery;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
@@ -39,7 +40,7 @@ public class MesController {
     private final MaterialInventory materialInventory;
     private final ProductionOperations productionOperations;
     private final DashboardQuery dashboardQuery;
-    private final CollectorStatusService collectorStatusService;
+    private final CollectorStatusOperations collectorStatusOperations;
 
     @GetMapping("/dashboard/summary")
     public DashboardSummary getDashboardSummary() {
@@ -47,8 +48,8 @@ public class MesController {
     }
 
     @GetMapping("/collector-status")
-    public CollectorStatusService.CollectorStatus getCollectorStatus() {
-        return collectorStatusService.getStatus();
+    public CollectorStatus getCollectorStatus() {
+        return collectorStatusOperations.getStatus();
     }
 
     @PostMapping("/order")

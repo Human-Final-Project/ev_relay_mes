@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.feature.machine.internal.service;
 
 import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
-import com.human.ev_relay_mes.Service.WorkCommandService;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.feature.production.api.Lot;
@@ -9,7 +9,7 @@ import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.production.api.ProductionLog;
-import com.human.ev_relay_mes.Entity.WorkCommand;
+import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
@@ -17,7 +17,6 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineReposit
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -41,8 +40,7 @@ class MachineServiceTest {
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
     @Mock MasterDataLookup masterDataLookup;
     @Mock ProductionData productionData;
-    @Mock WorkCommandService workCommandService;
-    @Mock WorkCommandRepository workCommandRepository;
+    @Mock WorkCommandOperations workCommandService;
     @Mock QualityMetrics qualityMetrics;
     @Mock ProductionSchedulingRequests productionSchedulingRequests;
 
@@ -67,8 +65,8 @@ class MachineServiceTest {
                 .status(WorkCommand.Status.ACCEPTED).build();
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+        when(workCommandService
+                .findLatestCommandForMachine(
                         org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))
                 .thenReturn(Optional.of(command));
         when(productionData.sumInputQuantity("LOT-001", "OP20")).thenReturn(7);
@@ -100,11 +98,11 @@ class MachineServiceTest {
                 .status(WorkCommand.Status.ACCEPTED).build();
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
+        when(workCommandService
+                .findLatestCommandForMachine(
                         org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))
                 .thenReturn(Optional.of(resume));
-        when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-001"))
+        when(workCommandService.findCommandsForLot("LOT-001"))
                 .thenReturn(List.of(start, resume));
         when(productionData.sumInputQuantity("LOT-001", "OP20")).thenReturn(4);
 
