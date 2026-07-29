@@ -11,7 +11,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Entity.WorkOrder;
-import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
@@ -45,7 +45,7 @@ class MachineServiceTest {
     @Mock WorkCommandService workCommandService;
     @Mock WorkCommandRepository workCommandRepository;
     @Mock ProductionLogRepository productionLogRepository;
-    @Mock InspectionUnitResultRepository inspectionUnitResultRepository;
+    @Mock QualityMetrics qualityMetrics;
     @Mock ProductionScheduleRequestService productionScheduleRequestService;
 
     @InjectMocks MachineService machineService;

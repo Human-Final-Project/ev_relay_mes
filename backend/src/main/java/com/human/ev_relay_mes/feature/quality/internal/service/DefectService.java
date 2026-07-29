@@ -1,16 +1,17 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.quality.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.DefectHistorySearchRequestDto;
-import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistorySearchRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
-import com.human.ev_relay_mes.Entity.DefectHistory;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistory;
+import com.human.ev_relay_mes.feature.quality.api.DefectOperations;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
+import com.human.ev_relay_mes.feature.quality.internal.repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -25,7 +26,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class DefectService {
+public class DefectService implements DefectOperations {
 
     private final DefectHistoryRepository defectHistoryRepository;
     private final MachineRegistry machineRegistry;
@@ -34,6 +35,7 @@ public class DefectService {
 
     // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
     @Transactional
+    @Override
     public DefectHistoryResponseDto createDefect(DefectHistoryCreateRequestDto dto) {
         String eventId = normalizeEventId(dto.getEventId());
         if (eventId != null) {
@@ -67,6 +69,7 @@ public class DefectService {
     }
 
     // 불량 관리 화면에서 LOT·설비·공정·불량 코드·확인 여부·기간 조건으로 이력을 조회할 때 사용한다.
+    @Override
     public List<DefectHistoryResponseDto> search(DefectHistorySearchRequestDto condition) {
         validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return defectHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()

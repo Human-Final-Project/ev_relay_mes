@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Dto.Request;
+package com.human.ev_relay_mes.feature.quality.api;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -11,7 +11,7 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class UnitJudgmentReceiveRequestDto {
+public class DefectHistoryCreateRequestDto {
 
     @Size(max = 100)
     private String eventId;
@@ -25,14 +25,12 @@ public class UnitJudgmentReceiveRequestDto {
     @NotBlank
     private String processCode;
 
+    @NotBlank
+    private String defectCode;
+
     @NotNull
     @Positive
-    private Integer unitSeq;
-
-    @NotBlank
-    private String result;
-
-    private String defectCode;
+    private Integer defectQty;
 
     private String message;
 }

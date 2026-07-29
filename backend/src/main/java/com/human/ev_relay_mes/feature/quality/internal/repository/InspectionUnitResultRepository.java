@@ -1,7 +1,7 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.quality.internal.repository;
 
-import com.human.ev_relay_mes.Entity.Inspection;
-import com.human.ev_relay_mes.Entity.InspectionUnitResult;
+import com.human.ev_relay_mes.feature.quality.api.Inspection;
+import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResult;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.Optional;

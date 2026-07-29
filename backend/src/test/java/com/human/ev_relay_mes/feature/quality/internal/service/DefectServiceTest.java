@@ -1,12 +1,12 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.quality.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
-import com.human.ev_relay_mes.Entity.DefectHistory;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
+import com.human.ev_relay_mes.feature.quality.internal.repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;

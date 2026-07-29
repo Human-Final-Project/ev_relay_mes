@@ -1,8 +1,8 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.quality.internal.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.human.ev_relay_mes.Entity.DefectHistory;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistory;
 
 import java.time.LocalDateTime;
 import java.util.List;

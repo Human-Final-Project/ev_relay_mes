@@ -8,7 +8,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -56,7 +56,7 @@ public class WorkCommandService {
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
-    private final InspectionUnitResultRepository inspectionUnitResultRepository;
+    private final QualityMetrics qualityMetrics;
     private final LotProcessResponsibleService lotProcessResponsibleService;
     private final InspectionStandardOperations inspectionStandardOperations;
 
@@ -223,10 +223,9 @@ public class WorkCommandService {
         }
 
         int targetQty = originalTargetQty(interrupted);
-        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
-                        lot.getLotNo(), process.getProcessCode(),
-                        com.human.ev_relay_mes.Entity.InspectionUnitResult.EvaluationStatus.COMPLETED));
+        int evaluatedQty = Math.toIntExact(
+                qualityMetrics.countCompletedUnits(
+                        lot.getLotNo(), process.getProcessCode()));
         int productionQty = productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
                         lot.getLotNo(), process.getProcessCode())

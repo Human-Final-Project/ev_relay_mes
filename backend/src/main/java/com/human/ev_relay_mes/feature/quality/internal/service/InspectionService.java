@@ -1,22 +1,24 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.quality.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.InspectionResultReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Request.InspectionSearchRequestDto;
-import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
-import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
-import com.human.ev_relay_mes.Entity.Inspection;
-import com.human.ev_relay_mes.Entity.InspectionUnitResult;
+import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionSearchRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResultResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.Inspection;
+import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResult;
+import com.human.ev_relay_mes.feature.quality.api.InspectionOperations;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.InspectionRepository;
-import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionRepository;
+import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -33,7 +35,7 @@ import java.util.Optional;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class InspectionService {
+public class InspectionService implements InspectionOperations {
 
     private final InspectionRepository inspectionRepository;
     private final InspectionUnitResultRepository unitResultRepository;
@@ -57,6 +59,7 @@ public class InspectionService {
             Map.entry("OP70:CONTACT_BOUNCE", "CONTACT_BOUNCE_NG"));
 
     @Transactional
+    @Override
     public InspectionResponseDto saveResult(InspectionResultReceiveRequestDto dto) {
         String eventId = normalizeEventId(dto.getEventId());
         if (eventId != null) {
@@ -124,6 +127,7 @@ public class InspectionService {
     }
 
     @Transactional
+    @Override
     public InspectionUnitResultResponseDto saveJudgment(UnitJudgmentReceiveRequestDto dto) {
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
@@ -169,6 +173,7 @@ public class InspectionService {
         return toUnitResponse(evaluated);
     }
 
+    @Override
     public List<InspectionResponseDto> search(InspectionSearchRequestDto condition) {
         validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return inspectionRepository.findAll(Sort.by(Sort.Direction.DESC, "inspectedAt")).stream()

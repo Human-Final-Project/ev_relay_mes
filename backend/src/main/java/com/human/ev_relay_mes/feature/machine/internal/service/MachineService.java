@@ -18,7 +18,7 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusH
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
-import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -44,7 +44,7 @@ public class MachineService implements MachineMonitoring {
     private final WorkCommandService workCommandService;
     private final WorkCommandRepository workCommandRepository;
     private final ProductionLogRepository productionLogRepository;
-    private final InspectionUnitResultRepository inspectionUnitResultRepository;
+    private final QualityMetrics qualityMetrics;
     private final ProductionScheduleRequestService productionScheduleRequestService;
 
     // 설비 현황 화면에 전체 설비의 기본 정보와 현재 상태를 표시할 때 사용한다.
@@ -228,10 +228,8 @@ public class MachineService implements MachineMonitoring {
             WorkCommand command) {
         String lotNo = command.getLot().getLotNo();
         String processCode = command.getProcess().getProcessCode();
-        int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
-                        lotNo, processCode,
-                        com.human.ev_relay_mes.Entity.InspectionUnitResult.EvaluationStatus.COMPLETED));
+        int evaluatedQty = Math.toIntExact(
+                qualityMetrics.countCompletedUnits(lotNo, processCode));
         int productionQty = productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(lotNo, processCode)
                 .stream().mapToInt(log -> log.getInputQty()).sum();

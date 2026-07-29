@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Dto.Request;
+package com.human.ev_relay_mes.feature.quality.api;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -8,10 +8,12 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+
 @Getter
 @Setter
 @NoArgsConstructor
-public class DefectHistoryCreateRequestDto {
+public class InspectionResultReceiveRequestDto {
 
     @Size(max = 100)
     private String eventId;
@@ -25,12 +27,15 @@ public class DefectHistoryCreateRequestDto {
     @NotBlank
     private String processCode;
 
-    @NotBlank
-    private String defectCode;
-
     @NotNull
     @Positive
-    private Integer defectQty;
+    private Integer unitSeq;
 
-    private String message;
+    @NotBlank
+    private String inspectionItem;
+
+    @NotNull
+    private BigDecimal measuredValue;
+
+    private String unit;
 }

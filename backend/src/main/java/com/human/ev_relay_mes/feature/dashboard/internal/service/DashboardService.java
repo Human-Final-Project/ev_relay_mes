@@ -1,16 +1,22 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.dashboard.internal.service;
 
-import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.material.api.MaterialLot;
 import com.human.ev_relay_mes.Entity.WorkOrder;
-import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
-import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardQuery;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.AlarmSummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.MachineSummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.MaterialSummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.ProductionSummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.QualitySummary;
+import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.WorkOrderSummary;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
+import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,18 +31,18 @@ import java.util.Map;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class DashboardService {
+public class DashboardService implements DashboardQuery {
 
     private static final int LOW_STOCK_THRESHOLD = 100;
 
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
     private final MachineRegistry machineRegistry;
-    private final InspectionRepository inspectionRepository;
-    private final DefectHistoryRepository defectHistoryRepository;
+    private final QualityMetrics qualityMetrics;
     private final MachineAlarmOperations machineAlarmOperations;
     private final MaterialInventory materialInventory;
 
+    @Override
     public DashboardSummary getSummary() {
         LocalDateTime startAt = LocalDate.now().atStartOfDay();
         LocalDateTime endAt = startAt.plusDays(1);
@@ -71,13 +77,12 @@ public class DashboardService {
                 countMachines(machines, Machine.Status.ERROR),
                 countMachines(machines, Machine.Status.STOPPED));
 
-        List<Inspection> inspections = inspectionRepository
-                .findByInspectedAtBetweenOrderByInspectedAtDesc(startAt, endAt);
+        QualityMetrics.QualityPeriodSummary qualityPeriod =
+                qualityMetrics.summarizePeriod(startAt, endAt);
         QualitySummary quality = new QualitySummary(
-                inspections.stream().filter(i -> i.getResult() == Inspection.Result.OK).count(),
-                inspections.stream().filter(i -> i.getResult() == Inspection.Result.NG).count(),
-                defectHistoryRepository.findByOccurredAtBetweenOrderByOccurredAtDesc(startAt, endAt)
-                        .stream().mapToInt(defect -> valueOrZero(defect.getDefectQty())).sum());
+                qualityPeriod.okInspections(),
+                qualityPeriod.ngInspections(),
+                qualityPeriod.defectQty());
 
         AlarmSummary alarms = new AlarmSummary(
                 machineAlarmOperations.countActiveAlarms(),
@@ -123,37 +128,4 @@ public class DashboardService {
         return value == null ? 0 : value;
     }
 
-    public record DashboardSummary(
-            ProductionSummary production,
-            WorkOrderSummary workOrders,
-            MachineSummary machines,
-            QualitySummary quality,
-            AlarmSummary alarms,
-            MaterialSummary materials,
-            LocalDateTime generatedAt) {
-    }
-
-    public record ProductionSummary(long completedLots, int okQty, int ngQty) {
-    }
-
-    public record WorkOrderSummary(
-            long total, long created, long released, long running, long completed, long canceled) {
-    }
-
-    public record MachineSummary(long total, long idle, long running, long error, long stopped) {
-    }
-
-    public record QualitySummary(long okInspections, long ngInspections, int defectQty) {
-    }
-
-    public record AlarmSummary(long active, long occurredToday) {
-    }
-
-    public record MaterialSummary(
-            long availableItemCount,
-            long lowStockItemCount,
-            int availableQty,
-            int heldQty,
-            int lowStockThreshold) {
-    }
 }

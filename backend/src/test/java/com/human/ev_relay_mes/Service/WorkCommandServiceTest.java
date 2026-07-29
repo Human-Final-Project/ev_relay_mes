@@ -8,7 +8,7 @@ import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
+import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -43,7 +43,7 @@ class WorkCommandServiceTest {
     @Mock
     private ProductionLogRepository productionLogRepository;
     @Mock
-    private InspectionUnitResultRepository inspectionUnitResultRepository;
+    private QualityMetrics qualityMetrics;
     @Mock
     private LotProcessResponsibleService lotProcessResponsibleService;
     @Mock
@@ -337,9 +337,7 @@ class WorkCommandServiceTest {
                 .thenReturn(Optional.of(interrupted));
         when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-070"))
                 .thenReturn(List.of(interrupted));
-        when(inspectionUnitResultRepository
-                .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
-                        eq("LOT-070"), eq("OP70"), any()))
+        when(qualityMetrics.countCompletedUnits("LOT-070", "OP70"))
                 .thenReturn(3L);
         when(workCommandRepository.save(any(WorkCommand.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Dto.Response;
+package com.human.ev_relay_mes.feature.quality.api;
 
 import lombok.Builder;
 import lombok.Getter;

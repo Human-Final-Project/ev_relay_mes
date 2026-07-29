@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Dto.Request;
+package com.human.ev_relay_mes.feature.quality.api;
 
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -10,13 +10,13 @@ import java.time.LocalDateTime;
 @Getter
 @Setter
 @NoArgsConstructor
-public class DefectHistorySearchRequestDto {
+public class InspectionSearchRequestDto {
 
     private Long workOrderId;
     private String lotNo;
     private String machineId;
     private String processCode;
-    private String defectCode;
+    private String result;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime startAt;
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)

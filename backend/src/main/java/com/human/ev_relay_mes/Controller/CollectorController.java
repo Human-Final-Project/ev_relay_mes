@@ -1,22 +1,22 @@
 package com.human.ev_relay_mes.Controller;
 
-import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.InspectionResultReceiveRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
-import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
-import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
+import com.human.ev_relay_mes.feature.quality.api.DefectHistoryResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
-import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
+import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResultResponseDto;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
-import com.human.ev_relay_mes.Service.DefectService;
-import com.human.ev_relay_mes.Service.InspectionService;
+import com.human.ev_relay_mes.feature.quality.api.DefectOperations;
+import com.human.ev_relay_mes.feature.quality.api.InspectionOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
 import com.human.ev_relay_mes.Service.ProductionService;
@@ -37,8 +37,8 @@ import java.util.List;
 public class CollectorController {
 
     private final ProductionService productionService;
-    private final InspectionService inspectionService;
-    private final DefectService defectService;
+    private final InspectionOperations inspectionOperations;
+    private final DefectOperations defectOperations;
     private final MachineMonitoring machineMonitoring;
     private final MachineAlarmOperations machineAlarmOperations;
     private final WorkCommandService workCommandService;
@@ -62,19 +62,19 @@ public class CollectorController {
     @PostMapping("/inspections")
     public ResponseEntity<InspectionResponseDto> receiveInspection(
             @Valid @RequestBody InspectionResultReceiveRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(inspectionService.saveResult(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(inspectionOperations.saveResult(dto));
     }
 
     @PostMapping("/judgments")
     public ResponseEntity<InspectionUnitResultResponseDto> receiveJudgment(
             @Valid @RequestBody UnitJudgmentReceiveRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(inspectionService.saveJudgment(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(inspectionOperations.saveJudgment(dto));
     }
 
     @PostMapping("/defects")
     public ResponseEntity<DefectHistoryResponseDto> receiveDefect(
             @Valid @RequestBody DefectHistoryCreateRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(defectService.createDefect(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(defectOperations.createDefect(dto));
     }
 
     @PostMapping("/machine-statuses")
