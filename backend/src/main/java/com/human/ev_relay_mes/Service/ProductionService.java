@@ -107,13 +107,6 @@ public class ProductionService {
 
 
     @Transactional
-    public ProductionLogResponseDto completeInspectionProcess(
-            Lot lot, Machine machine, Process process,
-            int inputQty, int okQty, int ngQty) {
-        return completeEvaluatedProcess(lot, machine, process, inputQty, okQty, ngQty);
-    }
-
-    @Transactional
     public ProductionLogResponseDto completeEvaluatedProcess(
             Lot lot, Machine machine, Process process,
             int inputQty, int okQty, int ngQty) {
@@ -282,6 +275,8 @@ public class ProductionService {
     }
 
     private void finishScrappedLot(Lot lot, LocalDateTime endedAt) {
+        // 현재 공정 완료 처리 외에 병렬/지연 ACK로 남은 명령도 함께 정리한다.
+        workCommandService.cancelActiveCommandsForLot(lot.getLotNo());
         lot.setOkQty(0);
         lot.setNgQty(lot.getInputQty());
         lot.setStatus(Lot.Status.SCRAPPED);

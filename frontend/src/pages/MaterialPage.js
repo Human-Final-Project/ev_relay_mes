@@ -11,7 +11,7 @@ export default function MaterialPage({ currentUser }) {
   const [actionError, setActionError] = useState(null);
   const lots = useApiData(MesApi.getMaterialLots, []);
   const items = useApiData(MesApi.getItems, []);
-  const itemRows = items.data || [];
+  const itemRows = useMemo(() => items.data || [], [items.data]);
   const receivableItems = itemRows.filter((item) => ["RM", "SA"].includes(item.itemType) && item.useYn === "Y");
   const canReceive = ["ADMIN", "MANAGER"].includes(currentUser?.role);
   const canCreateItems = ["ADMIN", "MANAGER", "OPERATOR"].includes(currentUser?.role);

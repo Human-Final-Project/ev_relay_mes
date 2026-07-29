@@ -2,7 +2,8 @@ import React, { useEffect, useMemo } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
 import { DonutChart } from "../components/MesCharts";
-import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge } from "../components/MesComponents";
+import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { Link } from "react-router-dom";
 
 const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
 const processNames = {
@@ -27,25 +28,31 @@ export default function DashboardPage() {
     () => MesApi.getDefects({ startAt: today.startAt, endAt: today.endAt }),
     [today.startAt, today.endAt]
   );
+  const notices = useApiData(MesApi.getNotices, []);
+  const reloadSummary = summary.reload;
+  const reloadMachines = machines.reload;
+  const reloadProductionLogs = productionLogs.reload;
+  const reloadDefects = defects.reload;
 
   useEffect(() => {
-    const machineTimer = setInterval(machines.reload, 1000);
+    const machineTimer = setInterval(reloadMachines, 1000);
     const aggregateTimer = setInterval(() => {
-      summary.reload();
-      productionLogs.reload();
-      defects.reload();
+      reloadSummary();
+      reloadProductionLogs();
+      reloadDefects();
     }, 5000);
     return () => {
       clearInterval(machineTimer);
       clearInterval(aggregateTimer);
     };
-  }, [machines.reload, summary.reload, productionLogs.reload, defects.reload]);
+  }, [reloadMachines, reloadSummary, reloadProductionLogs, reloadDefects]);
 
   const reload = () => {
     summary.reload();
     machines.reload();
     productionLogs.reload();
     defects.reload();
+    notices.reload();
   };
   const resources = [summary, machines, productionLogs, defects];
   const loading = resources.some((resource) => resource.loading && resource.data === null);
@@ -71,6 +78,8 @@ export default function DashboardPage() {
       description="당일 생산·품질 지표와 실시간 설비 가동 현황을 확인합니다."
       actions={<><span className="live-indicator">● 설비 1초 · 집계 5초 갱신</span><button className="btn secondary" onClick={reload}>지금 갱신</button></>}
     />
+
+    <DashboardNotices notices={notices}/>
 
     <div className="dashboard-primary-kpis">
       <MetricCard label="당일 총 생산량" value={totalProduction.toLocaleString()} unit="EA" description={`OK ${Number(production.okQty || 0).toLocaleString()} · NG ${Number(production.ngQty || 0).toLocaleString()}`} icon="factory"/>
@@ -110,6 +119,29 @@ export default function DashboardPage() {
       <EfficiencyChart rows={efficiency}/>
     </section>
   </div>;
+}
+
+function DashboardNotices({ notices }) {
+  const rows = (notices.data || []).slice(0, 3);
+  return <section className="mes-card dashboard-notice-panel">
+    <div className="dashboard-notice-heading">
+      <div><span className="material-symbols-outlined">campaign</span><h2>최근 공지</h2></div>
+      <Link to="/notices">전체보기</Link>
+    </div>
+    {notices.loading && notices.data === null ? <span className="dashboard-notice-message">공지를 불러오는 중입니다.</span> :
+      notices.error && notices.data === null ? <span className="dashboard-notice-message error">공지를 불러오지 못했습니다.</span> :
+      !rows.length ? <span className="dashboard-notice-message">등록된 공지가 없습니다.</span> :
+      <div className="dashboard-notice-list">
+        {rows.map((notice) => <Link to="/notices" className="dashboard-notice-item" key={notice.noticeId}>
+          <span className={`dashboard-notice-type ${notice.pinned ? "pinned" : ""}`}>
+            {notice.pinned ? "고정" : "공지"}
+          </span>
+          <strong>{notice.title}</strong>
+          <span>{notice.authorName}</span>
+          <time>{formatDate(notice.createdAt)}</time>
+        </Link>)}
+      </div>}
+  </section>;
 }
 
 function MetricCard({ label, value, unit, description, icon, tone = "normal" }) {

@@ -12,9 +12,6 @@ public interface MemberRepository extends JpaRepository<Member, Long> {
     // 로그인 요청에서 계정 정보와 비밀번호 해시·상태·권한을 확인할 때 사용한다.
     Optional<Member> findByLoginId(String loginId);
 
-    // 회원 관리 화면에서 관리자·작업자 등 권한별 사용자만 필터링할 때 사용한다.
-    List<Member> findByRoleOrderByMemberIdAsc(Member.Role role);
-
     // 회원 관리 화면에서 활성·잠김·퇴직 상태별 사용자 목록을 조회할 때 사용한다.
     List<Member> findByStatusOrderByMemberIdAsc(Member.Status status);
 

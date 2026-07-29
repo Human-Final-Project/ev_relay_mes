@@ -12,6 +12,7 @@ const menus = [
   ["/materials", "inventory_2", "원자재 관리"],
   ["/master-data", "database", "기준정보"],
   ["/workers", "engineering", "작업자 배정"],
+  ["/notices", "campaign", "공지사항"],
 ];
 
 export default function Sidebar({ collapsed, onToggle, collectorStatus, currentUser }) {

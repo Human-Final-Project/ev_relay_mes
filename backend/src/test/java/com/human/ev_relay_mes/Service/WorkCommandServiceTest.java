@@ -368,6 +368,42 @@ class WorkCommandServiceTest {
         assertThat(resume.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
     }
 
+    @Test
+    void cancelsActiveCommandsWhenLotBecomesTerminal() {
+        Process process = process("OP60", 4);
+        Machine machine = machine("EQ-SEAL-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-SCRAPPED").status(Lot.Status.SCRAPPED).build();
+        WorkCommand pending = command(1L, lot, machine, process);
+        WorkCommand accepted = command(2L, lot, machine, process);
+        accepted.setStatus(WorkCommand.Status.ACCEPTED);
+        when(workCommandRepository.findByLotAndStatusInForUpdate(
+                eq("LOT-SCRAPPED"), anyCollection()))
+                .thenReturn(List.of(pending, accepted));
+
+        int canceled = workCommandService.cancelActiveCommandsForLot("LOT-SCRAPPED");
+
+        assertThat(canceled).isEqualTo(2);
+        assertThat(pending.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+        assertThat(accepted.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+        assertThat(pending.getCompletedAt()).isNotNull();
+        assertThat(accepted.getCompletedAt()).isNotNull();
+    }
+
+    @Test
+    void keepsCanceledCommandCanceledWhenAcceptedAckArrivesLate() {
+        Process process = process("OP60", 4);
+        Machine machine = machine("EQ-SEAL-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-SCRAPPED").status(Lot.Status.SCRAPPED).build();
+        WorkCommand command = command(1L, lot, machine, process);
+        command.setStatus(WorkCommand.Status.CANCELED);
+        when(workCommandRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(command));
+
+        workCommandService.acknowledge(ack(1L, "EQ-SEAL-01", "ACCEPTED"));
+
+        assertThat(command.getStatus()).isEqualTo(WorkCommand.Status.CANCELED);
+        assertThat(command.getAcknowledgedAt()).isNotNull();
+    }
+
     private Process process(String code, int order) {
         return Process.builder()
                 .processCode(code).processName(code).processOrder(order).build();

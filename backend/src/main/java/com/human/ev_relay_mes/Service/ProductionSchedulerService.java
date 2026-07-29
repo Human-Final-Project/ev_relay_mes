@@ -112,7 +112,11 @@ public class ProductionSchedulerService {
 
         int inputQty = expectedInputQty(lot, lot.getCurrentProcess());
         if (inputQty <= 0) {
-            finishScrappedLot(lot);
+            // 직전 공정 실적 트랜잭션이 아직 커밋되지 않은 순간을 0개 생산으로
+            // 오판하지 않는다. 직전 공정의 COMPLETED 실적이 확인된 경우에만 폐기한다.
+            if (isPreviousInputCompleted(lot, lot.getCurrentProcess())) {
+                finishScrappedLot(lot);
+            }
             return false;
         }
         return workCommandService
@@ -121,12 +125,31 @@ public class ProductionSchedulerService {
     }
 
     private void finishScrappedLot(Lot lot) {
+        workCommandService.cancelActiveCommandsForLot(lot.getLotNo());
         lot.setOkQty(0);
         lot.setNgQty(lot.getInputQty());
         lot.setStatus(Lot.Status.SCRAPPED);
         lot.setCompletedAt(LocalDateTime.now());
         workOrderContinuationRequestService.requestEvaluation(
                 lot.getWorkOrder().getWorkOrderId());
+    }
+
+    private boolean isPreviousInputCompleted(Lot lot, Process process) {
+        if (ASSEMBLY.equals(process.getProcessCode())) {
+            return hasCompletedLog(lot, OP20) && hasCompletedLog(lot, OP30);
+        }
+        return processRepository
+                .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(process.getProcessOrder())
+                .map(previous -> hasCompletedLog(lot, previous.getProcessCode()))
+                .orElse(false);
+    }
+
+    private boolean hasCompletedLog(Lot lot, String processCode) {
+        return productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        lot.getLotNo(), processCode)
+                .stream()
+                .anyMatch(log -> "COMPLETED".equalsIgnoreCase(log.getStatus()));
     }
 
     private boolean isWaitingForProcess(Lot lot, String machineProcessCode) {

@@ -459,6 +459,9 @@ static void test_http_release_command_request(void)
     CHECK(strstr(server.request,
                  "POST /api/collector/commands/9223372036854775807/release?machineId=EQ-TEST-01 HTTP/1.1\r\n")
           == server.request);
+    CHECK(strstr(server.request,
+                 "X-Collector-Key: " MES_COLLECTOR_API_KEY "\r\n")
+          != NULL);
     CHECK(strstr(server.request, "\r\n\r\n{}") != NULL);
     collector_mutex_unlock(&server.mutex);
     collector_mutex_destroy(&server.mutex);
@@ -503,6 +506,9 @@ static void test_http_get_fetches_chunked_commands(void)
     CHECK(strstr(server.request,
                  "GET /api/collector/commands/pending?machineId=EQ-TEST-01 HTTP/1.0\r\n")
           == server.request);
+    CHECK(strstr(server.request,
+                 "X-Collector-Key: " MES_COLLECTOR_API_KEY "\r\n")
+          != NULL);
     collector_mutex_unlock(&server.mutex);
     collector_mutex_destroy(&server.mutex);
 }
@@ -540,6 +546,9 @@ static void test_http_post_receives_created_response(void)
           == server.request);
     CHECK(strstr(server.request,
                  "Content-Type: application/json; charset=UTF-8\r\n")
+          != NULL);
+    CHECK(strstr(server.request,
+                 "X-Collector-Key: " MES_COLLECTOR_API_KEY "\r\n")
           != NULL);
     CHECK(strstr(server.request, "\r\n\r\n{\"eventId\":\"L2-") != NULL);
     CHECK(strstr(server.request, "\"lotNo\":\"EVR-LOT-001\"") != NULL);

@@ -4,7 +4,6 @@ import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.List;
 import java.util.Optional;
 
 public interface InspectionUnitResultRepository extends JpaRepository<InspectionUnitResult, Long> {
@@ -20,6 +19,4 @@ public interface InspectionUnitResultRepository extends JpaRepository<Inspection
     long countByLot_LotNoAndProcess_ProcessCodeAndResult(
             String lotNo, String processCode, Inspection.Result result);
 
-    List<InspectionUnitResult> findByLot_LotNoAndProcess_ProcessCodeOrderByUnitSeqAsc(
-            String lotNo, String processCode);
 }

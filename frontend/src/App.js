@@ -15,6 +15,7 @@ import MasterDataPage from "./pages/MasterDataPage";
 import WorkerAssignmentPage from "./pages/WorkerAssignmentPage";
 import AdminEmployeePage from "./pages/AdminEmployeePage";
 import AccountPage from "./pages/AccountPage";
+import NoticePage from "./pages/NoticePage";
 
 function App() {
   const [currentUser,setCurrentUser]=useState(null); const [checking,setChecking]=useState(true);
@@ -37,6 +38,7 @@ function App() {
       <Route path="/workers" element={canManageWorkers?<WorkerAssignmentPage currentUser={currentUser}/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/members" element={currentUser?.role==="ADMIN"?<AdminEmployeePage/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/account" element={<AccountPage currentUser={currentUser} onLoggedOut={()=>setCurrentUser(null)}/>}/>
+      <Route path="/notices" element={<NoticePage currentUser={currentUser}/>}/>
     </Route>
     <Route path="/" element={<Navigate to={currentUser?"/dashboard":"/login"} replace/>}/>
     <Route path="*" element={<Navigate to="/" replace/>}/>

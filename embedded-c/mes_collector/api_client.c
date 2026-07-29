@@ -9,16 +9,16 @@
 #include <string.h>
 #include <time.h>
 
+#include "config.h"
+#include "net.h"
+#include "thread_compat.h"
+
 #ifdef _WIN32
 #include <process.h>
 #include <windows.h>
 #else
 #include <unistd.h>
 #endif
-
-#include "config.h"
-#include "net.h"
-#include "thread_compat.h"
 
 #define API_PATH_PRODUCTION "/api/collector/production-logs"
 #define API_PATH_INSPECTION "/api/collector/inspections"
@@ -462,11 +462,13 @@ static ApiClientResult api_client_post_json(const char *path,
         "Host: %s:%d\r\n"
         "Content-Type: application/json; charset=UTF-8\r\n"
         "Accept: application/json\r\n"
+        "X-Collector-Key: %s\r\n"
         "Connection: close\r\n"
         "Content-Length: %lu\r\n\r\n",
         path,
         MES_BACKEND_ADDRESS,
         MES_BACKEND_PORT,
+        MES_COLLECTOR_API_KEY,
         (unsigned long)strlen(json));
     if (header_length < 0 || (size_t)header_length >= sizeof(header)) {
         return API_CLIENT_BUFFER_TOO_SMALL;
@@ -676,10 +678,12 @@ static ApiClientResult api_client_get_json(const char *path,
         "GET %s HTTP/1.0\r\n"
         "Host: %s:%d\r\n"
         "Accept: application/json\r\n"
+        "X-Collector-Key: %s\r\n"
         "Connection: close\r\n\r\n",
         path,
         MES_BACKEND_ADDRESS,
-        MES_BACKEND_PORT);
+        MES_BACKEND_PORT,
+        MES_COLLECTOR_API_KEY);
     if (request_length < 0 || (size_t)request_length >= sizeof(request)) {
         return API_CLIENT_BUFFER_TOO_SMALL;
     }

@@ -108,9 +108,11 @@ class ProductionSchedulerServiceTest {
         Lot zeroInputLot = lot(1L, "LOT-ZERO", sealing);
         Lot nextLot = lot(2L, "LOT-NEXT", sealing);
         ProductionLog zeroPrevious = ProductionLog.builder()
-                .lot(zeroInputLot).process(assembly).inputQty(10).okQty(0).ngQty(10).build();
+                .lot(zeroInputLot).process(assembly).inputQty(10).okQty(0).ngQty(10)
+                .status("COMPLETED").build();
         ProductionLog nextPrevious = ProductionLog.builder()
-                .lot(nextLot).process(assembly).inputQty(10).okQty(8).ngQty(2).build();
+                .lot(nextLot).process(assembly).inputQty(10).okQty(8).ngQty(2)
+                .status("COMPLETED").build();
 
         when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
@@ -132,8 +134,37 @@ class ProductionSchedulerServiceTest {
         assertThat(zeroInputLot.getStatus()).isEqualTo(Lot.Status.SCRAPPED);
         assertThat(zeroInputLot.getNgQty()).isEqualTo(10);
         assertThat(zeroInputLot.getCompletedAt()).isNotNull();
+        verify(workCommandService).cancelActiveCommandsForLot("LOT-ZERO");
         verify(workOrderContinuationRequestService).requestEvaluation(1L);
         verify(workCommandService).tryCreateStartCommand(nextLot, sealing, 8);
+    }
+
+    @Test
+    void waitsInsteadOfScrappingWhilePreviousProcessResultIsNotCommitted() {
+        Process assembly = process("OP40_OP50", 3);
+        Process sealing = process("OP60", 4);
+        Machine machine = Machine.builder()
+                .machineId("EQ-SEAL-01")
+                .process(sealing)
+                .status(Machine.Status.IDLE)
+                .build();
+        Lot lot = lot(1L, "LOT-RACE", sealing);
+
+        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
+                .thenReturn(List.of(lot));
+        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+                .thenReturn(Optional.of(assembly));
+        when(productionLogRepository
+                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
+                        "LOT-RACE", "OP40_OP50"))
+                .thenReturn(List.of());
+
+        assertThat(schedulerService.tryAssignMachine("EQ-SEAL-01")).isFalse();
+
+        assertThat(lot.getStatus()).isEqualTo(Lot.Status.RUNNING);
+        verify(workCommandService, never()).cancelActiveCommandsForLot(any());
+        verify(workOrderContinuationRequestService, never()).requestEvaluation(any());
     }
 
     @Test

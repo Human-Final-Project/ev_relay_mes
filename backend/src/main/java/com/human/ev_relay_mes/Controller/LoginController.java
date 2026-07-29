@@ -3,6 +3,7 @@ package com.human.ev_relay_mes.Controller;
 import com.human.ev_relay_mes.Dto.Request.LoginRequestDto;
 import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LoginResponseDto;
+import com.human.ev_relay_mes.Config.SecurityConfig;
 import com.human.ev_relay_mes.Security.CustomUserDetails;
 import com.human.ev_relay_mes.Service.LoginService;
 import com.human.ev_relay_mes.Service.MemberService;
@@ -52,7 +53,7 @@ public class LoginController {
         csrfTokenRepository.saveToken(csrfToken, request, response);
         return Map.of(
                 "token", csrfToken.getToken(),
-                "headerName", csrfToken.getHeaderName(),
+                "headerName", SecurityConfig.CSRF_HEADER_NAME,
                 "parameterName", csrfToken.getParameterName()
         );
     }

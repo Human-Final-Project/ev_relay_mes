@@ -14,6 +14,11 @@ L1 설비 시뮬레이터의 TCP 메시지를 수집하고 Spring Boot MES에 RE
 - HTTP 재시도, 디스크 큐, 자동 복구 전송
 - 연결된 설비별 Backend 작업명령 1초 Polling
 - `START`, `STOP`, `RESUME`를 기존 L1 TCP 연결로 전달
+- 모든 Backend Collector 요청에 `X-Collector-Key` 인증 헤더 전송
+
+기본 개발 키는 Backend의 `mes.collector.api-key`와 `config.h`의
+`MES_COLLECTOR_API_KEY`에 동일하게 설정되어 있다. 키를 바꿀 때는 Backend의
+`MES_COLLECTOR_API_KEY` 환경 변수와 C 컴파일 매크로를 함께 변경한다.
 
 ## 공정 이벤트
 

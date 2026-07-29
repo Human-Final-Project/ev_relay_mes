@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.Security.MemberSessionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -23,6 +24,7 @@ public class MemberService {
 
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
+    private final MemberSessionService memberSessionService;
 
     // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
@@ -61,17 +63,25 @@ public class MemberService {
     @Transactional
     public MemberResponseDto updateMember(Long memberId, MemberUpdateRequestDto dto) {
         Member member = findMember(memberId);
+        boolean securityChanged = false;
         if (dto.getRole() != null) {
-            member.setRole(parseRole(dto.getRole()));
+            Member.Role role = parseRole(dto.getRole());
+            securityChanged = member.getRole() != role;
+            member.setRole(role);
         }
         if (dto.getStatus() != null) {
-            member.setStatus(parseStatus(dto.getStatus()));
+            Member.Status status = parseStatus(dto.getStatus());
+            securityChanged = securityChanged || member.getStatus() != status;
+            member.setStatus(status);
         }
         if (dto.getDepartment() != null) {
             member.setDepartment(dto.getDepartment());
         }
         if (dto.getPosition() != null) {
             member.setPosition(dto.getPosition());
+        }
+        if (securityChanged) {
+            memberSessionService.expireAllSessions(memberId);
         }
         return toResponse(member);
     }

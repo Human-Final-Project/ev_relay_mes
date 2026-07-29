@@ -34,11 +34,13 @@ class MemberPasswordApiTest {
     @Autowired ObjectMapper objectMapper;
 
     private Member operator;
+    private Member admin;
 
     @BeforeEach
     void setUp() {
         memberRepository.deleteAll();
         operator = memberRepository.save(member("operator", "old-password", Member.Role.OPERATOR));
+        admin = memberRepository.save(member("admin", "admin-password", Member.Role.ADMIN));
     }
 
     @Test
@@ -74,6 +76,22 @@ class MemberPasswordApiTest {
         mockMvc.perform(get("/api/auth/me").session(latestSession))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.loginId").value("operator"));
+    }
+
+    @Test
+    void adminLockImmediatelyExpiresTheMembersExistingSession() throws Exception {
+        MockHttpSession operatorSession = login("operator", "old-password");
+        MockHttpSession adminSession = login("admin", "admin-password");
+
+        mockMvc.perform(patch("/api/members/{id}", operator.getMemberId())
+                        .session(adminSession)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"LOCKED\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("LOCKED"));
+
+        assertExpired(operatorSession);
     }
 
 

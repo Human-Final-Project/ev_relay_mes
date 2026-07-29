@@ -29,6 +29,9 @@ public enum ErrorCode {
     CURRENT_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "M010", "현재 비밀번호가 일치하지 않습니다."),
     NEW_PASSWORD_MISMATCH(HttpStatus.BAD_REQUEST, "M011", "새 비밀번호와 비밀번호 확인이 일치하지 않습니다."),
 
+    // Notice
+    NOTICE_NOT_FOUND(HttpStatus.NOT_FOUND, "N001", "공지사항을 찾을 수 없습니다."),
+
     // Item
     ITEM_NOT_FOUND(HttpStatus.NOT_FOUND, "I001", "품목을 찾을 수 없습니다."),
     DUPLICATE_ITEM_CODE(HttpStatus.CONFLICT, "I002", "이미 존재하는 품목 코드입니다."),

@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "net.h"
+
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -10,7 +12,6 @@
 
 #include "api_client.h"
 #include "config.h"
-#include "net.h"
 #include "protocol.h"
 #include "thread_compat.h"
 

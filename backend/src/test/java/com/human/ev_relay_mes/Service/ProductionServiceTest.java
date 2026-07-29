@@ -29,6 +29,7 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class ProductionServiceTest {

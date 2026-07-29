@@ -1,10 +1,12 @@
-#ifdef _WIN32
-#include <windows.h>
-#else
+#ifndef _WIN32
 #define _POSIX_C_SOURCE 200809L
 #endif
 
 #include "net.h"
+
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include <errno.h>
 #include <limits.h>

@@ -3,6 +3,7 @@ package com.human.ev_relay_mes.Config;
 import com.human.ev_relay_mes.Security.RestAccessDeniedHandler;
 import com.human.ev_relay_mes.Security.RestAuthenticationEntryPoint;
 import com.human.ev_relay_mes.Security.RestSessionInformationExpiredStrategy;
+import com.human.ev_relay_mes.Security.CollectorApiKeyAuthenticationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,6 +16,7 @@ import org.springframework.security.config.annotation.authentication.configurati
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfAuthenticationStrategy;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -36,9 +38,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
 
+    public static final String CSRF_COOKIE_NAME = "XSRF-TOKEN";
+    public static final String CSRF_HEADER_NAME = "X-XSRF-TOKEN";
+
     private final RestAuthenticationEntryPoint authenticationEntryPoint;
     private final RestAccessDeniedHandler accessDeniedHandler;
     private final RestSessionInformationExpiredStrategy sessionInformationExpiredStrategy;
+    private final CollectorApiKeyAuthenticationFilter collectorApiKeyAuthenticationFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -53,7 +59,10 @@ public class SecurityConfig {
     @Bean
     public CsrfTokenRepository csrfTokenRepository() {
         // React Axios와 Springdoc Swagger UI가 XSRF-TOKEN 쿠키를 같은 방식으로 사용한다.
-        return CookieCsrfTokenRepository.withHttpOnlyFalse();
+        CookieCsrfTokenRepository repository = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repository.setCookieName(CSRF_COOKIE_NAME);
+        repository.setHeaderName(CSRF_HEADER_NAME);
+        return repository;
     }
 
     @Bean
@@ -109,11 +118,16 @@ public class SecurityConfig {
                 })
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/api/collector/**", "/error").permitAll()
+                        .requestMatchers("/api/auth/login", "/api/auth/csrf", "/error").permitAll()
+                        .requestMatchers("/api/collector/**").hasRole("COLLECTOR")
                         .requestMatchers("/api/auth/**").authenticated()
                         .requestMatchers("/api/members/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/items")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.POST, "/api/notices")
+                                .hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PUT, "/api/notices/*")
+                                .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/machines/alarms/*/clear")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
                         .requestMatchers(HttpMethod.GET, "/api/workers/**")
@@ -129,6 +143,10 @@ public class SecurityConfig {
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .logout(logout -> logout.disable());
+
+        http.addFilterBefore(
+                collectorApiKeyAuthenticationFilter,
+                AnonymousAuthenticationFilter.class);
 
         return http.build();
     }

@@ -32,7 +32,7 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
         objectMapper.writeValue(response.getWriter(), Map.of(
                 "status", HttpServletResponse.SC_UNAUTHORIZED,
                 "error", "UNAUTHORIZED",
-                "message", "로그인이 필요합니다."
+                "message", "인증이 필요합니다."
         ));
     }
 }

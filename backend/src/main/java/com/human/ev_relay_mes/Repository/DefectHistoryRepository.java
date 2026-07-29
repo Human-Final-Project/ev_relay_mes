@@ -27,5 +27,4 @@ public interface DefectHistoryRepository extends JpaRepository<DefectHistory, Lo
     // 일별·주간 품질 현황이나 기간 검색에서 발생한 불량 이력을 조회할 때 사용한다.
     List<DefectHistory> findByOccurredAtBetweenOrderByOccurredAtDesc(LocalDateTime startAt, LocalDateTime endAt);
 
-    List<DefectHistory> findAllByOrderByOccurredAtDesc();
 }

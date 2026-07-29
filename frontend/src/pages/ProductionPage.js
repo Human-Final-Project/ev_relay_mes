@@ -13,15 +13,17 @@ export default function ProductionPage() {
   const [assignments, setAssignments] = useState(null);
   const [detailError, setDetailError] = useState(null);
   const [updatedAt, setUpdatedAt] = useState(new Date());
+  const reloadMachines = machines.reload;
+  const reloadPipelineLots = pipelineLots.reload;
 
   useEffect(() => {
     const timer = setInterval(() => {
-      machines.reload();
-      pipelineLots.reload();
+      reloadMachines();
+      reloadPipelineLots();
       setUpdatedAt(new Date());
     }, 1000);
     return () => clearInterval(timer);
-  }, [machines.reload, pipelineLots.reload]);
+  }, [reloadMachines, reloadPipelineLots]);
 
   useEffect(() => {
     if (!selectedMachineId) {

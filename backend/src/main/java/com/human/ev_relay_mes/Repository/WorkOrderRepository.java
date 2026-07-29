@@ -22,7 +22,4 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrder, Long> {
     @Query("select w from WorkOrder w where w.workOrderId = :id")
     Optional<WorkOrder> findByIdForUpdate(@Param("id") Long id);
 
-    @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select w from WorkOrder w order by w.workOrderId asc")
-    List<WorkOrder> findAllForUpdate();
 }

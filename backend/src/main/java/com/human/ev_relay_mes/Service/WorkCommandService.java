@@ -105,14 +105,6 @@ public class WorkCommandService {
                 WorkCommandResponseDto.fromEntity(workCommandRepository.save(weldCommand))));
     }
 
-    @Transactional
-    public WorkCommandResponseDto createStartCommand(Lot lot, Process process, int inputQty) {
-        return tryCreateStartCommand(lot, process, inputQty)
-                .orElseThrow(() -> new CustomException(
-                        ErrorCode.MACHINE_NOT_IDLE,
-                        "해당 공정 설비가 사용 중이거나 이미 예약되어 있습니다."));
-    }
-
     /**
      * 설비 행을 잠근 뒤 IDLE 상태와 활성 명령 부재를 확인하여 START를 예약한다.
      * PENDING 명령 자체가 RESERVED 역할을 하므로 별도 설비 상태를 추가하지 않는다.
@@ -386,6 +378,33 @@ public class WorkCommandService {
             command.setStatus(WorkCommand.Status.COMPLETED);
             command.setCompletedAt(now);
         });
+    }
+
+    /**
+     * LOT이 종료될 때 아직 남아 있는 명령을 취소하여 IDLE 설비를 계속 점유하지 않게 한다.
+     * 취소 뒤 늦은 ACCEPTED ACK가 도착해도 acknowledgeCommand가 CANCELED 상태를 되돌리지 않는다.
+     */
+    @Transactional
+    public int cancelActiveCommandsForLot(String lotNo) {
+        return cancelCommands(workCommandRepository.findByLotAndStatusInForUpdate(
+                lotNo, ACTIVE_STATUSES));
+    }
+
+    /** 이벤트 유실이나 서버 재시작 전에 남은 종료 LOT의 유령 명령을 정리한다. */
+    @Transactional
+    public int cancelActiveCommandsForTerminalLots() {
+        return cancelCommands(workCommandRepository.findActiveCommandsOfTerminalLotsForUpdate(
+                EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED),
+                ACTIVE_STATUSES));
+    }
+
+    private int cancelCommands(List<WorkCommand> commands) {
+        LocalDateTime now = LocalDateTime.now();
+        commands.forEach(command -> {
+            command.setStatus(WorkCommand.Status.CANCELED);
+            command.setCompletedAt(now);
+        });
+        return commands.size();
     }
 
     public List<WorkCommandResponseDto> getCommands(String lotNo) {

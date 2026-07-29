@@ -83,6 +83,20 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
 
     List<WorkCommand> findByLot_LotNoOrderByCreatedAtAsc(String lotNo);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.lot.lotNo = :lotNo "
+            + "and c.status in :statuses order by c.commandId asc")
+    List<WorkCommand> findByLotAndStatusInForUpdate(
+            @Param("lotNo") String lotNo,
+            @Param("statuses") Collection<WorkCommand.Status> statuses);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from WorkCommand c where c.lot.status in :lotStatuses "
+            + "and c.status in :commandStatuses order by c.commandId asc")
+    List<WorkCommand> findActiveCommandsOfTerminalLotsForUpdate(
+            @Param("lotStatuses") Collection<com.human.ev_relay_mes.Entity.Lot.Status> lotStatuses,
+            @Param("commandStatuses") Collection<WorkCommand.Status> commandStatuses);
+
     List<WorkCommand> findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
             String lotNo,
             String processCode,

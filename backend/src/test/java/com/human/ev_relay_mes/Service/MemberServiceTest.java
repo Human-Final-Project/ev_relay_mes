@@ -1,11 +1,13 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
+import com.human.ev_relay_mes.Dto.Request.MemberUpdateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.Security.MemberSessionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -20,11 +22,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class MemberServiceTest {
 
     @Mock MemberRepository memberRepository;
+    @Mock MemberSessionService memberSessionService;
 
     private PasswordEncoder passwordEncoder;
     private MemberService memberService;
@@ -33,7 +38,7 @@ class MemberServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        memberService = new MemberService(memberRepository, passwordEncoder);
+        memberService = new MemberService(memberRepository, passwordEncoder, memberSessionService);
         member = Member.builder()
                 .memberId(1L)
                 .loginId("operator1")
@@ -60,6 +65,28 @@ class MemberServiceTest {
 
         assertThat(response.getRole()).isEqualTo("OPERATOR");
         assertThat(response.getStatus()).isEqualTo("LOCKED");
+    }
+
+    @Test
+    void expiresExistingSessionsWhenRoleOrStatusChanges() {
+        MemberUpdateRequestDto dto = new MemberUpdateRequestDto();
+        dto.setStatus("LOCKED");
+
+        memberService.updateMember(1L, dto);
+
+        assertThat(member.getStatus()).isEqualTo(Member.Status.LOCKED);
+        verify(memberSessionService).expireAllSessions(1L);
+    }
+
+    @Test
+    void keepsExistingSessionsWhenRoleAndStatusDoNotActuallyChange() {
+        MemberUpdateRequestDto dto = new MemberUpdateRequestDto();
+        dto.setRole("OPERATOR");
+        dto.setStatus("ACTIVE");
+
+        memberService.updateMember(1L, dto);
+
+        verify(memberSessionService, never()).expireAllSessions(1L);
     }
 
     @Test

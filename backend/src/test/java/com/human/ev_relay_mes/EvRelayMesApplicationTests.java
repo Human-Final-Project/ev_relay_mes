@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.Security.CollectorApiKeyAuthenticationFilter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -16,6 +17,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.annotation.DirtiesContext;
 
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
@@ -54,11 +56,59 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
-	void collectorApiDoesNotRequireApiKeyButStillValidatesRequestBody() throws Exception {
+	void collectorApiRejectsMissingApiKey() throws Exception {
 		mockMvc.perform(post("/api/collector/production-logs")
 					.contentType(MediaType.APPLICATION_JSON)
 					.content("{}"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+	}
+
+	@Test
+	void collectorApiRejectsInvalidApiKey() throws Exception {
+		mockMvc.perform(post("/api/collector/production-logs")
+					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "wrong-key")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{}"))
+				.andExpect(status().isUnauthorized())
+				.andExpect(jsonPath("$.error").value("UNAUTHORIZED"));
+	}
+
+	@Test
+	void collectorApiAcceptsConfiguredApiKeyAndStillValidatesRequestBody() throws Exception {
+		mockMvc.perform(post("/api/collector/production-logs")
+					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("{}"))
 				.andExpect(status().isBadRequest());
+	}
+
+	@Test
+	void collectorApiKeyAllowsHeartbeatWithoutUserSessionOrCsrf() throws Exception {
+		mockMvc.perform(post("/api/collector/status-heartbeat")
+					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key")
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("""
+							{
+							  "connectedMachineIds": [],
+							  "totalCapacity": 6
+							}
+							"""))
+				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	@WithMockUser(roles = "ADMIN")
+	void loggedInUserCannotReplaceCollectorApiKey() throws Exception {
+		mockMvc.perform(get("/api/collector/commands/pending"))
+				.andExpect(status().isUnauthorized());
+	}
+
+	@Test
+	void collectorApiKeyDoesNotGrantAccessToUserApi() throws Exception {
+		mockMvc.perform(get("/api/mes/dashboard/summary")
+					.header(CollectorApiKeyAuthenticationFilter.HEADER_NAME, "test-collector-api-key"))
+				.andExpect(status().isUnauthorized());
 	}
 
 	@Test
@@ -75,6 +125,7 @@ class EvRelayMesApplicationTests {
 	}
 
 	@Test
+	@DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
 	void issuesMatchingJsonAndCookieCsrfTokenForReactAndSwagger() throws Exception {
 		MvcResult csrfResult = mockMvc.perform(get("/api/auth/csrf"))
 				.andExpect(status().isOk())
@@ -155,6 +206,7 @@ class EvRelayMesApplicationTests {
     }
 
     @Test
+    @DirtiesContext(methodMode = DirtiesContext.MethodMode.BEFORE_METHOD)
     void operatorCanReachAlarmClearEndpointWithRealLoginPrincipal() throws Exception {
         String loginId = "operator-alarm-test";
         String rawPassword = "operator-password";

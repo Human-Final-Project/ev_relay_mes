@@ -27,8 +27,6 @@ public interface LotRepository extends JpaRepository<Lot, Long> {
 
     boolean existsByWorkOrder_WorkOrderId(Long workOrderId);
 
-    boolean existsByWorkOrder_WorkOrderIdAndStatus(Long workOrderId, Lot.Status status);
-
     boolean existsByWorkOrder_WorkOrderIdAndStatusIn(
             Long workOrderId, Collection<Lot.Status> statuses);
 
