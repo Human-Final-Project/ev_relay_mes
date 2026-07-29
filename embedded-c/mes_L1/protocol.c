@@ -11,6 +11,15 @@
 
 #define L1_COMMAND_FIELD_COUNT 8
 
+/*
+ * TCP 프로토콜 변환 전용 파일
+ *
+ * parse: L2가 보낸 CSV COMMAND 문자열을 L1Command 구조체로 바꾼다.
+ * build: L1 이벤트 구조체를 V1,...,\n 형식의 CSV 문자열로 바꾼다.
+ *
+ * TCP 연결과 생산 로직은 이 파일에서 처리하지 않는다.
+ */
+
 static size_t bounded_string_length(const char *text, size_t limit)
 {
     size_t length = 0;
@@ -720,18 +729,46 @@ L1ProtocolResult l1_protocol_build_judgment(
     L1ProtocolResult result = prepare_output(out_buffer, buffer_size, out_length);
     int written;
 
-    if (result != L1_PROTOCOL_OK) return result;
-    if (event == NULL) return L1_PROTOCOL_NULL_ARGUMENT;
-    if ((result = validate_machine_process(event->machine_id, event->process_code)) != L1_PROTOCOL_OK
-        || (result = validate_required_lot(event->lot_no)) != L1_PROTOCOL_OK
-        || (result = normalize_optional_field(event->defect_code, L1_CODE_CAPACITY, &defect_code)) != L1_PROTOCOL_OK
-        || (result = normalize_optional_field(event->message, L1_MESSAGE_CAPACITY, &message)) != L1_PROTOCOL_OK) {
+    if (result != L1_PROTOCOL_OK) {
         return result;
     }
-    if (event->unit_seq <= 0) return L1_PROTOCOL_OUT_OF_RANGE;
-    result_name = event->result == L1_JUDGMENT_OK ? "OK"
-        : event->result == L1_JUDGMENT_NG ? "NG" : NULL;
-    if (result_name == NULL) return L1_PROTOCOL_INVALID_VALUE;
+    if (event == NULL) {
+        return L1_PROTOCOL_NULL_ARGUMENT;
+    }
+
+    result = validate_machine_process(event->machine_id, event->process_code);
+    if (result != L1_PROTOCOL_OK) {
+        return result;
+    }
+    result = validate_required_lot(event->lot_no);
+    if (result != L1_PROTOCOL_OK) {
+        return result;
+    }
+    result = normalize_optional_field(
+        event->defect_code,
+        L1_CODE_CAPACITY,
+        &defect_code);
+    if (result != L1_PROTOCOL_OK) {
+        return result;
+    }
+    result = normalize_optional_field(
+        event->message,
+        L1_MESSAGE_CAPACITY,
+        &message);
+    if (result != L1_PROTOCOL_OK) {
+        return result;
+    }
+    if (event->unit_seq <= 0) {
+        return L1_PROTOCOL_OUT_OF_RANGE;
+    }
+
+    if (event->result == L1_JUDGMENT_OK) {
+        result_name = "OK";
+    } else if (event->result == L1_JUDGMENT_NG) {
+        result_name = "NG";
+    } else {
+        return L1_PROTOCOL_INVALID_VALUE;
+    }
     if (event->result == L1_JUDGMENT_NG && strcmp(defect_code, "-") == 0) {
         return L1_PROTOCOL_INVALID_VALUE;
     }

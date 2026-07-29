@@ -9,6 +9,17 @@
 #include "connection_registry.h"
 #include "thread_compat.h"
 
+/*
+ * L2 TCP 수집기의 전체 흐름
+ *
+ * 1. 9000 포트에서 L1 연결을 기다린다.
+ * 2. 연결된 L1마다 작업 스레드를 하나 만든다.
+ * 3. 첫 메시지 HELLO로 설비 ID를 등록한다.
+ * 4. 이후 메시지를 줄바꿈(\n) 단위로 분리하고 protocol.c로 해석한다.
+ * 5. 정상 이벤트는 api_client.c를 통해 Backend로 보낸다.
+ * 6. 연결 종료나 타임아웃은 L2가 통신 알람을 만들어 Backend로 보낸다.
+ */
+
 typedef struct {
     CollectorConnectionRegistry *registry;
     CollectorConnection *connection;
@@ -82,9 +93,10 @@ static CollectorFeedResult process_complete_line(
                      COLLECTOR_SESSION_ERROR_PROTOCOL,
                      result,
                      session->line_buffer);
-        return session->hello_received
-            ? COLLECTOR_FEED_OK
-            : COLLECTOR_FEED_CLOSE_CONNECTION;
+        if (session->hello_received) {
+            return COLLECTOR_FEED_OK;
+        }
+        return COLLECTOR_FEED_CLOSE_CONNECTION;
     }
 
     if (!session->hello_received) {
@@ -333,6 +345,7 @@ static void send_backend_event(const ProtocolMessage *message)
     ApiClientResult api_result;
     int http_status = 0;
 
+    /* api_client가 이벤트 종류에 맞는 REST 경로와 JSON을 선택한다. */
     api_result = api_client_send_event(message, &http_status);
     if (api_result == API_CLIENT_OK) {
         printf("[L2 -> Backend] event=%s status=%d\n",
@@ -471,15 +484,19 @@ static void handle_client_worker(void *context)
            (unsigned int)collector_connection_peer_port(connection));
     fflush(stdout);
 
+    /* 이 반복문은 현재 L1 연결 하나만 담당한다. */
     for (;;) {
         int received;
 
         if (!session.hello_received) {
             uint64_t now = net_monotonic_milliseconds();
-            uint64_t elapsed = now >= connected_at ? now - connected_at : 0;
+            uint64_t elapsed = 0;
             uint64_t timeout_ms =
                 (uint64_t)COLLECTOR_HELLO_TIMEOUT_SECONDS * 1000U;
 
+            if (now >= connected_at) {
+                elapsed = now - connected_at;
+            }
             if (elapsed >= timeout_ms) {
                 fprintf(stderr,
                         "[L2] HELLO timeout after %d seconds.\n",
@@ -498,12 +515,13 @@ static void handle_client_worker(void *context)
             }
         } else {
             uint64_t now = net_monotonic_milliseconds();
-            uint64_t elapsed = now >= worker->last_message_at
-                ? now - worker->last_message_at
-                : 0;
+            uint64_t elapsed = 0;
             uint64_t timeout_ms =
                 (uint64_t)COLLECTOR_COMM_TIMEOUT_SECONDS * 1000U;
 
+            if (now >= worker->last_message_at) {
+                elapsed = now - worker->last_message_at;
+            }
             if (elapsed >= timeout_ms) {
                 communication_failure = COLLECTOR_COMM_TIMEOUT;
                 break;
@@ -532,9 +550,11 @@ static void handle_client_worker(void *context)
             }
             {
                 uint64_t now = net_monotonic_milliseconds();
-                uint64_t elapsed = now >= worker->last_message_at
-                    ? now - worker->last_message_at
-                    : 0;
+                uint64_t elapsed = 0;
+
+                if (now >= worker->last_message_at) {
+                    elapsed = now - worker->last_message_at;
+                }
 
                 if (elapsed
                     >= (uint64_t)COLLECTOR_COMM_TIMEOUT_SECONDS * 1000U) {
@@ -634,6 +654,7 @@ int collector_run(void)
            COLLECTOR_MAX_L1_CONNECTIONS);
     fflush(stdout);
 
+    /* 서버가 실행되는 동안 새로운 L1 연결을 계속 수락한다. */
     for (;;) {
         char peer_address[64];
         uint16_t peer_port = 0;

@@ -43,6 +43,7 @@ public class ProductionService {
 
     @Transactional
     public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
+        // 1. 같은 eventId가 다시 오면 중복 저장하지 않는다.
         String eventId = normalizeEventId(dto.getEventId());
         validateRequest(dto);
         if (INSPECTION_PROCESS.equals(dto.getProcessCode())) {
@@ -58,6 +59,7 @@ public class ProductionService {
             }
         }
 
+        // 2. 해당 LOT·공정에 이미 저장된 누적 실적을 찾는다.
         List<ProductionLog> processLogs = productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
                         dto.getLotNo(), dto.getProcessCode());
@@ -66,6 +68,7 @@ public class ProductionService {
             return toResponse(currentLog);
         }
 
+        // 3. LOT, 설비, 공정 관계와 예상 투입 수량을 확인한다.
         validateLot(lot, dto.getProcessCode());
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
@@ -75,8 +78,10 @@ public class ProductionService {
 
         int expectedInputQty = expectedInputQty(lot, process);
         validateCumulativeQuantity(expectedInputQty, dto.getStatus(), dto.getInputQty());
-        String logStatus = dto.getInputQty() == expectedInputQty ? "COMPLETED" : "RUNNING";
+        boolean allUnitsProcessed = dto.getInputQty() == expectedInputQty;
+        String logStatus = allUnitsProcessed ? "COMPLETED" : "RUNNING";
 
+        // 4. 최초 실적이면 새 행을 만들고, 이후 실적이면 같은 행의 누적 수량을 수정한다.
         if (currentLog == null) {
             currentLog = ProductionLog.builder()
                     .eventId(eventId)
@@ -93,13 +98,18 @@ public class ProductionService {
         if (currentLog.getStartedAt() == null) {
             currentLog.setStartedAt(dto.getStartedAt());
         }
-        LocalDateTime completedAt = "COMPLETED".equals(logStatus)
-                ? (dto.getEndedAt() == null ? LocalDateTime.now() : dto.getEndedAt())
-                : null;
+
+        LocalDateTime completedAt = null;
+        if (allUnitsProcessed) {
+            completedAt = dto.getEndedAt() == null
+                    ? LocalDateTime.now()
+                    : dto.getEndedAt();
+        }
         currentLog.setEndedAt(completedAt);
         ProductionLog savedLog = productionLogRepository.save(currentLog);
 
-        if (dto.getInputQty() == expectedInputQty) {
+        // 5. 목표 수량을 모두 처리했으면 다음 공정으로 LOT을 이동한다.
+        if (allUnitsProcessed) {
             completeCurrentProcess(lot, machine, process, dto.getOkQty(), completedAt);
         }
         return toResponse(savedLog);

@@ -29,7 +29,7 @@ public class WorkOrderContinuationReconciler {
         for (WorkOrder workOrder : workOrderRepository
                 .findByStatusOrderByCreatedAtDesc(WorkOrder.Status.RELEASED)) {
             try {
-                workOrderService.releaseAndStart(workOrder.getWorkOrderId(), null);
+                workOrderService.releaseAndRequestStart(workOrder.getWorkOrderId(), null);
             } catch (RuntimeException exception) {
                 log.error("최초 LOT 자동 생성 정합성 확인 실패 workOrderId={}",
                         workOrder.getWorkOrderId(), exception);

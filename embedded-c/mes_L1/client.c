@@ -7,6 +7,16 @@
 #include "machine_runtime.h"
 #include "net.h"
 
+/*
+ * L1 TCP 클라이언트의 전체 흐름
+ *
+ * 1. L2에 연결하고 HELLO를 보낸다.
+ * 2. L2가 보낸 COMMAND를 줄바꿈(\n) 단위로 분리한다.
+ * 3. machine_runtime.c에 명령 처리를 요청한다.
+ * 4. 만들어진 ACK/실적/검사/알람 메시지를 L2로 보낸다.
+ * 5. 연결이 끊어지면 생산을 일시 정지하고 다시 연결한다.
+ */
+
 typedef struct {
     L1Socket socket;
     const L1DeviceConfig *device;
@@ -216,14 +226,23 @@ static int execute_runtime_actions(RuntimeContext *runtime,
                                   output_length) != 0) {
             return -1;
         }
-        if (((action->type == L1_RUNTIME_ACTION_PRODUCTION
-              && l1_machine_runtime_mark_reported(
-                     runtime->machine,
-                     action->reported_quantity) != 0)
-             || ((action->type == L1_RUNTIME_ACTION_INSPECTION
-                  || action->type == L1_RUNTIME_ACTION_JUDGMENT)
-                 && action->completes_unit
-                 && l1_machine_runtime_mark_reported(runtime->machine, 1) != 0))) {
+        /*
+         * 전송에 성공한 수량만 reported_qty에 반영한다.
+         * 연결이 끊기면 반영되지 않은 수량을 재연결 후 다시 보낼 수 있다.
+         */
+        int report_result = 0;
+
+        if (action->type == L1_RUNTIME_ACTION_PRODUCTION) {
+            report_result = l1_machine_runtime_mark_reported(
+                runtime->machine,
+                action->reported_quantity);
+        } else if ((action->type == L1_RUNTIME_ACTION_INSPECTION
+                    || action->type == L1_RUNTIME_ACTION_JUDGMENT)
+                   && action->completes_unit) {
+            report_result = l1_machine_runtime_mark_reported(runtime->machine, 1);
+        }
+
+        if (report_result != 0) {
             fprintf(stderr, "[L1] Failed to update reported quantity.\n");
             return -1;
         }
@@ -310,6 +329,7 @@ static void run_connected_session(L1Socket socket,
     handlers.on_error = handle_runtime_error;
     handlers.context = &runtime;
 
+    /* 프로그램이 종료될 때까지 연결 -> 실행 -> 재연결을 반복한다. */
     for (;;) {
         uint64_t now = l1_net_monotonic_milliseconds();
         uint64_t wait_ms;

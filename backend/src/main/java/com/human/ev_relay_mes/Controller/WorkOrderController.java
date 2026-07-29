@@ -51,10 +51,10 @@ public class WorkOrderController {
     }
 
     @PostMapping("/{id}/release")
-    public WorkOrderResponseDto releaseAndStart(
+    public WorkOrderResponseDto releaseWorkOrder(
             @PathVariable Long id,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
-        return workOrderService.releaseAndStart(id, userDetails.getMemberId());
+        return workOrderService.releaseAndRequestStart(id, userDetails.getMemberId());
     }
 
     @PatchMapping("/{id}/status")

@@ -9,6 +9,15 @@
 
 #define DEFAULT_RANDOM_ALARM_RATE 10
 
+/*
+ * L1 프로그램 시작점
+ *
+ * 1. 실행할 설비 ID와 옵션을 읽는다.
+ * 2. 설비 ID에 맞는 공정·알람 설정을 찾는다.
+ * 3. 네트워크를 초기화한다.
+ * 4. client.c의 TCP 연결 반복을 시작한다.
+ */
+
 static void print_available_machines(void)
 {
     size_t index;

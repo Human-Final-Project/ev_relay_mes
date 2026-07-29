@@ -6,6 +6,11 @@
 
 #include "net.h"
 
+/*
+ * 운영체제별 소켓 함수 차이를 감싸는 파일이다.
+ * collector.c와 api_client.c는 이 파일을 통해 TCP/HTTP 소켓을 사용한다.
+ */
+
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>

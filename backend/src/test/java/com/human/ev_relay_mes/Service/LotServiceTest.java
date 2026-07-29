@@ -61,7 +61,7 @@ class LotServiceTest {
             return saved;
         });
 
-        var response = lotService.createInitialLotAndRequestStart(order, 7L);
+        var response = lotService.createInitialLotAndTryStartProduction(order, 7L);
 
         assertThat(response.getLotType()).isEqualTo("INITIAL");
         assertThat(response.getStatus()).isEqualTo("RUNNING");
@@ -83,7 +83,7 @@ class LotServiceTest {
         when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        var response = lotService.createInitialLotAndRequestStart(order, 7L);
+        var response = lotService.createInitialLotAndTryStartProduction(order, 7L);
 
         assertThat(response.getStatus()).isEqualTo("WAITING");
         assertThat(response.getStartRequestedAt()).isNotNull();

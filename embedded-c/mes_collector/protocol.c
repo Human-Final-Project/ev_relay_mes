@@ -12,6 +12,18 @@
 
 #define PROTOCOL_MAX_FIELDS 11
 
+/*
+ * L1이 보낸 CSV 한 줄을 이벤트 구조체로 바꾸는 파일
+ *
+ * 예: V1,ALARM,... 문자열
+ *   -> 필드 분리
+ *   -> 메시지 종류 확인
+ *   -> 필수값과 숫자 범위 검사
+ *   -> ProtocolMessage 구조체 저장
+ *
+ * Backend JSON 변환과 TCP 수신은 다른 파일이 담당한다.
+ */
+
 typedef struct {
     const char *machine_id;
     const char *process_code;
@@ -451,9 +463,16 @@ static ProtocolResult parse_judgment(char **fields, ProtocolMessage *message)
 {
     ProtocolJudgmentEvent *event = &message->data.judgment;
     ProtocolResult result = validate_machine_process(fields[2], fields[3]);
-    if (result != PROTOCOL_RESULT_OK) return result;
-    if ((result = validate_required_lot(fields[4])) != PROTOCOL_RESULT_OK
-        || (result = parse_nonnegative_int(fields[5], &event->unit_seq)) != PROTOCOL_RESULT_OK) {
+
+    if (result != PROTOCOL_RESULT_OK) {
+        return result;
+    }
+    result = validate_required_lot(fields[4]);
+    if (result != PROTOCOL_RESULT_OK) {
+        return result;
+    }
+    result = parse_nonnegative_int(fields[5], &event->unit_seq);
+    if (result != PROTOCOL_RESULT_OK) {
         return result;
     }
     if (event->unit_seq <= 0

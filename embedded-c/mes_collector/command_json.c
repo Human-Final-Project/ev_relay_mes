@@ -7,6 +7,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * Backend 작업명령 JSON 해석 순서
+ *
+ * 1. JSON 배열의 '['를 확인한다.
+ * 2. 배열 안의 객체를 하나씩 분리한다.
+ * 3. commandId, commandType, machineId 등의 필수 필드를 읽는다.
+ * 4. 설비와 공정이 맞는지, 수량이 올바른지 검사한다.
+ * 5. 검사된 값을 ProtocolCommand 배열에 저장한다.
+ *
+ * 외부 JSON 라이브러리를 사용하지 않아 코드가 길지만,
+ * HTTP 통신과 분리되어 있어 이 파일만 독립적으로 테스트할 수 있다.
+ */
+
 static const char *skip_whitespace(const char *cursor)
 {
     while (cursor != NULL

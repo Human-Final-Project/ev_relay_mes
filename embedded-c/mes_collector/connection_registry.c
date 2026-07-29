@@ -1,5 +1,13 @@
 #include "connection_registry.h"
 
+/*
+ * 현재 연결된 L1 설비 목록을 관리한다.
+ *
+ * 여러 L1 작업 스레드가 동시에 접근하므로 mutex로 목록을 보호한다.
+ * 같은 machineId의 중복 연결을 막고, scheduler가 machineId로
+ * 올바른 TCP 소켓을 찾을 수 있게 한다.
+ */
+
 #include <stdio.h>
 #include <string.h>
 

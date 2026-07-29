@@ -57,6 +57,7 @@ public class InspectionService {
 
     @Transactional
     public InspectionResponseDto saveResult(InspectionResultReceiveRequestDto dto) {
+        // 1. L2 재전송으로 같은 eventId가 들어오면 기존 결과를 반환한다.
         String eventId = normalizeEventId(dto.getEventId());
         if (eventId != null) {
             Optional<Inspection> existingByEvent = inspectionRepository.findByEventId(eventId);
@@ -65,6 +66,7 @@ public class InspectionService {
             }
         }
 
+        // 2. 검사 대상 LOT, 설비, 공정을 찾고 서로 일치하는지 확인한다.
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         Machine machine = machineRepository.findById(dto.getMachineId())
@@ -80,10 +82,12 @@ public class InspectionService {
                     "검사 순번이 OP70 투입수량을 초과합니다.");
         }
 
+        // 3. 생산 시작 때 복사해 둔 검사 기준으로 측정값을 판정한다.
         LotInspectionStandardSnapshot snapshot = inspectionStandardService
                 .resolveSnapshot(lot, process, dto.getInspectionItem());
         validateUnit(dto.getUnit(), snapshot.getUnit());
 
+        // 4. 같은 제품·검사 항목의 측정값이 이미 저장됐는지 확인한다.
         Optional<Inspection> existingMeasurement = inspectionRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqAndInspectionItem(
                         lot.getLotNo(), process.getProcessCode(),
@@ -97,6 +101,7 @@ public class InspectionService {
             return toResponse(existing);
         }
 
+        // 5. 측정값을 저장하고 기준을 벗어나면 불량 이력도 생성한다.
         Inspection.Result result = judge(
                 dto.getMeasuredValue(), snapshot.getLowerLimit(), snapshot.getUpperLimit());
         Inspection inspection = Inspection.builder()
@@ -119,6 +124,7 @@ public class InspectionService {
                     "측정값 기준 이탈: " + snapshot.getInspectionItem());
         }
 
+        // 6. L1 판정과 모든 측정값이 모였으면 제품 최종 OK/NG를 계산한다.
         evaluateUnitAndCompleteProcessIfReady(
                 lot, machine, process, dto.getUnitSeq(), expectedInputQty);
         return toResponse(saved);
@@ -192,6 +198,7 @@ public class InspectionService {
 
     private InspectionUnitResult evaluateUnitAndCompleteProcessIfReady(
             Lot lot, Machine machine, Process process, Integer unitSeq, int expectedInputQty) {
+        // 제품 하나에 필요한 검사 항목 수와 현재 받은 항목 수를 비교한다.
         long requiredItemCount = inspectionStandardService.snapshotCount(lot, process);
         if (requiredItemCount == 0 && InspectionStandardService.supportsMeasurements(process.getProcessCode())) {
             inspectionStandardService.captureStandardsIfAbsent(lot, process);
@@ -210,16 +217,28 @@ public class InspectionService {
             List<Inspection> unitInspections = inspectionRepository
                     .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqOrderByInspectionIdAsc(
                             lot.getLotNo(), process.getProcessCode(), unitSeq);
-            unitResult.setMeasurementResult(unitInspections.stream()
-                    .anyMatch(item -> item.getResult() == Inspection.Result.NG)
-                    ? Inspection.Result.NG : Inspection.Result.OK);
+            boolean hasFailedMeasurement = unitInspections.stream()
+                    .anyMatch(item -> item.getResult() == Inspection.Result.NG);
+            if (hasFailedMeasurement) {
+                unitResult.setMeasurementResult(Inspection.Result.NG);
+            } else {
+                unitResult.setMeasurementResult(Inspection.Result.OK);
+            }
         }
+
+        // L1 자체 판정과 Backend 측정값 판정이 모두 있어야 최종 판정할 수 있다.
         if (unitResult.getL1Result() == null || unitResult.getMeasurementResult() == null) {
             return unitResultRepository.save(unitResult);
         }
-        unitResult.setResult(unitResult.getL1Result() == Inspection.Result.OK
-                        && unitResult.getMeasurementResult() == Inspection.Result.OK
-                ? Inspection.Result.OK : Inspection.Result.NG);
+
+        boolean l1Passed = unitResult.getL1Result() == Inspection.Result.OK;
+        boolean measurementPassed =
+                unitResult.getMeasurementResult() == Inspection.Result.OK;
+        if (l1Passed && measurementPassed) {
+            unitResult.setResult(Inspection.Result.OK);
+        } else {
+            unitResult.setResult(Inspection.Result.NG);
+        }
         unitResult.setEvaluationStatus(InspectionUnitResult.EvaluationStatus.COMPLETED);
         unitResult.setEvaluatedAt(LocalDateTime.now());
         unitResultRepository.save(unitResult);

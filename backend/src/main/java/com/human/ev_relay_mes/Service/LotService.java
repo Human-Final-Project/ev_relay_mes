@@ -60,28 +60,42 @@ public class LotService {
             throw new CustomException(ErrorCode.INVALID_LOT_QUANTITY,
                     "최초 LOT 투입 수량은 작업지시 목표 수량과 같아야 합니다.");
         }
-        return createInitialLotAndRequestStart(workOrder, memberId);
+        return createInitialLotAndTryStartProduction(workOrder, memberId);
     }
 
-    /** WorkOrder 확정 트랜잭션 안에서 최초 LOT를 원자적으로 생성하고 자동 투입한다. */
+    /*
+     * 최초 LOT를 만든 다음 생산 시작을 시도한다.
+     * 자재가 부족하면 LOT은 WAITING 상태로 남고, 자재 입고 후 다시 시도한다.
+     */
     @Transactional
-    public LotResponseDto createInitialLotAndRequestStart(WorkOrder workOrder, Long memberId) {
+    public LotResponseDto createInitialLotAndTryStartProduction(
+            WorkOrder workOrder,
+            Long memberId) {
+        // 1. 확정된 작업지시인지 확인한다.
         if (workOrder.getStatus() != WorkOrder.Status.RELEASED) {
             throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
                     "확정(RELEASED) 상태의 작업지시에서만 최초 LOT를 생성할 수 있습니다.");
         }
+
+        // 2. 같은 작업지시에 최초 LOT가 이미 있는지 확인한다.
         if (lotRepository.existsByWorkOrder_WorkOrderId(workOrder.getWorkOrderId())) {
             throw new CustomException(ErrorCode.INITIAL_LOT_ALREADY_EXISTS);
         }
 
-        Lot saved = lotRepository.save(buildLot(
+        // 3. 작업지시의 목표 수량으로 최초 LOT를 만들어 저장한다.
+        Member creator = findMember(memberId);
+        Lot newLot = buildLot(
                 workOrder,
                 workOrder.getTargetQty(),
                 Lot.LotType.INITIAL,
                 1,
-                findMember(memberId)));
-        requestPipelineStart(saved);
-        return toResponse(saved);
+                creator);
+        Lot savedLot = lotRepository.save(newLot);
+
+        // 4. 자재가 준비됐다면 생산을 시작한다.
+        tryStartProduction(savedLot);
+
+        return toResponse(savedLot);
     }
 
     /**
@@ -113,7 +127,7 @@ public class LotService {
             throw new CustomException(ErrorCode.SUPPLEMENT_NOT_REQUIRED);
         }
 
-        return createSupplementLotAndRequestStart(
+        return createSupplementLotAndTryStartProduction(
                 workOrder,
                 remainingQty,
                 findMember(memberId));
@@ -131,10 +145,10 @@ public class LotService {
             throw new CustomException(ErrorCode.MEMBER_NOT_FOUND,
                     "자동 보충 LOT 생성에 사용할 작업지시 생성자가 없습니다.");
         }
-        return createSupplementLotAndRequestStart(workOrder, remainingQty, creator);
+        return createSupplementLotAndTryStartProduction(workOrder, remainingQty, creator);
     }
 
-    private LotResponseDto createSupplementLotAndRequestStart(
+    private LotResponseDto createSupplementLotAndTryStartProduction(
             WorkOrder workOrder,
             int remainingQty,
             Member creator) {
@@ -153,7 +167,7 @@ public class LotService {
                 Lot.LotType.SUPPLEMENT,
                 nextRound,
                 creator));
-        requestPipelineStart(saved);
+        tryStartProduction(saved);
         return toResponse(saved);
     }
 
@@ -199,7 +213,7 @@ public class LotService {
                 lot.setStatus(Lot.Status.RUNNING);
                 productionScheduleRequestService.requestLot(lot.getLotNo());
             } else {
-                requestPipelineStart(lot);
+                tryStartProduction(lot);
             }
             return toResponse(lot);
         }
@@ -253,17 +267,15 @@ public class LotService {
         }
     }
 
-    /**
-     * 자재는 LOT가 파이프라인에 진입할 때 한 번만 차감한다.
-     * 설비가 바쁘면 LOT은 RUNNING 상태로 해당 공정 대기열에 남는다.
-     */
-    private boolean requestPipelineStart(Lot lot) {
+    private void tryStartProduction(Lot lot) {
+        // 자재가 부족하면 요청 시간을 남겨 두고 WAITING 상태를 유지한다.
         lot.setStartRequestedAt(LocalDateTime.now());
-        boolean consumed = materialLotService.tryConsumeMaterials(lot);
-        if (!consumed) {
-            return false;
+        boolean materialsReady = materialLotService.tryConsumeMaterials(lot);
+        if (!materialsReady) {
+            return;
         }
 
+        // 자재 차감에 성공하면 LOT와 작업지시를 생산 중 상태로 바꾼다.
         if (lot.getStartedAt() == null) {
             lot.setStartedAt(LocalDateTime.now());
         }
@@ -272,9 +284,9 @@ public class LotService {
         if (lot.getWorkOrder().getStatus() == WorkOrder.Status.RELEASED) {
             lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
         }
-        // 새 LOT을 직접 우선 배정하지 않고 전체 IDLE 설비를 FIFO 대기열 기준으로 채운다.
+
+        // 비어 있는 설비에 대기 중인 공정 작업을 배정한다.
         productionScheduleRequestService.requestAllIdleMachines();
-        return true;
     }
 
     @TransactionalEventListener(
@@ -291,7 +303,7 @@ public class LotService {
                 continue;
             }
             validateStartEligibility(lot.getWorkOrder());
-            requestPipelineStart(lot);
+            tryStartProduction(lot);
         }
     }
 

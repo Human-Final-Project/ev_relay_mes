@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.Service;
 
+import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.Process;
@@ -16,11 +17,17 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
-/**
- * 여러 WorkOrder/LOT을 공정별로 동시에 흘려보내는 파이프라인 스케줄러다.
- * LOT 전체를 직렬화하지 않고, 각 설비의 IDLE 상태와 PENDING/활성 명령을
- * 설비 예약 조건으로 사용한다.
+/*
+ * 생산 스케줄러의 역할
+ *
+ * 1. 현재 공정을 기다리는 LOT을 찾는다.
+ * 2. 해당 공정의 설비가 비어 있는지 확인한다.
+ * 3. 이전 공정의 양품 수량을 다음 공정 투입 수량으로 계산한다.
+ * 4. 조건이 맞으면 WorkCommandService에 START 명령 생성을 요청한다.
+ *
+ * OP20과 OP30은 병렬 공정이므로 두 설비가 모두 비어 있을 때 함께 시작한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -93,11 +100,14 @@ public class ProductionSchedulerService {
     }
 
     private boolean tryScheduleLockedLot(Lot lot) {
+        // 생산 중인 LOT만 스케줄링할 수 있다.
         if (lot.getStatus() != Lot.Status.RUNNING || lot.getCurrentProcess() == null) {
             return false;
         }
 
         String processCode = lot.getCurrentProcess().getProcessCode();
+
+        // 첫 공정인 OP20과 OP30은 항상 한 쌍으로 시작한다.
         if (OP20.equals(processCode)) {
             if (!isInitialPairUnstarted(lot)) {
                 return false;
@@ -105,11 +115,15 @@ public class ProductionSchedulerService {
             return workCommandService.tryCreateInitialStartCommands(lot).isPresent();
         }
 
-        if (workCommandService.hasActiveExecution(lot.getLotNo(), processCode)
-                || workCommandService.hasStartedProcess(lot.getLotNo(), processCode)) {
+        boolean commandRunning =
+                workCommandService.hasActiveExecution(lot.getLotNo(), processCode);
+        boolean processAlreadyStarted =
+                workCommandService.hasStartedProcess(lot.getLotNo(), processCode);
+        if (commandRunning || processAlreadyStarted) {
             return false;
         }
 
+        // 이전 공정이 끝났는지 확인하고 다음 공정 투입 수량을 계산한다.
         ProcessInputAvailability input = expectedInput(lot, lot.getCurrentProcess());
         if (!input.isReady()) {
             return false;
@@ -118,9 +132,11 @@ public class ProductionSchedulerService {
             finishScrappedLot(lot);
             return false;
         }
-        return workCommandService
-                .tryCreateStartCommand(lot, lot.getCurrentProcess(), input.getInputQty())
-                .isPresent();
+        Optional<WorkCommandResponseDto> command = workCommandService.tryCreateStartCommand(
+                lot,
+                lot.getCurrentProcess(),
+                input.getInputQty());
+        return command.isPresent();
     }
 
     private void finishScrappedLot(Lot lot) {

@@ -6,6 +6,19 @@
 
 #define OP70_PROCESS_CODE "OP70"
 
+/*
+ * 이 파일은 L1 설비 한 대의 생산 상태를 관리한다.
+ *
+ * COMMAND 수신
+ *   -> START/STOP/RESUME 처리
+ *   -> Backend로 보낼 이벤트 목록 생성
+ *   -> 생산 중이면 제품을 한 개씩 처리
+ *   -> 판정값, 측정값, 알람, 설비 상태 이벤트 생성
+ *
+ * 이 파일은 문자열을 TCP로 직접 보내지 않는다.
+ * 전송은 client.c가 담당하고, 여기서는 보낼 데이터만 만든다.
+ */
+
 static void actions_init(L1RuntimeActions *actions)
 {
     memset(actions, 0, sizeof(*actions));
@@ -132,7 +145,9 @@ static int append_ack(L1RuntimeActions *actions,
                       const char *message)
 {
     L1RuntimeAction *action = append_action(actions, L1_RUNTIME_ACTION_COMMAND_ACK);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     strcpy(action->data.command_ack.machine_id, runtime->device->machine_id);
     action->data.command_ack.command_id = command->command_id;
     action->data.command_ack.status = status;
@@ -147,7 +162,9 @@ static int append_status(L1RuntimeActions *actions,
                          const char *message)
 {
     L1RuntimeAction *action = append_action(actions, L1_RUNTIME_ACTION_MACHINE_STATUS);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     strcpy(action->data.machine_status.machine_id, runtime->device->machine_id);
     action->data.machine_status.status = status;
     strcpy(action->data.machine_status.lot_no, lot_no);
@@ -165,11 +182,17 @@ static int append_unreported_production(L1RuntimeActions *actions,
     int ng_qty = 0;
     L1RuntimeAction *action;
 
-    if (is_inspection_runtime(runtime)) return 0;
+    if (is_inspection_runtime(runtime)) {
+        return 0;
+    }
     quantity = l1_machine_runtime_unreported_qty(runtime);
-    if (quantity <= 0) return 0;
+    if (quantity <= 0) {
+        return 0;
+    }
     action = append_action(actions, L1_RUNTIME_ACTION_PRODUCTION);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     strcpy(action->data.production.machine_id, runtime->device->machine_id);
     strcpy(action->data.production.process_code, runtime->device->process_code);
     strcpy(action->data.production.lot_no, runtime->lot_no);
@@ -197,7 +220,9 @@ static int append_inspection(L1RuntimeActions *actions,
                              int completes_unit)
 {
     L1RuntimeAction *action = append_action(actions, L1_RUNTIME_ACTION_INSPECTION);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     action->completes_unit = completes_unit;
     strcpy(action->data.inspection.machine_id, runtime->device->machine_id);
     strcpy(action->data.inspection.process_code, runtime->device->process_code);
@@ -212,7 +237,9 @@ static int append_inspection(L1RuntimeActions *actions,
 static int measurement_is_ng(const L1MachineRuntime *runtime, int seq)
 {
     const char *process = runtime->device->process_code;
-    if (!unit_is_ng(runtime, seq)) return 0;
+    if (!unit_is_ng(runtime, seq)) {
+        return 0;
+    }
     if (strcmp(process, "OP20") == 0 || strcmp(process, "OP60") == 0) {
         return seq % 2 == 0;
     }
@@ -223,17 +250,34 @@ static const char *categorical_defect_code(const L1MachineRuntime *runtime,
                                            int seq)
 {
     const char *process = runtime->device->process_code;
-    if (!unit_is_ng(runtime, seq) || measurement_is_ng(runtime, seq)) return NULL;
-    if (strcmp(process, "OP20") == 0) return seq % 3 == 0 ? "COIL_SHORT_NG" : "COIL_OPEN_NG";
+    if (!unit_is_ng(runtime, seq) || measurement_is_ng(runtime, seq)) {
+        return NULL;
+    }
+    if (strcmp(process, "OP20") == 0) {
+        if (seq % 3 == 0) {
+            return "COIL_SHORT_NG";
+        }
+        return "COIL_OPEN_NG";
+    }
     if (strcmp(process, "OP40_OP50") == 0) {
         switch (seq % 3) {
-        case 0: return "ASSY_MISALIGN_NG";
-        case 1: return "SPRING_MISSING_NG";
-        default: return "CHAMBER_CRACK_NG";
+        case 0:
+            return "ASSY_MISALIGN_NG";
+        case 1:
+            return "SPRING_MISSING_NG";
+        default:
+            return "CHAMBER_CRACK_NG";
         }
     }
-    if (strcmp(process, "OP60") == 0) return "SEAL_WELD_NG";
-    if (strcmp(process, "OP80") == 0) return seq % 2 == 0 ? "MARKING_NG" : "PACKING_COUNT_NG";
+    if (strcmp(process, "OP60") == 0) {
+        return "SEAL_WELD_NG";
+    }
+    if (strcmp(process, "OP80") == 0) {
+        if (seq % 2 == 0) {
+            return "MARKING_NG";
+        }
+        return "PACKING_COUNT_NG";
+    }
     return NULL;
 }
 
@@ -243,15 +287,22 @@ static int append_judgment(L1RuntimeActions *actions,
 {
     const char *defect_code = categorical_defect_code(runtime, seq);
     L1RuntimeAction *action = append_action(actions, L1_RUNTIME_ACTION_JUDGMENT);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     strcpy(action->data.judgment.machine_id, runtime->device->machine_id);
     strcpy(action->data.judgment.process_code, runtime->device->process_code);
     strcpy(action->data.judgment.lot_no, runtime->lot_no);
     action->data.judgment.unit_seq = seq;
-    action->data.judgment.result = defect_code == NULL ? L1_JUDGMENT_OK : L1_JUDGMENT_NG;
-    strcpy(action->data.judgment.defect_code, defect_code == NULL ? "-" : defect_code);
-    strcpy(action->data.judgment.message,
-           defect_code == NULL ? "automatic_judgment_ok" : "automatic_judgment_ng");
+    if (defect_code == NULL) {
+        action->data.judgment.result = L1_JUDGMENT_OK;
+        strcpy(action->data.judgment.defect_code, "-");
+        strcpy(action->data.judgment.message, "automatic_judgment_ok");
+    } else {
+        action->data.judgment.result = L1_JUDGMENT_NG;
+        strcpy(action->data.judgment.defect_code, defect_code);
+        strcpy(action->data.judgment.message, "automatic_judgment_ng");
+    }
     return 0;
 }
 
@@ -261,33 +312,58 @@ static int append_process_measurements(L1RuntimeActions *actions,
 {
     const char *process = runtime->device->process_code;
     int ng = measurement_is_ng(runtime, seq);
+
     if (strcmp(process, "OP20") == 0) {
         return append_inspection(actions, runtime, seq, "COIL_RESISTANCE", "OHM",
                                  ng ? 130.0 : 90.0 + (seq % 21), 0);
     }
+
     if (strcmp(process, "OP30") == 0) {
-        return append_inspection(actions, runtime, seq, "WELD_STRENGTH", "N",
-                                 ng ? 30.0 : 50.0 + (seq % 21), 0) != 0
-            || append_inspection(actions, runtime, seq, "CONTACT_RESISTANCE", "mOHM",
-                                 20.0 + (seq % 21), 0) != 0
-            || append_inspection(actions, runtime, seq, "CONTACT_POSITION", "MM",
-                                 0.05 + (double)(seq % 10) / 100.0, 0) != 0 ? -1 : 0;
+        if (append_inspection(actions, runtime, seq, "WELD_STRENGTH", "N",
+                              ng ? 30.0 : 50.0 + (seq % 21), 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "CONTACT_RESISTANCE", "mOHM",
+                              20.0 + (seq % 21), 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "CONTACT_POSITION", "MM",
+                              0.05 + (double)(seq % 10) / 100.0, 0) != 0) {
+            return -1;
+        }
+        return 0;
     }
+
     if (strcmp(process, "OP60") == 0) {
-        return append_inspection(actions, runtime, seq, "GAS_PRESSURE", "BAR",
-                                 ng ? 4.0 : 2.8 + (double)(seq % 5) / 10.0, 0) != 0
-            || append_inspection(actions, runtime, seq, "LEAK_RATE", "SCCM",
-                                 0.1 + (double)(seq % 3) / 10.0, 0) != 0 ? -1 : 0;
+        if (append_inspection(actions, runtime, seq, "GAS_PRESSURE", "BAR",
+                              ng ? 4.0 : 2.8 + (double)(seq % 5) / 10.0, 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "LEAK_RATE", "SCCM",
+                              0.1 + (double)(seq % 3) / 10.0, 0) != 0) {
+            return -1;
+        }
+        return 0;
     }
+
     if (strcmp(process, OP70_PROCESS_CODE) == 0) {
-        return append_inspection(actions, runtime, seq, "INSULATION_RESISTANCE", "MOHM",
-                                 ng ? 50.0 : 200.0 + (seq % 101), 0) != 0
-            || append_inspection(actions, runtime, seq, "WITHSTAND_VOLTAGE", "V",
-                                 1600.0 + (seq % 101), 0) != 0
-            || append_inspection(actions, runtime, seq, "OPERATION_VOLTAGE", "V",
-                                 11.0 + (double)(seq % 21) / 10.0, 0) != 0
-            || append_inspection(actions, runtime, seq, "CONTACT_BOUNCE", "MS",
-                                 1.0 + (double)(seq % 21) / 10.0, 0) != 0 ? -1 : 0;
+        if (append_inspection(actions, runtime, seq, "INSULATION_RESISTANCE", "MOHM",
+                              ng ? 50.0 : 200.0 + (seq % 101), 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "WITHSTAND_VOLTAGE", "V",
+                              1600.0 + (seq % 101), 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "OPERATION_VOLTAGE", "V",
+                              11.0 + (double)(seq % 21) / 10.0, 0) != 0) {
+            return -1;
+        }
+        if (append_inspection(actions, runtime, seq, "CONTACT_BOUNCE", "MS",
+                              1.0 + (double)(seq % 21) / 10.0, 0) != 0) {
+            return -1;
+        }
+        return 0;
     }
     return 0;
 }
@@ -296,9 +372,15 @@ static int append_unit_events(L1RuntimeActions *actions,
                               const L1MachineRuntime *runtime,
                               int seq)
 {
-    if (append_judgment(actions, runtime, seq) != 0
-        || append_process_measurements(actions, runtime, seq) != 0
-        || actions->count == 0) return -1;
+    if (append_judgment(actions, runtime, seq) != 0) {
+        return -1;
+    }
+    if (append_process_measurements(actions, runtime, seq) != 0) {
+        return -1;
+    }
+    if (actions->count == 0) {
+        return -1;
+    }
     actions->actions[actions->count - 1].completes_unit = 1;
     return 0;
 }
@@ -308,9 +390,13 @@ static int append_selected_alarm(L1RuntimeActions *actions,
 {
     L1RuntimeAction *action;
 
-    if (runtime->selected_alarm == NULL) return -1;
+    if (runtime->selected_alarm == NULL) {
+        return -1;
+    }
     action = append_action(actions, L1_RUNTIME_ACTION_ALARM);
-    if (action == NULL) return -1;
+    if (action == NULL) {
+        return -1;
+    }
     strcpy(action->data.alarm.machine_id, runtime->device->machine_id);
     strcpy(action->data.alarm.alarm_code,
            runtime->selected_alarm->alarm_code);
@@ -327,7 +413,9 @@ void l1_machine_runtime_init_with_alarm(
     const L1DeviceConfig *device,
     const L1AlarmInjectionConfig *alarm_injection)
 {
-    if (runtime == NULL) return;
+    if (runtime == NULL) {
+        return;
+    }
     memset(runtime, 0, sizeof(*runtime));
     runtime->device = device;
     runtime->state = L1_RUNTIME_IDLE;

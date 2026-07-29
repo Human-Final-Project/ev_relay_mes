@@ -33,6 +33,18 @@
 #define API_QUEUE_LINE_CAPACITY (API_CLIENT_PATH_CAPACITY + API_CLIENT_JSON_CAPACITY + 16)
 #define API_EVENT_ID_CAPACITY 100
 
+/*
+ * L2와 Backend 사이의 HTTP 통신 전용 파일
+ *
+ * L1 이벤트 전송:
+ *   ProtocolMessage -> JSON 생성 -> HTTP POST -> 실패 시 재시도 큐 저장
+ *
+ * Backend 명령 수신:
+ *   HTTP GET -> JSON 응답 -> command_json.c에서 ProtocolCommand로 변환
+ *
+ * TCP 메시지 해석과 설비 연결 관리는 이 파일에서 처리하지 않는다.
+ */
+
 static CollectorMutex queue_mutex;
 static volatile int queue_running;
 static volatile int queue_worker_active;
@@ -70,7 +82,10 @@ static int api_current_local_datetime(char *output, size_t output_capacity)
                            (unsigned int)local_time.wHour,
                            (unsigned int)local_time.wMinute,
                            (unsigned int)local_time.wSecond);
-        return written < 0 || (size_t)written >= output_capacity ? -1 : 0;
+        if (written < 0 || (size_t)written >= output_capacity) {
+            return -1;
+        }
+        return 0;
     }
 #else
     {

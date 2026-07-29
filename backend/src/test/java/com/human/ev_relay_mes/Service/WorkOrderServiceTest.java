@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -63,7 +64,7 @@ class WorkOrderServiceTest {
 
         assertThat(response.getStatus()).isEqualTo("RELEASED");
         assertThat(workOrder.getStatus()).isEqualTo(WorkOrder.Status.RELEASED);
-        verify(lotService).createInitialLotAndRequestStart(workOrder, 7L);
+        verify(lotService).createInitialLotAndTryStartProduction(workOrder, 7L);
     }
 
     @Test
@@ -84,9 +85,34 @@ class WorkOrderServiceTest {
         when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(2L))
                 .thenReturn(List.of());
 
-        var response = workOrderService.releaseAndStart(2L, 9L);
+        var response = workOrderService.releaseAndRequestStart(2L, 9L);
 
         assertThat(response.getStatus()).isEqualTo("RELEASED");
-        verify(lotService).createInitialLotAndRequestStart(workOrder, 9L);
+        verify(lotService).createInitialLotAndTryStartProduction(workOrder, 9L);
+    }
+
+    @Test
+    void doesNotCreateAnotherLotWhenReleasedWorkOrderAlreadyHasOne() {
+        Item item = Item.builder()
+                .itemCode("FG-001")
+                .itemName("EV Relay")
+                .itemType(Item.ItemType.FG)
+                .build();
+        WorkOrder workOrder = WorkOrder.builder()
+                .workOrderId(3L)
+                .orderNo("WO-TEST-3")
+                .item(item)
+                .targetQty(30)
+                .status(WorkOrder.Status.RELEASED)
+                .build();
+        when(workOrderRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(workOrder));
+        when(lotRepository.existsByWorkOrder_WorkOrderId(3L)).thenReturn(true);
+        when(lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(3L))
+                .thenReturn(List.of());
+
+        var response = workOrderService.releaseAndRequestStart(3L, 9L);
+
+        assertThat(response.getStatus()).isEqualTo("RELEASED");
+        verify(lotService, never()).createInitialLotAndTryStartProduction(workOrder, 9L);
     }
 }

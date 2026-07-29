@@ -30,6 +30,16 @@ import java.util.Set;
 @Transactional(readOnly = true)
 public class WorkCommandService {
 
+    /*
+     * 작업명령의 전체 흐름
+     *
+     * 1. Backend가 START/STOP/RESUME 명령을 PENDING 상태로 저장한다.
+     * 2. L2가 명령을 가져가면 DISPATCHED 상태가 된다.
+     * 3. L1이 명령을 받으면 ACCEPTED 또는 REJECTED ACK를 보낸다.
+     * 4. 공정이 끝나면 명령을 COMPLETED 상태로 바꾼다.
+     *
+     * 아래 상태 묶음은 같은 상태 검사를 여러 곳에서 반복하지 않기 위해 사용한다.
+     */
     private static final String PARALLEL_PROCESS_1 = "OP20";
     private static final String PARALLEL_PROCESS_2 = "OP30";
     private static final long DISPATCH_ACK_TIMEOUT_SECONDS = 10L;
@@ -147,26 +157,41 @@ public class WorkCommandService {
     public List<WorkCommandResponseDto> claimPendingCommands(String machineId) {
         String normalizedMachineId = machineId == null ? null : machineId.trim();
         LocalDateTime now = LocalDateTime.now();
+
+        // ACK가 10초 동안 오지 않은 명령은 L2가 다시 가져갈 수 있게 PENDING으로 돌린다.
         requeueStaleDispatched(normalizedMachineId, now.minusSeconds(DISPATCH_ACK_TIMEOUT_SECONDS));
-        List<WorkCommand> pending = normalizedMachineId == null || normalizedMachineId.isBlank()
-                ? workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING)
-                : workCommandRepository.findByMachineAndStatusForDispatch(
-                        normalizedMachineId, WorkCommand.Status.PENDING);
+
+        List<WorkCommand> pending;
+        if (normalizedMachineId == null || normalizedMachineId.isBlank()) {
+            pending = workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING);
+        } else {
+            pending = workCommandRepository.findByMachineAndStatusForDispatch(
+                    normalizedMachineId,
+                    WorkCommand.Status.PENDING);
+        }
 
         List<WorkCommandResponseDto> claimed = new ArrayList<>();
         Set<String> reservedDuringClaim = new HashSet<>();
+
         for (WorkCommand command : pending) {
+            // 이미 끝난 LOT의 명령은 L1으로 보내지 않는다.
             if (isTerminalLot(command.getLot())) {
                 cancelCommand(command, now);
                 continue;
             }
+
             String commandMachineId = command.getMachine().getMachineId();
-            if (!canDispatch(command)
-                    || reservedDuringClaim.contains(commandMachineId)
-                    || workCommandRepository.existsByMachine_MachineIdAndStatusIn(
-                            commandMachineId, MACHINE_RESERVED_STATUSES)) {
+            boolean machineAlreadySelected = reservedDuringClaim.contains(commandMachineId);
+            boolean machineAlreadyReserved =
+                    workCommandRepository.existsByMachine_MachineIdAndStatusIn(
+                            commandMachineId,
+                            MACHINE_RESERVED_STATUSES);
+
+            if (!canDispatch(command) || machineAlreadySelected || machineAlreadyReserved) {
                 continue;
             }
+
+            // 이 명령을 L2에 전달할 대상으로 확정한다.
             command.setStatus(WorkCommand.Status.DISPATCHED);
             command.setDispatchedAt(now);
             reservedDuringClaim.add(commandMachineId);
@@ -176,19 +201,26 @@ public class WorkCommandService {
     }
 
     private void requeueStaleDispatched(String machineId, LocalDateTime cutoff) {
-        List<WorkCommand> stale = machineId == null || machineId.isBlank()
-                ? workCommandRepository.findStaleDispatchedForUpdate(
-                        WorkCommand.Status.DISPATCHED, cutoff)
-                : workCommandRepository.findStaleDispatchedByMachineForUpdate(
-                        machineId, WorkCommand.Status.DISPATCHED, cutoff);
-        stale.forEach(command -> {
+        List<WorkCommand> stale;
+        if (machineId == null || machineId.isBlank()) {
+            stale = workCommandRepository.findStaleDispatchedForUpdate(
+                    WorkCommand.Status.DISPATCHED,
+                    cutoff);
+        } else {
+            stale = workCommandRepository.findStaleDispatchedByMachineForUpdate(
+                    machineId,
+                    WorkCommand.Status.DISPATCHED,
+                    cutoff);
+        }
+
+        for (WorkCommand command : stale) {
             if (isTerminalLot(command.getLot())) {
                 cancelCommand(command, LocalDateTime.now());
             } else {
                 command.setStatus(WorkCommand.Status.PENDING);
                 command.setDispatchedAt(null);
             }
-        });
+        }
     }
 
     /**
@@ -242,9 +274,11 @@ public class WorkCommandService {
     @Transactional
     public Optional<WorkCommandResponseDto> createResumeCommand(
             String machineId, String lotNo, String processCode) {
+        // 1. 재개할 설비를 잠금 조회한다.
         Machine lockedMachine = machineRepository.findByIdForUpdate(machineId)
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
 
+        // 2. 오류 때문에 취소된 이전 명령을 찾는다.
         WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
         if (interrupted == null || interrupted.getLot().getStatus() != Lot.Status.HOLD) {
             return Optional.empty();
@@ -253,6 +287,8 @@ public class WorkCommandService {
         Lot lot = interrupted.getLot();
         Process process = interrupted.getProcess();
         Machine machine = interrupted.getMachine();
+
+        // 3. 이미 RESUME 명령이 있으면 새로 만들지 않고 기존 명령을 반환한다.
         Optional<WorkCommand> existingResume = workCommandRepository
                 .findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusInOrderByCreatedAtDescCommandIdDesc(
                         machineId, lot.getLotNo(), process.getProcessCode(),
@@ -265,6 +301,7 @@ public class WorkCommandService {
             return Optional.empty();
         }
 
+        // 4. 전체 목표 수량에서 이미 처리한 수량을 빼서 재개 수량을 계산한다.
         int targetQty = originalTargetQty(interrupted);
         int evaluatedQty = Math.toIntExact(inspectionUnitResultRepository
                 .countByLot_LotNoAndProcess_ProcessCodeAndEvaluationStatus(
@@ -287,14 +324,16 @@ public class WorkCommandService {
             lockedMachine.setStatus(Machine.Status.ERROR);
         }
 
-        WorkCommand resume = WorkCommand.builder()
+        // 5. 남은 수량으로 RESUME 명령을 저장한다.
+        WorkCommand resumeCommand = WorkCommand.builder()
                 .commandType(WorkCommand.CommandType.RESUME)
                 .machine(machine)
                 .process(process)
                 .lot(lot)
                 .inputQty(remainingQty)
                 .build();
-        return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(resume)));
+        WorkCommand savedCommand = workCommandRepository.save(resumeCommand);
+        return Optional.of(WorkCommandResponseDto.fromEntity(savedCommand));
     }
 
     public boolean hasHeldInterruptedWork(String machineId, String lotNo, String processCode) {
@@ -357,13 +396,19 @@ public class WorkCommandService {
 
     @Transactional
     public WorkCommandResponseDto acknowledge(WorkCommandAckRequestDto dto) {
+        // 1. L1이 알려 준 commandId로 원래 명령을 찾는다.
         WorkCommand command = workCommandRepository.findByIdForUpdate(dto.getCommandId())
                 .orElseThrow(() -> new CustomException(ErrorCode.WORK_COMMAND_NOT_FOUND));
+
+        // 2. 명령을 받은 설비와 ACK를 보낸 설비가 같은지 확인한다.
         if (!command.getMachine().getMachineId().equals(dto.getMachineId())) {
             throw new CustomException(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
         }
+
         WorkCommand.Status acknowledgedStatus =
                 WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase());
+
+        // 3. 이미 취소됐거나 종료된 LOT의 늦은 ACK는 기록만 하고 상태를 되돌리지 않는다.
         if (command.getStatus() == WorkCommand.Status.CANCELED) {
             recordLateAcknowledgement(command, dto);
             return WorkCommandResponseDto.fromEntity(command);
@@ -373,13 +418,15 @@ public class WorkCommandService {
             recordLateAcknowledgement(command, dto);
             return WorkCommandResponseDto.fromEntity(command);
         }
-        boolean acceptedAlreadyProcessed =
-                acknowledgedStatus == WorkCommand.Status.ACCEPTED
-                        && EnumSet.of(
-                                WorkCommand.Status.ACCEPTED,
-                                WorkCommand.Status.COMPLETED,
-                                WorkCommand.Status.CANCELED)
-                        .contains(command.getStatus());
+
+        // 4. 같은 ACK가 재전송되면 기존 처리 결과를 그대로 반환한다.
+        boolean acceptedAck = acknowledgedStatus == WorkCommand.Status.ACCEPTED;
+        boolean commandAlreadyProcessed =
+                command.getStatus() == WorkCommand.Status.ACCEPTED
+                        || command.getStatus() == WorkCommand.Status.COMPLETED
+                        || command.getStatus() == WorkCommand.Status.CANCELED;
+        boolean acceptedAlreadyProcessed = acceptedAck && commandAlreadyProcessed;
+
         if (command.getStatus() == acknowledgedStatus || acceptedAlreadyProcessed) {
             if (acknowledgedStatus == WorkCommand.Status.ACCEPTED
                     && command.getStatus() != WorkCommand.Status.CANCELED) {
@@ -397,6 +444,7 @@ public class WorkCommandService {
             throw new CustomException(ErrorCode.INVALID_WORK_COMMAND_STATUS);
         }
 
+        // 5. 처음 받은 ACK라면 명령 상태와 ACK 내용을 저장한다.
         command.setStatus(acknowledgedStatus);
         if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
             captureStartContext(command);

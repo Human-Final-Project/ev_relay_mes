@@ -13,6 +13,16 @@
 #include "protocol.h"
 #include "thread_compat.h"
 
+/*
+ * Backend 명령을 L1으로 전달하는 반복 작업
+ *
+ * 1. 연결된 설비별로 Backend의 PENDING 명령을 조회한다.
+ * 2. 받은 JSON 명령을 ProtocolCommand 구조체로 변환한다.
+ * 3. TCP COMMAND 문자열을 만들어 해당 L1에 보낸다.
+ * 4. TCP 전송에 실패하면 Backend 명령을 PENDING으로 되돌린다.
+ * 5. 위 작업을 설정된 polling 주기마다 반복한다.
+ */
+
 static const char *configured_machines[COLLECTOR_MAX_L1_CONNECTIONS] = {
     "EQ-WIND-01",
     "EQ-WELD-01",
@@ -139,6 +149,8 @@ static void dispatch_commands_for_machine(const char *machine_id)
     if (!collector_is_machine_connected(machine_id)) {
         return;
     }
+
+    /* 현재 설비에 내려갈 작업명령을 Backend에서 가져온다. */
     fetch_result = api_client_fetch_pending_commands(
         machine_id,
         commands,
@@ -163,12 +175,14 @@ static void dispatch_commands_for_machine(const char *machine_id)
 
         command_id_to_text(command->command_id, command_id_text);
 
+        /* 조회 이후 연결이 끊겼을 수 있으므로 전송 직전에 다시 확인한다. */
         if (!collector_is_machine_connected(command->machine_id)) {
             release_failed_command(command, COLLECTOR_SEND_NOT_REGISTERED);
             continue;
         }
-        send_result = collector_send_command_to_machine(command,
-                                                        &protocol_result);
+        send_result = collector_send_command_to_machine(
+            command,
+            &protocol_result);
         if (send_result != COLLECTOR_SEND_OK) {
             fprintf(stderr,
                     "[L2 Polling] command send failed id=%s machine=%s "
@@ -195,6 +209,8 @@ static void dispatch_commands_for_machine(const char *machine_id)
 static void scheduler_worker(void *context)
 {
     (void)context;
+
+    /* 별도 스레드에서 Backend polling을 계속 반복한다. */
     while (scheduler_running) {
         size_t index;
         unsigned int waited = 0;

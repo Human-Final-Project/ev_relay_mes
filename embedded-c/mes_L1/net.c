@@ -6,6 +6,11 @@
 
 #include "net.h"
 
+/*
+ * 운영체제별 소켓 함수 차이를 감싸는 파일이다.
+ * client.c는 Windows/Linux 차이를 모르고 connect, send, receive만 호출한다.
+ */
+
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
