@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.machine.api;
 
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;

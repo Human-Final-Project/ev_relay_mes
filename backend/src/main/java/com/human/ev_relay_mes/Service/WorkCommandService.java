@@ -2,7 +2,7 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkCommand;
@@ -12,7 +12,8 @@ import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.ProductionLogRepository;
+import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -55,9 +56,9 @@ public class WorkCommandService {
     private final WorkCommandRepository workCommandRepository;
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
-    private final ProductionLogRepository productionLogRepository;
+    private final ProductionData productionData;
     private final QualityMetrics qualityMetrics;
-    private final LotProcessResponsibleService lotProcessResponsibleService;
+    private final LotResponsibilityOperations lotResponsibilityOperations;
     private final InspectionStandardOperations inspectionStandardOperations;
 
     /**
@@ -226,10 +227,8 @@ public class WorkCommandService {
         int evaluatedQty = Math.toIntExact(
                 qualityMetrics.countCompletedUnits(
                         lot.getLotNo(), process.getProcessCode()));
-        int productionQty = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), process.getProcessCode())
-                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int productionQty = productionData.sumInputQuantity(
+                lot.getLotNo(), process.getProcessCode());
         int processedQty = Math.max(evaluatedQty, productionQty);
         int remainingQty = targetQty - processedQty;
         if (remainingQty <= 0) {
@@ -356,7 +355,7 @@ public class WorkCommandService {
         if (command.getCommandType() == WorkCommand.CommandType.STOP) {
             return;
         }
-        lotProcessResponsibleService.captureIfAbsent(
+        lotResponsibilityOperations.captureIfAbsent(
                 command.getLot(), command.getProcess(), command.getMachine());
         if (inspectionStandardOperations.supportsMeasurements(
                 command.getProcess().getProcessCode())) {

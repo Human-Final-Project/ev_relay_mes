@@ -94,7 +94,7 @@ public interface WorkCommandRepository extends JpaRepository<WorkCommand, Long> 
     @Query("select c from WorkCommand c where c.lot.status in :lotStatuses "
             + "and c.status in :commandStatuses order by c.commandId asc")
     List<WorkCommand> findActiveCommandsOfTerminalLotsForUpdate(
-            @Param("lotStatuses") Collection<com.human.ev_relay_mes.Entity.Lot.Status> lotStatuses,
+            @Param("lotStatuses") Collection<com.human.ev_relay_mes.feature.production.api.Lot.Status> lotStatuses,
             @Param("commandStatuses") Collection<WorkCommand.Status> commandStatuses);
 
     List<WorkCommand> findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(

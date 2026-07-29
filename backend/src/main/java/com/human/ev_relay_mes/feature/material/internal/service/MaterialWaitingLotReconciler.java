@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.material.internal.service;
 
-import com.human.ev_relay_mes.Service.LotService;
+import com.human.ev_relay_mes.feature.production.api.MaterialWaitingLotRetry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -17,14 +17,14 @@ import org.springframework.stereotype.Component;
         matchIfMissing = true)
 public class MaterialWaitingLotReconciler {
 
-    private final LotService lotService;
+    private final MaterialWaitingLotRetry materialWaitingLotRetry;
 
     @Scheduled(
             initialDelayString = "${mes.auto-lot.material-reconcile-initial-delay-ms:5000}",
             fixedDelayString = "${mes.auto-lot.material-reconcile-delay-ms:5000}")
     public void reconcile() {
         try {
-            lotService.retryMaterialWaitingLots();
+            materialWaitingLotRetry.retryMaterialWaitingLots();
         } catch (RuntimeException exception) {
             log.error("자재 대기 LOT 자동 투입 재확인 실패", exception);
         }

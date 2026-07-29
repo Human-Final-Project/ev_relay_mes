@@ -11,7 +11,7 @@ import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.WorkCommand;
-import com.human.ev_relay_mes.Service.ProductionScheduleRequestService;
+import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
@@ -45,7 +45,7 @@ public class MachineAlarmService implements MachineAlarmOperations {
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final WorkCommandRepository workCommandRepository;
     private final WorkCommandService workCommandService;
-    private final ProductionScheduleRequestService productionScheduleRequestService;
+    private final ProductionSchedulingRequests productionSchedulingRequests;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
@@ -185,7 +185,7 @@ public class MachineAlarmService implements MachineAlarmOperations {
 
         if (!isCommunicationAlarm(clearedHistory)) {
             changeMachineStatus(machine, Machine.Status.IDLE, "알람 해제 후 대기 상태 복구");
-            productionScheduleRequestService.requestMachine(machine.getMachineId());
+            productionSchedulingRequests.requestMachine(machine.getMachineId());
         }
         // 통신 알람은 L1 재접속 직후 전송되는 MACHINE_STATUS 스냅샷으로 복구한다.
     }

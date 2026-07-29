@@ -4,14 +4,14 @@ import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistoryResponseDto;
-import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResultResponseDto;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
@@ -19,7 +19,7 @@ import com.human.ev_relay_mes.feature.quality.api.DefectOperations;
 import com.human.ev_relay_mes.feature.quality.api.InspectionOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
-import com.human.ev_relay_mes.Service.ProductionService;
+import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
@@ -36,7 +36,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CollectorController {
 
-    private final ProductionService productionService;
+    private final ProductionOperations productionOperations;
     private final InspectionOperations inspectionOperations;
     private final DefectOperations defectOperations;
     private final MachineMonitoring machineMonitoring;
@@ -56,7 +56,7 @@ public class CollectorController {
     @PostMapping("/production-logs")
     public ResponseEntity<ProductionLogResponseDto> receiveProductionResult(
             @Valid @RequestBody ProductionResultReceiveRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productionService.saveResult(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(productionOperations.saveResult(dto));
     }
 
     @PostMapping("/inspections")

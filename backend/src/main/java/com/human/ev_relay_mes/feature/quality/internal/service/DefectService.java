@@ -6,13 +6,13 @@ import com.human.ev_relay_mes.feature.quality.api.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.feature.quality.api.DefectHistory;
 import com.human.ev_relay_mes.feature.quality.api.DefectOperations;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.quality.internal.repository.DefectHistoryRepository;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import lombok.RequiredArgsConstructor;
@@ -31,7 +31,7 @@ public class DefectService implements DefectOperations {
     private final DefectHistoryRepository defectHistoryRepository;
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
-    private final LotRepository lotRepository;
+    private final ProductionData productionData;
 
     // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
     @Transactional
@@ -44,8 +44,7 @@ public class DefectService implements DefectOperations {
                 return toResponse(existing.get());
             }
         }
-        Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
-                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        Lot lot = productionData.getRequiredLotForUpdate(dto.getLotNo());
         if (lot.getStatus() == Lot.Status.SCRAPPED) {
             throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
                     "폐기된 LOT에는 불량을 등록할 수 없습니다.");
@@ -85,8 +84,7 @@ public class DefectService implements DefectOperations {
     }
 
     private Lot findLot(String lotNo) {
-        return lotRepository.findByLotNo(lotNo)
-                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        return productionData.getRequiredLot(lotNo);
     }
 
     private void validateRelations(Machine machine, Process process, DefectCode defectCode) {

@@ -1,17 +1,17 @@
 package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.feature.material.api.MaterialLotRequestDto;
-import com.human.ev_relay_mes.Dto.Request.ProductionLogSearchRequestDto;
-import com.human.ev_relay_mes.Dto.Request.WorkOrderRequestDto;
-import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
-import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionLogSearchRequestDto;
+import com.human.ev_relay_mes.feature.production.api.WorkOrderRequestDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
+import com.human.ev_relay_mes.feature.production.api.WorkOrderResponseDto;
 import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardQuery;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
-import com.human.ev_relay_mes.Service.ProductionService;
-import com.human.ev_relay_mes.Service.WorkOrderService;
+import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
+import com.human.ev_relay_mes.feature.production.api.WorkOrderOperations;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -35,9 +35,9 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class MesController {
 
-    private final WorkOrderService workOrderService;
+    private final WorkOrderOperations workOrderOperations;
     private final MaterialInventory materialInventory;
-    private final ProductionService productionService;
+    private final ProductionOperations productionOperations;
     private final DashboardQuery dashboardQuery;
     private final CollectorStatusService collectorStatusService;
 
@@ -58,13 +58,14 @@ public class MesController {
         WorkOrderRequestDto dto = new WorkOrderRequestDto();
         dto.setItemCode(request.productCode());
         dto.setTargetQty(request.targetQty());
-        WorkOrderResponseDto created = workOrderService.createWorkOrder(dto, userDetails.getMemberId());
+        WorkOrderResponseDto created =
+                workOrderOperations.createWorkOrder(dto, userDetails.getMemberId());
         return ResponseEntity.status(HttpStatus.CREATED).body(toOrderView(created));
     }
 
     @GetMapping("/orders")
     public List<OrderView> getOrders() {
-        return workOrderService.getWorkOrders(null).stream().map(this::toOrderView).toList();
+        return workOrderOperations.getWorkOrders(null).stream().map(this::toOrderView).toList();
     }
 
     @GetMapping("/material/stock")
@@ -101,7 +102,7 @@ public class MesController {
 
     @GetMapping("/production/recent-logs")
     public List<ProductionLogResponseDto> getRecentProductionLogs() {
-        return productionService.search(new ProductionLogSearchRequestDto()).stream()
+        return productionOperations.search(new ProductionLogSearchRequestDto()).stream()
                 .limit(10)
                 .toList();
     }

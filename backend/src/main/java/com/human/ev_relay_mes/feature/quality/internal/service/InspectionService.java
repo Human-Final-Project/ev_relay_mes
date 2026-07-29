@@ -9,16 +9,16 @@ import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResultResponseDt
 import com.human.ev_relay_mes.feature.quality.api.Inspection;
 import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResult;
 import com.human.ev_relay_mes.feature.quality.api.InspectionOperations;
-import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
+import com.human.ev_relay_mes.feature.production.api.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionRepository;
 import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionUnitResultRepository;
-import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Service.ProductionService;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
+import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -41,9 +41,9 @@ public class InspectionService implements InspectionOperations {
     private final InspectionUnitResultRepository unitResultRepository;
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
-    private final LotRepository lotRepository;
+    private final ProductionData productionData;
     private final InspectionStandardOperations inspectionStandardOperations;
-    private final ProductionService productionService;
+    private final ProductionOperations productionOperations;
     private final DefectService defectService;
 
     private static final Map<String, String> MEASUREMENT_DEFECT_CODES = Map.ofEntries(
@@ -69,14 +69,13 @@ public class InspectionService implements InspectionOperations {
             }
         }
 
-        Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
-                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        Lot lot = productionData.getRequiredLotForUpdate(dto.getLotNo());
         Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
 
         validateLot(lot, process);
         validateMachineAndProcess(machine, process);
-        int expectedInputQty = productionService.expectedInputQtyFor(lot, process);
+        int expectedInputQty = productionOperations.expectedInputQtyFor(lot, process);
         if (dto.getUnitSeq() > expectedInputQty) {
             throw new CustomException(ErrorCode.INVALID_INSPECTION_UNIT_SEQ,
                     "검사 순번이 OP70 투입수량을 초과합니다.");
@@ -129,13 +128,12 @@ public class InspectionService implements InspectionOperations {
     @Transactional
     @Override
     public InspectionUnitResultResponseDto saveJudgment(UnitJudgmentReceiveRequestDto dto) {
-        Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
-                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        Lot lot = productionData.getRequiredLotForUpdate(dto.getLotNo());
         Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         validateLot(lot, process);
         validateMachineAndProcess(machine, process);
-        int expectedInputQty = productionService.expectedInputQtyFor(lot, process);
+        int expectedInputQty = productionOperations.expectedInputQtyFor(lot, process);
         if (dto.getUnitSeq() > expectedInputQty) {
             throw new CustomException(ErrorCode.INVALID_INSPECTION_UNIT_SEQ);
         }
@@ -244,7 +242,7 @@ public class InspectionService implements InspectionOperations {
         int ngQty = Math.toIntExact(unitResultRepository
                 .countByLot_LotNoAndProcess_ProcessCodeAndResult(
                         lot.getLotNo(), process.getProcessCode(), Inspection.Result.NG));
-        productionService.completeEvaluatedProcess(
+        productionOperations.completeEvaluatedProcess(
                 lot, machine, process, expectedInputQty, okQty, ngQty);
         return unitResult;
     }

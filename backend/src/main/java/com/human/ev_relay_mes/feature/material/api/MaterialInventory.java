@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.material.api;
 
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 
 import java.util.List;
 

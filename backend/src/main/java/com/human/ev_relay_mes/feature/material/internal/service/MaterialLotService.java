@@ -2,7 +2,7 @@ package com.human.ev_relay_mes.feature.material.internal.service;
 
 import com.human.ev_relay_mes.feature.masterdata.api.Bom;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Exception.CustomException;

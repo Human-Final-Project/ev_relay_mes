@@ -3,11 +3,11 @@ package com.human.ev_relay_mes.feature.quality.internal.service;
 import com.human.ev_relay_mes.feature.quality.api.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.feature.quality.api.DefectHistory;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.quality.internal.repository.DefectHistoryRepository;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ class DefectServiceTest {
     @Mock DefectHistoryRepository defectHistoryRepository;
     @Mock MachineRegistry machineRegistry;
     @Mock MasterDataLookup masterDataLookup;
-    @Mock LotRepository lotRepository;
+    @Mock ProductionData productionData;
 
     @InjectMocks DefectService defectService;
 
@@ -61,6 +61,6 @@ class DefectServiceTest {
 
         assertThat(response.getDefectHistoryId()).isEqualTo(14L);
         assertThat(response.getDefectDescription()).isEqualTo("wire is disconnected");
-        verifyNoInteractions(masterDataLookup, machineRegistry, lotRepository);
+        verifyNoInteractions(masterDataLookup, machineRegistry, productionData);
     }
 }

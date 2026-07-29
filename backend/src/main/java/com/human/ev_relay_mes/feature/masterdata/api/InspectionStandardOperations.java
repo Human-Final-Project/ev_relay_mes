@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.feature.masterdata.api;
 
-import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
+import com.human.ev_relay_mes.feature.production.api.LotInspectionStandardSnapshot;
 
 import java.util.List;
 

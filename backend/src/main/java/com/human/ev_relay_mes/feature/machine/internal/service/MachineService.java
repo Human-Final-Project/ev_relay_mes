@@ -3,21 +3,20 @@ package com.human.ev_relay_mes.feature.machine.internal.service;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistoryResponseDto;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
 import com.human.ev_relay_mes.Entity.WorkCommand;
-import com.human.ev_relay_mes.Service.ProductionScheduleRequestService;
+import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
@@ -40,12 +39,11 @@ public class MachineService implements MachineMonitoring {
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final MasterDataLookup masterDataLookup;
-    private final LotRepository lotRepository;
+    private final ProductionData productionData;
     private final WorkCommandService workCommandService;
     private final WorkCommandRepository workCommandRepository;
-    private final ProductionLogRepository productionLogRepository;
     private final QualityMetrics qualityMetrics;
-    private final ProductionScheduleRequestService productionScheduleRequestService;
+    private final ProductionSchedulingRequests productionSchedulingRequests;
 
     // 설비 현황 화면에 전체 설비의 기본 정보와 현재 상태를 표시할 때 사용한다.
     @Override
@@ -105,7 +103,7 @@ public class MachineService implements MachineMonitoring {
                 && previousStatus == status
                 && latestHistory.filter(history -> sameStatusSnapshot(history, status, lot, process)).isPresent()) {
             if (status == Machine.Status.IDLE) {
-                productionScheduleRequestService.requestMachine(machine.getMachineId());
+                productionSchedulingRequests.requestMachine(machine.getMachineId());
             }
             return toHistoryResponse(latestHistory.get());
         }
@@ -121,7 +119,7 @@ public class MachineService implements MachineMonitoring {
                 .build();
         MachineStatusHistory savedHistory = machineStatusHistoryRepository.save(history);
         if (status == Machine.Status.IDLE) {
-            productionScheduleRequestService.requestMachine(machine.getMachineId());
+            productionSchedulingRequests.requestMachine(machine.getMachineId());
         }
         return toHistoryResponse(savedHistory);
     }
@@ -181,8 +179,7 @@ public class MachineService implements MachineMonitoring {
 
     // 설비 상태 메시지에 포함된 LOT 번호를 생산 LOT와 연결할 때 내부적으로 사용한다.
     private Lot findLot(String lotNo) {
-        return lotRepository.findByLotNo(lotNo)
-                .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
+        return productionData.getRequiredLot(lotNo);
     }
 
     // 외부에서 받은 상태 문자열을 설비 상태 Enum으로 안전하게 변환할 때 사용한다.
@@ -230,9 +227,7 @@ public class MachineService implements MachineMonitoring {
         String processCode = command.getProcess().getProcessCode();
         int evaluatedQty = Math.toIntExact(
                 qualityMetrics.countCompletedUnits(lotNo, processCode));
-        int productionQty = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(lotNo, processCode)
-                .stream().mapToInt(log -> log.getInputQty()).sum();
+        int productionQty = productionData.sumInputQuantity(lotNo, processCode);
         int processedQty = Math.max(evaluatedQty, productionQty);
         int targetQty = command.getCommandType() == WorkCommand.CommandType.RESUME
                 ? workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(lotNo).stream()

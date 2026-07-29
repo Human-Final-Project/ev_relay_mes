@@ -3,12 +3,14 @@ package com.human.ev_relay_mes.feature.masterdata.internal.service;
 import com.human.ev_relay_mes.Entity.*;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.LotInspectionStandardSnapshotRepository;
+import com.human.ev_relay_mes.feature.production.api.LotInspectionSnapshotStore;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandard;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.production.api.Lot;
+import com.human.ev_relay_mes.feature.production.api.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.feature.masterdata.internal.repository.InspectionStandardRepository;
 import com.human.ev_relay_mes.feature.masterdata.internal.repository.ProcessRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +26,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class InspectionStandardService implements InspectionStandardOperations {
     private final InspectionStandardRepository standardRepository;
-    private final LotInspectionStandardSnapshotRepository snapshotRepository;
+    private final LotInspectionSnapshotStore snapshotStore;
     private final ProcessRepository processRepository;
 
     public List<InspectionStandardResponseDto> getAll() {
@@ -46,8 +48,8 @@ public class InspectionStandardService implements InspectionStandardOperations {
 
     @Transactional
     public List<LotInspectionStandardSnapshot> captureStandardsIfAbsent(Lot lot, Process process) {
-        List<LotInspectionStandardSnapshot> existing = snapshotRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderBySnapshotIdAsc(
+        List<LotInspectionStandardSnapshot> existing = snapshotStore
+                .findSnapshots(
                         lot.getLotNo(), process.getProcessCode());
         if (!existing.isEmpty()) return existing;
 
@@ -57,7 +59,7 @@ public class InspectionStandardService implements InspectionStandardOperations {
         if (standards.isEmpty()) {
             throw new CustomException(ErrorCode.INSPECTION_STANDARD_NOT_CONFIGURED);
         }
-        return snapshotRepository.saveAll(standards.stream()
+        return snapshotStore.saveSnapshots(standards.stream()
                 .map(s -> LotInspectionStandardSnapshot.builder()
                         .lot(lot).process(process)
                         .inspectionItem(s.getInspectionItem())
@@ -70,18 +72,18 @@ public class InspectionStandardService implements InspectionStandardOperations {
     @Transactional
     public LotInspectionStandardSnapshot resolveSnapshot(Lot lot, Process process, String inspectionItem) {
         String item = inspectionItem == null ? "" : inspectionItem.trim().toUpperCase();
-        return snapshotRepository.findByLot_LotNoAndProcess_ProcessCodeAndInspectionItem(
+        return snapshotStore.findSnapshot(
                         lot.getLotNo(), process.getProcessCode(), item)
                 .orElseGet(() -> {
                     captureStandardsIfAbsent(lot, process);
-                    return snapshotRepository.findByLot_LotNoAndProcess_ProcessCodeAndInspectionItem(
+                    return snapshotStore.findSnapshot(
                                     lot.getLotNo(), process.getProcessCode(), item)
                             .orElseThrow(() -> new CustomException(ErrorCode.INSPECTION_STANDARD_NOT_FOUND));
                 });
     }
 
     public long snapshotCount(Lot lot, Process process) {
-        return snapshotRepository.countByLot_LotNoAndProcess_ProcessCode(
+        return snapshotStore.countSnapshots(
                 lot.getLotNo(), process.getProcessCode());
     }
 

@@ -1,6 +1,7 @@
 package com.human.ev_relay_mes.Entity;
 
 import com.human.ev_relay_mes.feature.machine.api.Machine;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import jakarta.persistence.*;
 import lombok.*;

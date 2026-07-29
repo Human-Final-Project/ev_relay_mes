@@ -1,23 +1,22 @@
 package com.human.ev_relay_mes.feature.machine.internal.service;
 
-import com.human.ev_relay_mes.Service.ProductionScheduleRequestService;
+import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.Entity.ProductionLog;
+import com.human.ev_relay_mes.feature.production.api.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
-import com.human.ev_relay_mes.Entity.WorkOrder;
+import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,12 +40,11 @@ class MachineServiceTest {
     @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
     @Mock MasterDataLookup masterDataLookup;
-    @Mock LotRepository lotRepository;
+    @Mock ProductionData productionData;
     @Mock WorkCommandService workCommandService;
     @Mock WorkCommandRepository workCommandRepository;
-    @Mock ProductionLogRepository productionLogRepository;
     @Mock QualityMetrics qualityMetrics;
-    @Mock ProductionScheduleRequestService productionScheduleRequestService;
+    @Mock ProductionSchedulingRequests productionSchedulingRequests;
 
     @InjectMocks MachineService machineService;
 
@@ -73,11 +71,7 @@ class MachineServiceTest {
                 .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
                         org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))
                 .thenReturn(Optional.of(command));
-        when(productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP20"))
-                .thenReturn(List.of(
-                        ProductionLog.builder().inputQty(4).build(),
-                        ProductionLog.builder().inputQty(3).build()));
+        when(productionData.sumInputQuantity("LOT-001", "OP20")).thenReturn(7);
 
         var result = machineService.getMachine("EQ-WIND-01");
 
@@ -112,9 +106,7 @@ class MachineServiceTest {
                 .thenReturn(Optional.of(resume));
         when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-001"))
                 .thenReturn(List.of(start, resume));
-        when(productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP20"))
-                .thenReturn(List.of(ProductionLog.builder().inputQty(4).build()));
+        when(productionData.sumInputQuantity("LOT-001", "OP20")).thenReturn(4);
 
         var result = machineService.getMachine("EQ-WIND-01");
 
@@ -147,7 +139,7 @@ class MachineServiceTest {
         var result = machineService.updateStatus(dto);
 
         assertThat(result.getMachineStatusHistoryId()).isEqualTo(11L);
-        verifyNoInteractions(machineRepository, masterDataLookup, lotRepository, workCommandService);
+        verifyNoInteractions(machineRepository, masterDataLookup, productionData, workCommandService);
     }
 
 
@@ -204,7 +196,7 @@ class MachineServiceTest {
         machineService.updateStatus(dto);
 
         assertThat(machine.getStatus()).isEqualTo(Machine.Status.IDLE);
-        verify(productionScheduleRequestService).requestMachine("EQ-SEAL-01");
+        verify(productionSchedulingRequests).requestMachine("EQ-SEAL-01");
     }
 
     @Test
@@ -227,7 +219,7 @@ class MachineServiceTest {
         dto.setMessage("production_resumed");
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(lotRepository.findByLotNo("LOT-001")).thenReturn(Optional.of(lot));
+        when(productionData.getRequiredLot("LOT-001")).thenReturn(lot);
         when(masterDataLookup.getRequiredProcess("OP20")).thenReturn(process);
         when(workCommandService.completeResumeCommand(lot, process, machine)).thenReturn(true);
         when(machineStatusHistoryRepository.save(any(MachineStatusHistory.class)))

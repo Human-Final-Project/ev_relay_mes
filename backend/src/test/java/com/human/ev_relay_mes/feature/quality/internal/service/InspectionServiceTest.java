@@ -1,17 +1,17 @@
 package com.human.ev_relay_mes.feature.quality.internal.service;
 
-import com.human.ev_relay_mes.Service.ProductionService;
+import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.Inspection;
 import com.human.ev_relay_mes.feature.quality.api.InspectionUnitResult;
-import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
+import com.human.ev_relay_mes.feature.production.api.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionRepository;
 import com.human.ev_relay_mes.feature.quality.internal.repository.InspectionUnitResultRepository;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
@@ -38,9 +38,9 @@ class InspectionServiceTest {
     @Mock InspectionUnitResultRepository inspectionUnitResultRepository;
     @Mock MachineRegistry machineRegistry;
     @Mock MasterDataLookup masterDataLookup;
-    @Mock LotRepository lotRepository;
+    @Mock ProductionData productionData;
     @Mock InspectionStandardOperations inspectionStandardOperations;
-    @Mock ProductionService productionService;
+    @Mock ProductionOperations productionOperations;
     @Mock DefectService defectService;
 
     @InjectMocks InspectionService inspectionService;
@@ -81,7 +81,7 @@ class InspectionServiceTest {
         var response = inspectionService.saveResult(dto);
 
         assertThat(response.getInspectionId()).isEqualTo(13L);
-        verifyNoInteractions(machineRegistry, masterDataLookup, lotRepository);
+        verifyNoInteractions(machineRegistry, masterDataLookup, productionData);
     }
 
     @Test
@@ -116,10 +116,10 @@ class InspectionServiceTest {
                 "COIL_RESISTANCE", Inspection.Result.OK);
 
         when(inspectionRepository.findByEventId(dto.getEventId())).thenReturn(Optional.empty());
-        when(lotRepository.findByLotNoForUpdate("LOT-070")).thenReturn(Optional.of(lot));
+        when(productionData.getRequiredLotForUpdate("LOT-070")).thenReturn(lot);
         when(machineRegistry.getRequiredMachine("EQ-TEST-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP70")).thenReturn(process);
-        when(productionService.expectedInputQtyFor(lot, process)).thenReturn(1);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(1);
         when(inspectionStandardOperations.resolveSnapshot(lot, process, "CONTACT_RESISTANCE"))
                 .thenReturn(snapshot);
         when(inspectionRepository
@@ -161,7 +161,7 @@ class InspectionServiceTest {
         var response = inspectionService.saveResult(dto);
 
         assertThat(response.getResult()).isEqualTo("OK");
-        verify(productionService).completeEvaluatedProcess(
+        verify(productionOperations).completeEvaluatedProcess(
                 lot, machine, process, 1, 1, 0);
     }
 
@@ -182,10 +182,10 @@ class InspectionServiceTest {
         dto.setResult("NG");
         dto.setDefectCode("SPRING_MISSING_NG");
 
-        when(lotRepository.findByLotNoForUpdate("LOT-040")).thenReturn(Optional.of(lot));
+        when(productionData.getRequiredLotForUpdate("LOT-040")).thenReturn(lot);
         when(machineRegistry.getRequiredMachine("EQ-ASSY-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP40_OP50")).thenReturn(process);
-        when(productionService.expectedInputQtyFor(lot, process)).thenReturn(2);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(2);
         InspectionUnitResult persisted = InspectionUnitResult.builder()
                 .lot(lot).machine(machine).process(process).unitSeq(1)
                 .l1Result(Inspection.Result.NG).build();

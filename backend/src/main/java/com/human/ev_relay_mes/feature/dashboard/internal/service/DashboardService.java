@@ -1,10 +1,9 @@
 package com.human.ev_relay_mes.feature.dashboard.internal.service;
 
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.material.api.MaterialLot;
-import com.human.ev_relay_mes.Entity.WorkOrder;
-import com.human.ev_relay_mes.Repository.LotRepository;
+import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardQuery;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary;
 import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.AlarmSummary;
@@ -17,7 +16,7 @@ import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
-import com.human.ev_relay_mes.Repository.WorkOrderRepository;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,8 +34,7 @@ public class DashboardService implements DashboardQuery {
 
     private static final int LOW_STOCK_THRESHOLD = 100;
 
-    private final LotRepository lotRepository;
-    private final WorkOrderRepository workOrderRepository;
+    private final ProductionData productionData;
     private final MachineRegistry machineRegistry;
     private final QualityMetrics qualityMetrics;
     private final MachineAlarmOperations machineAlarmOperations;
@@ -47,7 +45,7 @@ public class DashboardService implements DashboardQuery {
         LocalDateTime startAt = LocalDate.now().atStartOfDay();
         LocalDateTime endAt = startAt.plusDays(1);
 
-        List<Lot> terminalLots = lotRepository.findAll().stream()
+        List<Lot> terminalLots = productionData.getAllLots().stream()
                 .filter(lot -> lot.getStatus() == Lot.Status.COMPLETED
                         || lot.getStatus() == Lot.Status.SCRAPPED)
                 .filter(lot -> lot.getCompletedAt() != null
@@ -60,7 +58,7 @@ public class DashboardService implements DashboardQuery {
                 terminalLots.stream().mapToInt(lot -> valueOrZero(lot.getOkQty())).sum(),
                 terminalLots.stream().mapToInt(lot -> valueOrZero(lot.getNgQty())).sum());
 
-        List<WorkOrder> workOrders = workOrderRepository.findAll();
+        List<WorkOrder> workOrders = productionData.getAllWorkOrders();
         WorkOrderSummary workOrderSummary = new WorkOrderSummary(
                 workOrders.size(),
                 count(workOrders, WorkOrder.Status.CREATED),

@@ -1,10 +1,10 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.Entity.ProductionLog;
+import com.human.ev_relay_mes.feature.production.api.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
@@ -12,7 +12,8 @@ import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.ProductionLogRepository;
+import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
+import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -41,11 +42,11 @@ class WorkCommandServiceTest {
     @Mock
     private MasterDataLookup masterDataLookup;
     @Mock
-    private ProductionLogRepository productionLogRepository;
+    private ProductionData productionData;
     @Mock
     private QualityMetrics qualityMetrics;
     @Mock
-    private LotProcessResponsibleService lotProcessResponsibleService;
+    private LotResponsibilityOperations lotResponsibilityOperations;
     @Mock
     private InspectionStandardOperations inspectionStandardOperations;
 
@@ -304,8 +305,7 @@ class WorkCommandServiceTest {
                 .thenReturn(Optional.of(interrupted));
         when(workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc("LOT-001"))
                 .thenReturn(List.of(interrupted));
-        when(productionLogRepository.findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                "LOT-001", "OP20")).thenReturn(List.of(partial));
+        when(productionData.sumInputQuantity("LOT-001", "OP20")).thenReturn(4);
         when(workCommandRepository.save(any(WorkCommand.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 

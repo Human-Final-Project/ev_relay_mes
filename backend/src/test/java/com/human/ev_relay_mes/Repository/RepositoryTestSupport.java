@@ -1,11 +1,11 @@
 package com.human.ev_relay_mes.Repository;
 
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.Entity.Lot;
+import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.Entity.WorkOrder;
+import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.TestEntityManager;
 
