@@ -13,7 +13,7 @@ import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
@@ -36,7 +36,7 @@ public class MachineService {
     private final MachineRepository machineRepository;
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
     private final WorkCommandRepository workCommandRepository;
@@ -68,9 +68,8 @@ public class MachineService {
         Machine.Status previousStatus = machine.getStatus();
         Machine.Status status = parseStatus(dto.getStatus());
         Lot lot = isBlank(dto.getLotNo()) ? null : findLot(dto.getLotNo());
-        com.human.ev_relay_mes.Entity.Process process = isBlank(dto.getProcessCode()) ? null
-                : processRepository.findById(dto.getProcessCode())
-                        .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        com.human.ev_relay_mes.feature.masterdata.api.Process process = isBlank(dto.getProcessCode()) ? null
+                : masterDataLookup.getRequiredProcess(dto.getProcessCode());
 
         boolean connectionStateSync = "connection_state_sync".equalsIgnoreCase(dto.getMessage());
         if (connectionStateSync) {
@@ -156,7 +155,7 @@ public class MachineService {
             MachineStatusHistory history,
             Machine.Status status,
             Lot lot,
-            com.human.ev_relay_mes.Entity.Process process) {
+            com.human.ev_relay_mes.feature.masterdata.api.Process process) {
         String historyLotNo = history.getLot() == null ? null : history.getLot().getLotNo();
         String requestedLotNo = lot == null ? null : lot.getLotNo();
         String historyProcessCode = history.getProcess() == null

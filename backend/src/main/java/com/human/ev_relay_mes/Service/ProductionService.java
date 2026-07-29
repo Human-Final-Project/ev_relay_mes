@@ -5,14 +5,14 @@ import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -35,7 +35,7 @@ public class ProductionService {
 
     private final ProductionLogRepository productionLogRepository;
     private final MachineRepository machineRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
     private final ProductionScheduleRequestService productionScheduleRequestService;
@@ -69,8 +69,7 @@ public class ProductionService {
         validateLot(lot, dto.getProcessCode());
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         validateMachineAndProcess(machine, process);
 
         int expectedInputQty = expectedInputQty(lot, process);
@@ -232,9 +231,8 @@ public class ProductionService {
             return;
         }
 
-        Optional<Process> nextProcess = processRepository
-                .findFirstByProcessOrderGreaterThanOrderByProcessOrderAsc(
-                        process.getProcessOrder());
+        Optional<Process> nextProcess = masterDataLookup.findNextProcess(
+                process.getProcessOrder());
         if (nextProcess.isPresent()) {
             if (totalOkQty > 0) {
                 lot.setCurrentProcess(nextProcess.get());
@@ -260,7 +258,7 @@ public class ProductionService {
             return;
         }
 
-        Process assembly = processRepository.findById(ASSEMBLY_PROCESS)
+        Process assembly = masterDataLookup.findProcess(ASSEMBLY_PROCESS)
                                 .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND,
                         "병렬 공정 합류 공정이 등록되어 있지 않습니다."));
         int assemblyInputQty = Math.min(
@@ -296,9 +294,7 @@ public class ProductionService {
                     processOkQty(lot, PARALLEL_PROCESS_1),
                     processOkQty(lot, PARALLEL_PROCESS_2));
         }
-        return processRepository
-                .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(
-                        process.getProcessOrder())
+        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
                 .map(previous -> processOkQty(lot, previous.getProcessCode()))
                 .orElse(lot.getInputQty());
     }

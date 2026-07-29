@@ -1,12 +1,11 @@
 package com.human.ev_relay_mes.Service;
 
-import com.human.ev_relay_mes.Entity.Bom;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Bom;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.MaterialLot;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotMaterialUsage;
-import com.human.ev_relay_mes.Repository.BomRepository;
-import com.human.ev_relay_mes.Repository.ItemRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
 import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
@@ -31,11 +30,9 @@ class MaterialLotServiceTest {
     @Mock
     private MaterialLotRepository materialLotRepository;
     @Mock
-    private ItemRepository itemRepository;
+    private MasterDataLookup masterDataLookup;
     @Mock
     private MemberLookup memberLookup;
-    @Mock
-    private BomRepository bomRepository;
     @Mock
     private LotMaterialUsageRepository lotMaterialUsageRepository;
 
@@ -55,7 +52,7 @@ class MaterialLotServiceTest {
         MaterialLot first = materialLot(1L, child, 6);
         MaterialLot second = materialLot(2L, child, 20);
 
-        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("FG-001", "Y"))
+        when(masterDataLookup.getActiveBom("FG-001"))
                 .thenReturn(List.of(bom));
         when(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
                 .thenReturn(List.of(first, second));
@@ -80,7 +77,7 @@ class MaterialLotServiceTest {
                 .build();
         MaterialLot onlyLot = materialLot(1L, child, 5);
 
-        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("FG-001", "Y"))
+        when(masterDataLookup.getActiveBom("FG-001"))
                 .thenReturn(List.of(bom));
         when(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
                 .thenReturn(List.of(onlyLot));
@@ -111,7 +108,7 @@ class MaterialLotServiceTest {
                 .inputQty(5)
                 .build();
 
-        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("FG-001", "Y"))
+        when(masterDataLookup.getActiveBom("FG-001"))
                 .thenReturn(List.of(bom));
         when(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
                 .thenReturn(List.of(rawLot));
@@ -142,9 +139,9 @@ class MaterialLotServiceTest {
                 .quantity(new BigDecimal("2")).useYn("Y").build();
         MaterialLot rawLot = materialLot(1L, raw, 20);
 
-        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("FG-001", "Y"))
+        when(masterDataLookup.getActiveBom("FG-001"))
                 .thenReturn(List.of(upper));
-        when(bomRepository.findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc("SA-001", "Y"))
+        when(masterDataLookup.getActiveBom("SA-001"))
                 .thenReturn(List.of(lower));
         when(materialLotRepository.findAvailableLotsForUpdate("RM-001", MaterialLot.Status.AVAILABLE))
                 .thenReturn(List.of(rawLot));

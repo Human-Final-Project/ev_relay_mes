@@ -3,14 +3,14 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.WorkOrderRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkOrderStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.ItemRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -38,7 +38,7 @@ public class WorkOrderService {
     private int maxSupplementCount = 3;
 
     private final WorkOrderRepository workOrderRepository;
-    private final ItemRepository itemRepository;
+    private final MasterDataLookup masterDataLookup;
     private final MemberLookup memberLookup;
     private final LotRepository lotRepository;
     private final MaterialLotService materialLotService;
@@ -314,8 +314,7 @@ public class WorkOrderService {
     }
 
     private Item findUsableItem(String itemCode) {
-        Item item = itemRepository.findById(itemCode)
-                .orElseThrow(() -> new CustomException(ErrorCode.ITEM_NOT_FOUND));
+        Item item = masterDataLookup.getRequiredItem(itemCode);
         if (!"Y".equalsIgnoreCase(item.getUseYn())) {
             throw new CustomException(ErrorCode.ITEM_NOT_USABLE);
         }

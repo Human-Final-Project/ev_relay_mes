@@ -1,11 +1,11 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Entity.WorkOrder;
@@ -14,7 +14,7 @@ import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
@@ -38,7 +38,7 @@ class MachineServiceTest {
     @Mock MachineRepository machineRepository;
     @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
-    @Mock ProcessRepository processRepository;
+    @Mock MasterDataLookup masterDataLookup;
     @Mock LotRepository lotRepository;
     @Mock WorkCommandService workCommandService;
     @Mock WorkCommandRepository workCommandRepository;
@@ -145,7 +145,7 @@ class MachineServiceTest {
         var result = machineService.updateStatus(dto);
 
         assertThat(result.getMachineStatusHistoryId()).isEqualTo(11L);
-        verifyNoInteractions(machineRepository, processRepository, lotRepository, workCommandService);
+        verifyNoInteractions(machineRepository, masterDataLookup, lotRepository, workCommandService);
     }
 
 
@@ -170,7 +170,7 @@ class MachineServiceTest {
         dto.setProcessCode("OP20");
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(processRepository.findById("OP20")).thenReturn(Optional.of(process));
+        when(masterDataLookup.getRequiredProcess("OP20")).thenReturn(process);
         when(machineStatusHistoryRepository.findFirstByMachine_MachineIdOrderByRecordedAtDesc("EQ-WIND-01"))
                 .thenReturn(Optional.of(latest));
 
@@ -195,7 +195,7 @@ class MachineServiceTest {
         dto.setMessage("production_finished");
 
         when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
-        when(processRepository.findById("OP60")).thenReturn(Optional.of(process));
+        when(masterDataLookup.getRequiredProcess("OP60")).thenReturn(process);
         when(machineStatusHistoryRepository.save(any(MachineStatusHistory.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -226,7 +226,7 @@ class MachineServiceTest {
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
         when(lotRepository.findByLotNo("LOT-001")).thenReturn(Optional.of(lot));
-        when(processRepository.findById("OP20")).thenReturn(Optional.of(process));
+        when(masterDataLookup.getRequiredProcess("OP20")).thenReturn(process);
         when(workCommandService.completeResumeCommand(lot, process, machine)).thenReturn(true);
         when(machineStatusHistoryRepository.save(any(MachineStatusHistory.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));

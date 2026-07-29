@@ -6,12 +6,12 @@ import com.human.ev_relay_mes.Dto.Response.LotResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -44,7 +44,7 @@ public class LotService {
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
     private final MemberLookup memberLookup;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final MaterialLotService materialLotService;
     private final ProductionScheduleRequestService productionScheduleRequestService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
@@ -301,8 +301,7 @@ public class LotService {
             Lot.LotType lotType,
             int productionRound,
             Member creator) {
-        Process firstProcess = processRepository.findFirstByOrderByProcessOrderAsc()
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        Process firstProcess = masterDataLookup.getFirstProcess();
         return Lot.builder()
                 .lotNo(generateLotNo())
                 .workOrder(workOrder)

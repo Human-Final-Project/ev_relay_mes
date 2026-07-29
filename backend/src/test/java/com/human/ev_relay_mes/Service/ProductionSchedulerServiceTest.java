@@ -1,15 +1,15 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +31,7 @@ class ProductionSchedulerServiceTest {
 
     @Mock private LotRepository lotRepository;
     @Mock private MachineRepository machineRepository;
-    @Mock private ProcessRepository processRepository;
+    @Mock private MasterDataLookup masterDataLookup;
     @Mock private ProductionLogRepository productionLogRepository;
     @Mock private WorkCommandService workCommandService;
     @Mock private WorkOrderContinuationRequestService workOrderContinuationRequestService;
@@ -78,7 +78,7 @@ class ProductionSchedulerServiceTest {
         when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(first, second));
-        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+        when(masterDataLookup.findPreviousProcess(4))
                 .thenReturn(Optional.of(assembly));
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP40_OP50"))
@@ -117,7 +117,7 @@ class ProductionSchedulerServiceTest {
         when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(zeroInputLot, nextLot));
-        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+        when(masterDataLookup.findPreviousProcess(4))
                 .thenReturn(Optional.of(assembly));
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-ZERO", "OP40_OP50"))
@@ -153,7 +153,7 @@ class ProductionSchedulerServiceTest {
         when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(lot));
-        when(processRepository.findFirstByProcessOrderLessThanOrderByProcessOrderDesc(4))
+        when(masterDataLookup.findPreviousProcess(4))
                 .thenReturn(Optional.of(assembly));
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(

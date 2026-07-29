@@ -1,10 +1,10 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.WorkOrderStatusRequestDto;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.Entity.WorkOrder;
-import com.human.ev_relay_mes.Repository.ItemRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
@@ -25,7 +25,7 @@ import static org.mockito.Mockito.when;
 class WorkOrderServiceTest {
 
     @Mock private WorkOrderRepository workOrderRepository;
-    @Mock private ItemRepository itemRepository;
+    @Mock private MasterDataLookup masterDataLookup;
     @Mock private MemberLookup memberLookup;
     @Mock private LotRepository lotRepository;
     @Mock private MaterialLotService materialLotService;

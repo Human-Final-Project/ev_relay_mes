@@ -11,14 +11,15 @@ import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -37,9 +38,9 @@ public class InspectionService {
     private final InspectionRepository inspectionRepository;
     private final InspectionUnitResultRepository unitResultRepository;
     private final MachineRepository machineRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
-    private final InspectionStandardService inspectionStandardService;
+    private final InspectionStandardOperations inspectionStandardOperations;
     private final ProductionService productionService;
     private final DefectService defectService;
 
@@ -69,8 +70,7 @@ public class InspectionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
 
         validateLot(lot, process);
         validateMachineAndProcess(machine, process);
@@ -80,7 +80,7 @@ public class InspectionService {
                     "검사 순번이 OP70 투입수량을 초과합니다.");
         }
 
-        LotInspectionStandardSnapshot snapshot = inspectionStandardService
+        LotInspectionStandardSnapshot snapshot = inspectionStandardOperations
                 .resolveSnapshot(lot, process, dto.getInspectionItem());
         validateUnit(dto.getUnit(), snapshot.getUnit());
 
@@ -130,8 +130,7 @@ public class InspectionService {
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
+        Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         validateLot(lot, process);
         validateMachineAndProcess(machine, process);
         int expectedInputQty = productionService.expectedInputQtyFor(lot, process);
@@ -192,10 +191,10 @@ public class InspectionService {
 
     private InspectionUnitResult evaluateUnitAndCompleteProcessIfReady(
             Lot lot, Machine machine, Process process, Integer unitSeq, int expectedInputQty) {
-        long requiredItemCount = inspectionStandardService.snapshotCount(lot, process);
-        if (requiredItemCount == 0 && InspectionStandardService.supportsMeasurements(process.getProcessCode())) {
-            inspectionStandardService.captureStandardsIfAbsent(lot, process);
-            requiredItemCount = inspectionStandardService.snapshotCount(lot, process);
+        long requiredItemCount = inspectionStandardOperations.snapshotCount(lot, process);
+        if (requiredItemCount == 0 && inspectionStandardOperations.supportsMeasurements(process.getProcessCode())) {
+            inspectionStandardOperations.captureStandardsIfAbsent(lot, process);
+            requiredItemCount = inspectionStandardOperations.snapshotCount(lot, process);
         }
         long receivedItemCount = inspectionRepository
                 .countByLot_LotNoAndProcess_ProcessCodeAndUnitSeq(

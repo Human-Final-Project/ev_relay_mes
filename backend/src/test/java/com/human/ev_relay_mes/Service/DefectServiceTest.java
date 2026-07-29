@@ -1,16 +1,15 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
-import com.human.ev_relay_mes.Entity.DefectCode;
+import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.Entity.DefectHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
-import com.human.ev_relay_mes.Repository.DefectCodeRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -27,9 +26,8 @@ import static org.mockito.Mockito.when;
 class DefectServiceTest {
 
     @Mock DefectHistoryRepository defectHistoryRepository;
-    @Mock DefectCodeRepository defectCodeRepository;
     @Mock MachineRepository machineRepository;
-    @Mock ProcessRepository processRepository;
+    @Mock MasterDataLookup masterDataLookup;
     @Mock LotRepository lotRepository;
 
     @InjectMocks DefectService defectService;
@@ -63,7 +61,6 @@ class DefectServiceTest {
 
         assertThat(response.getDefectHistoryId()).isEqualTo(14L);
         assertThat(response.getDefectDescription()).isEqualTo("wire is disconnected");
-        verifyNoInteractions(defectCodeRepository, machineRepository,
-                processRepository, lotRepository);
+        verifyNoInteractions(masterDataLookup, machineRepository, lotRepository);
     }
 }

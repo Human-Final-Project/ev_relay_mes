@@ -3,7 +3,7 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.MachineAlarmSearchRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
-import com.human.ev_relay_mes.Entity.AlarmCode;
+import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
@@ -12,7 +12,7 @@ import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
@@ -37,7 +37,7 @@ public class MachineAlarmService {
 
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineRepository machineRepository;
-    private final AlarmCodeRepository alarmCodeRepository;
+    private final MasterDataLookup masterDataLookup;
     private final MemberLookup memberLookup;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final WorkCommandRepository workCommandRepository;
@@ -56,8 +56,7 @@ public class MachineAlarmService {
         }
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        AlarmCode alarmCode = alarmCodeRepository.findById(dto.getAlarmCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.ALARM_CODE_NOT_FOUND));
+        AlarmCode alarmCode = masterDataLookup.getRequiredAlarmCode(dto.getAlarmCode());
         validateAlarm(machine, alarmCode, dto.getAlarmLevel());
         String alarmLevel = dto.getAlarmLevel().toUpperCase();
         WorkCommand contextCommand = workCommandRepository

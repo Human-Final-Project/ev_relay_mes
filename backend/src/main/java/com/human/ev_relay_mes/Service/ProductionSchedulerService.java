@@ -2,13 +2,13 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -33,7 +33,7 @@ public class ProductionSchedulerService {
 
     private final LotRepository lotRepository;
     private final MachineRepository machineRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
     private final WorkCommandService workCommandService;
     private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
@@ -138,8 +138,7 @@ public class ProductionSchedulerService {
         if (ASSEMBLY.equals(process.getProcessCode())) {
             return hasCompletedLog(lot, OP20) && hasCompletedLog(lot, OP30);
         }
-        return processRepository
-                .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(process.getProcessOrder())
+        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
                 .map(previous -> hasCompletedLog(lot, previous.getProcessCode()))
                 .orElse(false);
     }
@@ -177,8 +176,7 @@ public class ProductionSchedulerService {
         if (ASSEMBLY.equals(processCode)) {
             return Math.min(processOkQty(lot, OP20), processOkQty(lot, OP30));
         }
-        return processRepository
-                .findFirstByProcessOrderLessThanOrderByProcessOrderDesc(process.getProcessOrder())
+        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
                 .map(previous -> processOkQty(lot, previous.getProcessCode()))
                 .orElse(0);
     }

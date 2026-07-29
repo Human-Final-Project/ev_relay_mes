@@ -7,12 +7,13 @@ import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -35,9 +36,9 @@ class InspectionServiceTest {
     @Mock InspectionRepository inspectionRepository;
     @Mock InspectionUnitResultRepository inspectionUnitResultRepository;
     @Mock MachineRepository machineRepository;
-    @Mock ProcessRepository processRepository;
+    @Mock MasterDataLookup masterDataLookup;
     @Mock LotRepository lotRepository;
-    @Mock InspectionStandardService inspectionStandardService;
+    @Mock InspectionStandardOperations inspectionStandardOperations;
     @Mock ProductionService productionService;
     @Mock DefectService defectService;
 
@@ -79,7 +80,7 @@ class InspectionServiceTest {
         var response = inspectionService.saveResult(dto);
 
         assertThat(response.getInspectionId()).isEqualTo(13L);
-        verifyNoInteractions(machineRepository, processRepository, lotRepository);
+        verifyNoInteractions(machineRepository, masterDataLookup, lotRepository);
     }
 
     @Test
@@ -116,9 +117,9 @@ class InspectionServiceTest {
         when(inspectionRepository.findByEventId(dto.getEventId())).thenReturn(Optional.empty());
         when(lotRepository.findByLotNoForUpdate("LOT-070")).thenReturn(Optional.of(lot));
         when(machineRepository.findById("EQ-TEST-01")).thenReturn(Optional.of(machine));
-        when(processRepository.findById("OP70")).thenReturn(Optional.of(process));
+        when(masterDataLookup.getRequiredProcess("OP70")).thenReturn(process);
         when(productionService.expectedInputQtyFor(lot, process)).thenReturn(1);
-        when(inspectionStandardService.resolveSnapshot(lot, process, "CONTACT_RESISTANCE"))
+        when(inspectionStandardOperations.resolveSnapshot(lot, process, "CONTACT_RESISTANCE"))
                 .thenReturn(snapshot);
         when(inspectionRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqAndInspectionItem(
@@ -126,7 +127,7 @@ class InspectionServiceTest {
                 .thenReturn(Optional.empty());
         when(inspectionRepository.save(any(Inspection.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(inspectionStandardService.snapshotCount(lot, process)).thenReturn(3L);
+        when(inspectionStandardOperations.snapshotCount(lot, process)).thenReturn(3L);
         when(inspectionRepository.countByLot_LotNoAndProcess_ProcessCodeAndUnitSeq(
                 "LOT-070", "OP70", 1)).thenReturn(3L);
         InspectionUnitResult unitResult = InspectionUnitResult.builder()
@@ -182,7 +183,7 @@ class InspectionServiceTest {
 
         when(lotRepository.findByLotNoForUpdate("LOT-040")).thenReturn(Optional.of(lot));
         when(machineRepository.findById("EQ-ASSY-01")).thenReturn(Optional.of(machine));
-        when(processRepository.findById("OP40_OP50")).thenReturn(Optional.of(process));
+        when(masterDataLookup.getRequiredProcess("OP40_OP50")).thenReturn(process);
         when(productionService.expectedInputQtyFor(lot, process)).thenReturn(2);
         InspectionUnitResult persisted = InspectionUnitResult.builder()
                 .lot(lot).machine(machine).process(process).unitSeq(1)
@@ -192,7 +193,7 @@ class InspectionServiceTest {
                 .thenReturn(Optional.empty(), Optional.of(persisted));
         when(inspectionUnitResultRepository.save(any()))
                 .thenAnswer(invocation -> invocation.getArgument(0));
-        when(inspectionStandardService.snapshotCount(lot, process)).thenReturn(0L);
+        when(inspectionStandardOperations.snapshotCount(lot, process)).thenReturn(0L);
         when(inspectionRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqOrderByInspectionIdAsc(
                         "LOT-040", "OP40_OP50", 1)).thenReturn(List.of());

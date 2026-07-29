@@ -2,8 +2,8 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MaterialLotResponseDto;
-import com.human.ev_relay_mes.Entity.Bom;
-import com.human.ev_relay_mes.Entity.Item;
+import com.human.ev_relay_mes.feature.masterdata.api.Bom;
+import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotMaterialUsage;
 import com.human.ev_relay_mes.Entity.MaterialLot;
@@ -11,8 +11,7 @@ import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.BomRepository;
-import com.human.ev_relay_mes.Repository.ItemRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,9 +33,8 @@ import java.util.Set;
 public class MaterialLotService {
 
     private final MaterialLotRepository materialLotRepository;
-    private final ItemRepository itemRepository;
+    private final MasterDataLookup masterDataLookup;
     private final MemberLookup memberLookup;
-    private final BomRepository bomRepository;
     private final LotMaterialUsageRepository lotMaterialUsageRepository;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -45,8 +43,7 @@ public class MaterialLotService {
         if (materialLotRepository.existsByMaterialLotNo(dto.getMaterialLotNo())) {
             throw new CustomException(ErrorCode.DUPLICATE_MATERIAL_LOT_NO);
         }
-        Item item = itemRepository.findById(dto.getItemCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.ITEM_NOT_FOUND));
+        Item item = masterDataLookup.getRequiredItem(dto.getItemCode());
         if (!"Y".equalsIgnoreCase(item.getUseYn())) {
             throw new CustomException(ErrorCode.ITEM_NOT_USABLE);
         }
@@ -175,8 +172,7 @@ public class MaterialLotService {
                     "BOM에 순환 참조가 존재합니다: " + parentItemCode);
         }
 
-        List<Bom> boms = bomRepository
-                .findByParentItem_ItemCodeAndUseYnOrderByChildItem_ItemCodeAsc(parentItemCode, "Y");
+        List<Bom> boms = masterDataLookup.getActiveBom(parentItemCode);
         if (boms.isEmpty()) {
             path.remove(parentItemCode);
             if (root) {

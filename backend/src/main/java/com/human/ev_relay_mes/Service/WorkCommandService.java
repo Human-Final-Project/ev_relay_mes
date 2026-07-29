@@ -4,13 +4,14 @@ import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
@@ -53,11 +54,11 @@ public class WorkCommandService {
 
     private final WorkCommandRepository workCommandRepository;
     private final MachineRepository machineRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
     private final InspectionUnitResultRepository inspectionUnitResultRepository;
     private final LotProcessResponsibleService lotProcessResponsibleService;
-    private final InspectionStandardService inspectionStandardService;
+    private final InspectionStandardOperations inspectionStandardOperations;
 
     /**
      * 기존 호출부와 테스트를 위한 엄격한 생성 API다.
@@ -359,9 +360,9 @@ public class WorkCommandService {
         }
         lotProcessResponsibleService.captureIfAbsent(
                 command.getLot(), command.getProcess(), command.getMachine());
-        if (InspectionStandardService.supportsMeasurements(
+        if (inspectionStandardOperations.supportsMeasurements(
                 command.getProcess().getProcessCode())) {
-            inspectionStandardService.captureStandardsIfAbsent(
+            inspectionStandardOperations.captureStandardsIfAbsent(
                     command.getLot(), command.getProcess());
         }
     }
@@ -455,7 +456,7 @@ public class WorkCommandService {
     }
 
     private Process activeProcess(String processCode) {
-        return processRepository.findById(processCode).orElse(null);
+        return masterDataLookup.findProcess(processCode).orElse(null);
     }
 
     private Optional<Machine> findAvailableMachineForUpdate(String processCode) {

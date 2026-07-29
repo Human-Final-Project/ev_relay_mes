@@ -3,18 +3,17 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.DefectHistorySearchRequestDto;
 import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
-import com.human.ev_relay_mes.Entity.DefectCode;
+import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.Entity.DefectHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.DefectCodeRepository;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -29,9 +28,8 @@ import java.util.List;
 public class DefectService {
 
     private final DefectHistoryRepository defectHistoryRepository;
-    private final DefectCodeRepository defectCodeRepository;
     private final MachineRepository machineRepository;
-    private final ProcessRepository processRepository;
+    private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
 
     // L2 수집기가 전달한 불량 발생 정보를 검증하고 불량 이력으로 저장할 때 사용한다.
@@ -52,10 +50,8 @@ public class DefectService {
         }
         Machine machine = machineRepository.findById(dto.getMachineId())
                 .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
-        Process process = processRepository.findById(dto.getProcessCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND));
-        DefectCode defectCode = defectCodeRepository.findById(dto.getDefectCode())
-                .orElseThrow(() -> new CustomException(ErrorCode.DEFECT_CODE_NOT_FOUND));
+        Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
+        DefectCode defectCode = masterDataLookup.getRequiredDefectCode(dto.getDefectCode());
         validateRelations(machine, process, defectCode);
         validateDefectQuantity(lot, dto.getDefectQty());
 

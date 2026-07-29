@@ -3,14 +3,15 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.ProcessRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,7 @@ class WorkCommandServiceTest {
     @Mock
     private MachineRepository machineRepository;
     @Mock
-    private ProcessRepository processRepository;
+    private MasterDataLookup masterDataLookup;
     @Mock
     private ProductionLogRepository productionLogRepository;
     @Mock
@@ -46,7 +47,7 @@ class WorkCommandServiceTest {
     @Mock
     private LotProcessResponsibleService lotProcessResponsibleService;
     @Mock
-    private InspectionStandardService inspectionStandardService;
+    private InspectionStandardOperations inspectionStandardOperations;
 
     @InjectMocks
     private WorkCommandService workCommandService;
@@ -59,8 +60,8 @@ class WorkCommandServiceTest {
         Machine weld = machine("EQ-WELD-01", op30);
         Lot lot = Lot.builder().lotNo("LOT-001").currentProcess(op20).inputQty(10).build();
 
-        when(processRepository.findById("OP20")).thenReturn(Optional.of(op20));
-        when(processRepository.findById("OP30")).thenReturn(Optional.of(op30));
+        when(masterDataLookup.findProcess("OP20")).thenReturn(Optional.of(op20));
+        when(masterDataLookup.findProcess("OP30")).thenReturn(Optional.of(op30));
         when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
         when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
         when(workCommandRepository.save(any(WorkCommand.class)))
@@ -84,8 +85,8 @@ class WorkCommandServiceTest {
         Machine weld = machine("EQ-WELD-01", op30);
         Lot lot = Lot.builder().lotNo("LOT-001").currentProcess(op20).inputQty(10).build();
 
-        when(processRepository.findById("OP20")).thenReturn(Optional.of(op20));
-        when(processRepository.findById("OP30")).thenReturn(Optional.of(op30));
+        when(masterDataLookup.findProcess("OP20")).thenReturn(Optional.of(op20));
+        when(masterDataLookup.findProcess("OP30")).thenReturn(Optional.of(op30));
         when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
         when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
         when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(

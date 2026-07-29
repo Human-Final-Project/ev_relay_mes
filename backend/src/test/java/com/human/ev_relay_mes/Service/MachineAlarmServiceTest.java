@@ -2,14 +2,14 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.MachineAlarmReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
-import com.human.ev_relay_mes.Entity.AlarmCode;
+import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.feature.auth.api.Member;
-import com.human.ev_relay_mes.Entity.Process;
-import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
@@ -38,7 +38,7 @@ class MachineAlarmServiceTest {
 
     @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     @Mock MachineRepository machineRepository;
-    @Mock AlarmCodeRepository alarmCodeRepository;
+    @Mock MasterDataLookup masterDataLookup;
     @Mock MemberLookup memberLookup;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
     @Mock WorkCommandRepository workCommandRepository;
@@ -70,7 +70,7 @@ class MachineAlarmServiceTest {
         var response = machineAlarmService.createAlarm(dto);
 
         assertThat(response.getMachineAlarmHistoryId()).isEqualTo(12L);
-        verifyNoInteractions(machineRepository, alarmCodeRepository,
+        verifyNoInteractions(machineRepository, masterDataLookup,
                 machineStatusHistoryRepository, workCommandRepository, workCommandService);
     }
 
@@ -86,7 +86,7 @@ class MachineAlarmServiceTest {
         dto.setOccurredAt(LocalDateTime.now());
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(alarmCodeRepository.findById("MOTOR_OVERLOAD")).thenReturn(Optional.of(alarmCode));
+        when(masterDataLookup.getRequiredAlarmCode("MOTOR_OVERLOAD")).thenReturn(alarmCode);
         when(machineAlarmHistoryRepository.save(any(MachineAlarmHistory.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         machineAlarmService.createAlarm(dto);
@@ -120,7 +120,7 @@ class MachineAlarmServiceTest {
         dto.setAlarmLevel("WARN");
 
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
-        when(alarmCodeRepository.findById("WIRE_TENSION_WARN")).thenReturn(Optional.of(warningCode));
+        when(masterDataLookup.getRequiredAlarmCode("WIRE_TENSION_WARN")).thenReturn(warningCode);
         when(workCommandRepository
                 .findFirstByMachine_MachineIdAndStatusInOrderByCreatedAtDescCommandIdDesc(
                         org.mockito.ArgumentMatchers.eq("EQ-WIND-01"), any()))

@@ -4,7 +4,7 @@ import com.human.ev_relay_mes.Dto.Response.LotProcessResponsibleResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotProcessResponsible;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Repository.LotProcessResponsibleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

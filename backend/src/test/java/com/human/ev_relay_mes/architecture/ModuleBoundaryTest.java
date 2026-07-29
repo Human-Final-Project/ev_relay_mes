@@ -35,6 +35,10 @@ class ModuleBoundaryTest {
             "^import\\s+(?:static\\s+)?com\\.human\\.ev_relay_mes\\.feature"
                     + "\\.([a-z0-9_]+)\\.([a-z0-9_.]+);\\s*$",
             Pattern.MULTILINE);
+    private static final Pattern INTERNAL_FEATURE_IMPORT = Pattern.compile(
+            "^import\\s+(?:static\\s+)?com\\.human\\.ev_relay_mes\\.feature"
+                    + "\\.([a-z0-9_]+)\\.internal(?:\\.[a-zA-Z0-9_.*]+)?;\\s*$",
+            Pattern.MULTILINE);
 
     @Test
     void plannedFeatureModuleRootsExist() throws IOException {
@@ -120,6 +124,30 @@ class ModuleBoundaryTest {
 
         assertThat(violations)
                 .as("Public feature APIs must not depend on internal implementation")
+                .isEmpty();
+    }
+
+    @Test
+    void codeOutsideFeatureModuleDoesNotImportItsInternalImplementation() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path source : javaSourcesUnder(MAIN_SOURCE_ROOT)) {
+            Path relativePath = MAIN_SOURCE_ROOT.relativize(source);
+            String currentModule = relativePath.getNameCount() >= 2
+                    && relativePath.getName(0).toString().equals("feature")
+                    ? relativePath.getName(1).toString()
+                    : null;
+            Matcher imports = INTERNAL_FEATURE_IMPORT.matcher(Files.readString(source));
+            while (imports.find()) {
+                String targetModule = imports.group(1);
+                if (!targetModule.equals(currentModule)) {
+                    violations.add(relative(source) + " imports "
+                            + targetModule + ".internal");
+                }
+            }
+        }
+
+        assertThat(violations)
+                .as("Only a feature module may import its own internal implementation")
                 .isEmpty();
     }
 
