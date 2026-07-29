@@ -30,6 +30,12 @@ static int is_inspection_runtime(const L1MachineRuntime *runtime)
     return runtime != NULL && runtime->device != NULL;
 }
 
+static int is_paused_state(L1RuntimeState state)
+{
+    return state == L1_RUNTIME_ERROR_PAUSED
+        || state == L1_RUNTIME_STOPPED;
+}
+
 static unsigned int text_seed(const char *text)
 {
     unsigned int seed = 0U;
@@ -352,18 +358,32 @@ static int handle_start(L1MachineRuntime *runtime,
                         L1RuntimeActions *actions)
 {
     if (runtime->state != L1_RUNTIME_IDLE) {
-        return append_ack(actions, runtime, command, L1_ACK_REJECTED, "machine_not_idle");
+        return append_ack(actions,
+                          runtime,
+                          command,
+                          L1_ACK_REJECTED,
+                          "machine_not_idle");
     }
+
     strcpy(runtime->lot_no, command->lot_no);
     runtime->target_qty = command->input_qty;
     runtime->processed_qty = 0;
     runtime->reported_qty = 0;
     schedule_alarm_for_job(runtime);
     runtime->state = L1_RUNTIME_RUNNING;
-    if (append_ack(actions, runtime, command, L1_ACK_ACCEPTED, "command_received") != 0) return -1;
+
+    if (append_ack(actions,
+                   runtime,
+                   command,
+                   L1_ACK_ACCEPTED,
+                   "command_received") != 0) {
+        return -1;
+    }
     return append_status(actions, runtime, L1_MACHINE_RUNNING,
                          runtime->lot_no,
-                         is_inspection_runtime(runtime) ? "inspection_started" : "production_started");
+                         is_inspection_runtime(runtime)
+                             ? "inspection_started"
+                             : "production_started");
 }
 
 static int handle_resume(L1MachineRuntime *runtime,
@@ -371,20 +391,42 @@ static int handle_resume(L1MachineRuntime *runtime,
                          L1RuntimeActions *actions)
 {
     int remaining = l1_machine_runtime_remaining_qty(runtime);
-    if (runtime->state != L1_RUNTIME_ERROR_PAUSED && runtime->state != L1_RUNTIME_STOPPED) {
-        return append_ack(actions, runtime, command, L1_ACK_REJECTED, "machine_not_paused");
+
+    if (!is_paused_state(runtime->state)) {
+        return append_ack(actions,
+                          runtime,
+                          command,
+                          L1_ACK_REJECTED,
+                          "machine_not_paused");
     }
     if (strcmp(command->lot_no, runtime->lot_no) != 0) {
-        return append_ack(actions, runtime, command, L1_ACK_REJECTED, "resume_lot_mismatch");
+        return append_ack(actions,
+                          runtime,
+                          command,
+                          L1_ACK_REJECTED,
+                          "resume_lot_mismatch");
     }
     if (remaining <= 0 || command->input_qty != remaining) {
-        return append_ack(actions, runtime, command, L1_ACK_REJECTED, "resume_quantity_mismatch");
+        return append_ack(actions,
+                          runtime,
+                          command,
+                          L1_ACK_REJECTED,
+                          "resume_quantity_mismatch");
     }
+
     runtime->state = L1_RUNTIME_RUNNING;
-    if (append_ack(actions, runtime, command, L1_ACK_ACCEPTED, "command_received") != 0) return -1;
+    if (append_ack(actions,
+                   runtime,
+                   command,
+                   L1_ACK_ACCEPTED,
+                   "command_received") != 0) {
+        return -1;
+    }
     return append_status(actions, runtime, L1_MACHINE_RUNNING,
                          runtime->lot_no,
-                         is_inspection_runtime(runtime) ? "inspection_resumed" : "production_resumed");
+                         is_inspection_runtime(runtime)
+                             ? "inspection_resumed"
+                             : "production_resumed");
 }
 
 static int handle_stop(L1MachineRuntime *runtime,
@@ -392,16 +434,35 @@ static int handle_stop(L1MachineRuntime *runtime,
                        L1RuntimeActions *actions)
 {
     if (runtime->state != L1_RUNTIME_RUNNING) {
-        return append_ack(actions, runtime, command, L1_ACK_REJECTED,
-                          runtime->state == L1_RUNTIME_ERROR_PAUSED
-                              ? "resume_required" : "machine_not_running");
+        const char *reason = runtime->state == L1_RUNTIME_ERROR_PAUSED
+            ? "resume_required"
+            : "machine_not_running";
+
+        return append_ack(actions,
+                          runtime,
+                          command,
+                          L1_ACK_REJECTED,
+                          reason);
     }
+
     runtime->state = L1_RUNTIME_STOPPED;
-    if (append_ack(actions, runtime, command, L1_ACK_ACCEPTED, "command_received") != 0
-        || append_unreported_production(actions, runtime, L1_PRODUCTION_RUNNING) != 0) return -1;
+    if (append_ack(actions,
+                   runtime,
+                   command,
+                   L1_ACK_ACCEPTED,
+                   "command_received") != 0) {
+        return -1;
+    }
+    if (append_unreported_production(actions,
+                                     runtime,
+                                     L1_PRODUCTION_RUNNING) != 0) {
+        return -1;
+    }
     return append_status(actions, runtime, L1_MACHINE_STOPPED,
                          runtime->lot_no,
-                         is_inspection_runtime(runtime) ? "inspection_stopped" : "production_stopped");
+                         is_inspection_runtime(runtime)
+                             ? "inspection_stopped"
+                             : "production_stopped");
 }
 
 int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
@@ -410,8 +471,16 @@ int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
 {
     int result;
 
-    if (runtime == NULL || runtime->device == NULL || command == NULL || out_actions == NULL) return -1;
+    if (runtime == NULL
+        || runtime->device == NULL
+        || command == NULL
+        || out_actions == NULL) {
+        return -1;
+    }
+
     actions_init(out_actions);
+
+    /* 같은 commandId를 다시 받으면 작업을 반복하지 않고 기존 ACK만 보낸다. */
     if (runtime->last_command_id == command->command_id) {
         return append_ack(out_actions,
                           runtime,
@@ -432,6 +501,7 @@ int l1_machine_runtime_handle_command(L1MachineRuntime *runtime,
     default:
         return -1;
     }
+
     if (result == 0 && out_actions->count > 0
         && out_actions->actions[0].type == L1_RUNTIME_ACTION_COMMAND_ACK) {
         runtime->last_command_id = command->command_id;
@@ -446,20 +516,36 @@ int l1_machine_runtime_tick(L1MachineRuntime *runtime,
                             L1RuntimeActions *out_actions)
 {
     int inspection_runtime;
-    if (runtime == NULL || runtime->device == NULL || out_actions == NULL) return -1;
+
+    if (runtime == NULL
+        || runtime->device == NULL
+        || out_actions == NULL) {
+        return -1;
+    }
+
     actions_init(out_actions);
-    if (runtime->state != L1_RUNTIME_RUNNING) return 0;
+    if (runtime->state != L1_RUNTIME_RUNNING) {
+        return 0;
+    }
+
     inspection_runtime = is_inspection_runtime(runtime);
     if (inspection_runtime && l1_machine_runtime_unreported_qty(runtime) > 0) {
-        return append_unit_events(
-                out_actions, runtime, runtime->reported_qty + 1);
+        return append_unit_events(out_actions,
+                                  runtime,
+                                  runtime->reported_qty + 1);
     }
-    if (runtime->processed_qty >= runtime->target_qty) return -1;
+    if (runtime->processed_qty >= runtime->target_qty) {
+        return -1;
+    }
 
     ++runtime->processed_qty;
-    if (inspection_runtime
-        && append_unit_events(
-                out_actions, runtime, runtime->processed_qty) != 0) return -1;
+    if (inspection_runtime) {
+        if (append_unit_events(out_actions,
+                               runtime,
+                               runtime->processed_qty) != 0) {
+            return -1;
+        }
+    }
 
     if (runtime->alarm_scheduled
         && !runtime->alarm_triggered
@@ -471,15 +557,23 @@ int l1_machine_runtime_tick(L1MachineRuntime *runtime,
         runtime->alarm_triggered = 1;
         if (stop_required) {
             runtime->state = L1_RUNTIME_ERROR_PAUSED;
-            if ((!inspection_runtime
-                 && append_unreported_production(out_actions, runtime,
-                                                 L1_PRODUCTION_RUNNING) != 0)
-                || append_selected_alarm(out_actions, runtime) != 0
-                || append_status(out_actions, runtime, L1_MACHINE_ERROR,
-                                 runtime->lot_no,
-                                 inspection_runtime
-                                     ? "inspection_paused_by_error"
-                                     : "production_paused_by_error") != 0) {
+
+            if (!inspection_runtime
+                && append_unreported_production(out_actions,
+                                                runtime,
+                                                L1_PRODUCTION_RUNNING) != 0) {
+                return -1;
+            }
+            if (append_selected_alarm(out_actions, runtime) != 0) {
+                return -1;
+            }
+            if (append_status(out_actions,
+                              runtime,
+                              L1_MACHINE_ERROR,
+                              runtime->lot_no,
+                              inspection_runtime
+                                  ? "inspection_paused_by_error"
+                                  : "production_paused_by_error") != 0) {
                 return -1;
             }
             return 0;
@@ -491,37 +585,56 @@ int l1_machine_runtime_tick(L1MachineRuntime *runtime,
 
     if (runtime->processed_qty == runtime->target_qty) {
         runtime->state = L1_RUNTIME_IDLE;
-        if ((!inspection_runtime
-             && append_unreported_production(out_actions, runtime, L1_PRODUCTION_COMPLETED) != 0)
-            || append_status(out_actions, runtime, L1_MACHINE_IDLE, "-",
-                             inspection_runtime ? "inspection_finished" : "production_finished") != 0) {
+
+        if (!inspection_runtime
+            && append_unreported_production(out_actions,
+                                            runtime,
+                                            L1_PRODUCTION_COMPLETED) != 0) {
             return -1;
         }
-    } else if (!inspection_runtime
-               && append_unreported_production(
-                       out_actions, runtime, L1_PRODUCTION_RUNNING) != 0) {
-        return -1;
+        if (append_status(out_actions,
+                          runtime,
+                          L1_MACHINE_IDLE,
+                          "-",
+                          inspection_runtime
+                              ? "inspection_finished"
+                              : "production_finished") != 0) {
+            return -1;
+        }
+    } else if (!inspection_runtime) {
+        if (append_unreported_production(out_actions,
+                                         runtime,
+                                         L1_PRODUCTION_RUNNING) != 0) {
+            return -1;
+        }
     }
     return 0;
 }
 
 int l1_machine_runtime_mark_reported(L1MachineRuntime *runtime, int quantity)
 {
-    if (runtime == NULL || quantity < 0
-        || quantity > l1_machine_runtime_unreported_qty(runtime)) return -1;
+    if (runtime == NULL
+        || quantity < 0
+        || quantity > l1_machine_runtime_unreported_qty(runtime)) {
+        return -1;
+    }
     runtime->reported_qty += quantity;
     return 0;
 }
 
 int l1_machine_runtime_remaining_qty(const L1MachineRuntime *runtime)
 {
-    if (runtime == NULL || runtime->target_qty < runtime->processed_qty) return 0;
+    if (runtime == NULL || runtime->target_qty < runtime->processed_qty) {
+        return 0;
+    }
     return runtime->target_qty - runtime->processed_qty;
 }
 
 int l1_machine_runtime_unreported_qty(const L1MachineRuntime *runtime)
 {
-    if (runtime == NULL || runtime->processed_qty < runtime->reported_qty) return 0;
+    if (runtime == NULL || runtime->processed_qty < runtime->reported_qty) {
+        return 0;
+    }
     return runtime->processed_qty - runtime->reported_qty;
 }
 
