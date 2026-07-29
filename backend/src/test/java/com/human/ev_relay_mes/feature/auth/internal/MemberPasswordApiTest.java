@@ -1,8 +1,8 @@
-package com.human.ev_relay_mes;
+package com.human.ev_relay_mes.feature.auth.internal;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

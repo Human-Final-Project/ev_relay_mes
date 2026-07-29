@@ -1,8 +1,8 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.auth.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.LoginRequestDto;
-import com.human.ev_relay_mes.Dto.Response.LoginResponseDto;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.LoginRequestDto;
+import com.human.ev_relay_mes.feature.auth.api.LoginResponseDto;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;

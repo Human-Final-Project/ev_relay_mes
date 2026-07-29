@@ -1,6 +1,7 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.auth.internal.repository;
 
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.Repository.RepositoryTestSupport;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;

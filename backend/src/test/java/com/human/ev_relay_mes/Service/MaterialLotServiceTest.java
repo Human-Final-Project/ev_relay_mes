@@ -9,7 +9,7 @@ import com.human.ev_relay_mes.Repository.BomRepository;
 import com.human.ev_relay_mes.Repository.ItemRepository;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
 import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -33,7 +33,7 @@ class MaterialLotServiceTest {
     @Mock
     private ItemRepository itemRepository;
     @Mock
-    private MemberRepository memberRepository;
+    private MemberLookup memberLookup;
     @Mock
     private BomRepository bomRepository;
     @Mock

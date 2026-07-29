@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.feature.notice.internal.entity;
 
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;

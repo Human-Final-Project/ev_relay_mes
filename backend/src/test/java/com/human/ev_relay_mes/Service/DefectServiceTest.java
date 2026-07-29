@@ -10,7 +10,6 @@ import com.human.ev_relay_mes.Repository.DefectCodeRepository;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -31,7 +30,6 @@ class DefectServiceTest {
     @Mock DefectCodeRepository defectCodeRepository;
     @Mock MachineRepository machineRepository;
     @Mock ProcessRepository processRepository;
-    @Mock MemberRepository memberRepository;
     @Mock LotRepository lotRepository;
 
     @InjectMocks DefectService defectService;
@@ -66,6 +64,6 @@ class DefectServiceTest {
         assertThat(response.getDefectHistoryId()).isEqualTo(14L);
         assertThat(response.getDefectDescription()).isEqualTo("wire is disconnected");
         verifyNoInteractions(defectCodeRepository, machineRepository,
-                processRepository, memberRepository, lotRepository);
+                processRepository, lotRepository);
     }
 }

@@ -7,13 +7,13 @@ import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.WorkCommand;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -39,7 +39,7 @@ class MachineAlarmServiceTest {
     @Mock MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     @Mock MachineRepository machineRepository;
     @Mock AlarmCodeRepository alarmCodeRepository;
-    @Mock MemberRepository memberRepository;
+    @Mock MemberLookup memberLookup;
     @Mock MachineStatusHistoryRepository machineStatusHistoryRepository;
     @Mock WorkCommandRepository workCommandRepository;
     @Mock WorkCommandService workCommandService;
@@ -150,7 +150,7 @@ class MachineAlarmServiceTest {
         Member member = Member.builder().memberId(10L).memberName("operator").build();
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(history));
-        when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
+        when(memberLookup.getRequiredById(10L)).thenReturn(member);
         when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
                 .thenReturn(List.of());
         when(workCommandService.createResumeCommand("EQ-WIND-01", null, null))
@@ -180,7 +180,7 @@ class MachineAlarmServiceTest {
         Member member = Member.builder().memberId(10L).memberName("operator").build();
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(history));
-        when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
+        when(memberLookup.getRequiredById(10L)).thenReturn(member);
         when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
                 .thenReturn(List.of());
         when(workCommandService.createResumeCommand("EQ-WIND-01", null, null)).thenReturn(Optional.empty());
@@ -212,7 +212,7 @@ class MachineAlarmServiceTest {
         Member member = Member.builder().memberId(10L).memberName("operator").build();
 
         when(machineAlarmHistoryRepository.findByIdForUpdate(3L)).thenReturn(Optional.of(history));
-        when(memberRepository.findById(10L)).thenReturn(Optional.of(member));
+        when(memberLookup.getRequiredById(10L)).thenReturn(member);
         when(machineAlarmHistoryRepository.findActiveByMachineForUpdate("EQ-WIND-01"))
                 .thenReturn(List.of());
         when(workCommandService.createResumeCommand("EQ-WIND-01", null, null)).thenReturn(Optional.empty());

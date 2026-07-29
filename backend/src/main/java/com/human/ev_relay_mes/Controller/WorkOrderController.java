@@ -5,7 +5,7 @@ import com.human.ev_relay_mes.Dto.Request.WorkOrderRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkOrderStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LotResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import com.human.ev_relay_mes.Service.LotService;
 import com.human.ev_relay_mes.Service.WorkOrderService;
 import jakarta.validation.Valid;

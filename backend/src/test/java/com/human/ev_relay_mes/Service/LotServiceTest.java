@@ -3,13 +3,13 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.LotStatusRequestDto;
 import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import org.junit.jupiter.api.Test;
@@ -34,7 +34,7 @@ class LotServiceTest {
 
     @Mock private LotRepository lotRepository;
     @Mock private WorkOrderRepository workOrderRepository;
-    @Mock private MemberRepository memberRepository;
+    @Mock private MemberLookup memberLookup;
     @Mock private ProcessRepository processRepository;
     @Mock private MaterialLotService materialLotService;
     @Mock private ProductionScheduleRequestService productionScheduleRequestService;
@@ -52,7 +52,7 @@ class LotServiceTest {
                 .status(WorkOrder.Status.RELEASED).createdBy(creator).build();
         Process op20 = process("OP20", 1);
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
-        when(memberRepository.findById(7L)).thenReturn(Optional.of(creator));
+        when(memberLookup.getRequiredById(7L)).thenReturn(creator);
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
         when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
@@ -78,7 +78,7 @@ class LotServiceTest {
                 .status(WorkOrder.Status.RELEASED).createdBy(creator).build();
         Process op20 = process("OP20", 1);
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
-        when(memberRepository.findById(7L)).thenReturn(Optional.of(creator));
+        when(memberLookup.getRequiredById(7L)).thenReturn(creator);
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
         when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
@@ -168,7 +168,7 @@ class LotServiceTest {
                 eq(1L), eq(terminalStatuses())))
                 .thenReturn(92L);
         when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
-        when(memberRepository.findById(7L)).thenReturn(Optional.of(member));
+        when(memberLookup.getRequiredById(7L)).thenReturn(member);
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
         when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
@@ -210,7 +210,7 @@ class LotServiceTest {
                 eq(1L), eq(terminalStatuses())))
                 .thenReturn(0L);
         when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
-        when(memberRepository.findById(7L)).thenReturn(Optional.of(member));
+        when(memberLookup.getRequiredById(7L)).thenReturn(member);
         when(processRepository.findFirstByOrderByProcessOrderAsc()).thenReturn(Optional.of(op20));
         when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));

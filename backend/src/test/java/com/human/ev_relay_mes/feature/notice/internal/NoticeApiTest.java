@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.feature.notice.internal;
 
-import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
 import com.human.ev_relay_mes.feature.notice.internal.entity.Notice;
 import com.human.ev_relay_mes.feature.notice.internal.repository.NoticeRepository;
 import org.junit.jupiter.api.BeforeEach;

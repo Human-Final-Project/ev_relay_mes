@@ -7,7 +7,8 @@ import com.human.ev_relay_mes.Entity.AlarmCode;
 import com.human.ev_relay_mes.Entity.Machine;
 import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
 import com.human.ev_relay_mes.Entity.MachineStatusHistory;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
@@ -15,7 +16,6 @@ import com.human.ev_relay_mes.Repository.AlarmCodeRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
 import com.human.ev_relay_mes.Repository.MachineStatusHistoryRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -38,7 +38,7 @@ public class MachineAlarmService {
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
     private final MachineRepository machineRepository;
     private final AlarmCodeRepository alarmCodeRepository;
-    private final MemberRepository memberRepository;
+    private final MemberLookup memberLookup;
     private final MachineStatusHistoryRepository machineStatusHistoryRepository;
     private final WorkCommandRepository workCommandRepository;
     private final WorkCommandService workCommandService;
@@ -109,8 +109,7 @@ public class MachineAlarmService {
         if (history.getClearedAt() != null) {
             throw new CustomException(ErrorCode.ALARM_ALREADY_CLEARED);
         }
-        Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+        Member member = memberLookup.getRequiredById(memberId);
         history.setClearedAt(LocalDateTime.now());
         history.setClearedBy(member);
         requestResumeIfNoErrorAlarm(history);

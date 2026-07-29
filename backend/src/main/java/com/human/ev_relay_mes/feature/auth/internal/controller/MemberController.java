@@ -1,10 +1,10 @@
-package com.human.ev_relay_mes.Controller;
+package com.human.ev_relay_mes.feature.auth.internal.controller;
 
-import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.MemberUpdateRequestDto;
-import com.human.ev_relay_mes.Dto.Response.MemberResponseDto;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
-import com.human.ev_relay_mes.Service.MemberService;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.MemberCreateRequestDto;
+import com.human.ev_relay_mes.feature.auth.api.MemberResponseDto;
+import com.human.ev_relay_mes.feature.auth.api.MemberUpdateRequestDto;
+import com.human.ev_relay_mes.feature.auth.internal.service.MemberService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

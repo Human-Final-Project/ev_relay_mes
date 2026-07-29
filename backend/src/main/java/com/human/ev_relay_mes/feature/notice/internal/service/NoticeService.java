@@ -1,9 +1,9 @@
 package com.human.ev_relay_mes.feature.notice.internal.service;
 
-import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.feature.notice.api.NoticeRequestDto;
 import com.human.ev_relay_mes.feature.notice.api.NoticeResponseDto;
 import com.human.ev_relay_mes.feature.notice.internal.entity.Notice;
@@ -20,7 +20,7 @@ import java.util.List;
 public class NoticeService {
 
     private final NoticeRepository noticeRepository;
-    private final MemberRepository memberRepository;
+    private final MemberLookup memberLookup;
 
     public List<NoticeResponseDto> getNotices() {
         return noticeRepository.findAllByOrderByPinnedDescCreatedAtDesc().stream()
@@ -30,8 +30,7 @@ public class NoticeService {
 
     @Transactional
     public NoticeResponseDto createNotice(NoticeRequestDto dto, String authorLoginId) {
-        Member author = memberRepository.findByLoginId(authorLoginId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+        Member author = memberLookup.getRequiredByLoginId(authorLoginId);
         Notice notice = Notice.builder()
                 .title(dto.getTitle().trim())
                 .content(dto.getContent().trim())

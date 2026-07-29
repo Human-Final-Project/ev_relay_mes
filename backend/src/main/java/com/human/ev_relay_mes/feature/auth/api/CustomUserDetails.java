@@ -1,6 +1,5 @@
-package com.human.ev_relay_mes.Security;
+package com.human.ev_relay_mes.feature.auth.api;
 
-import com.human.ev_relay_mes.Entity.Member;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;

@@ -4,13 +4,13 @@ import com.human.ev_relay_mes.Dto.Request.LotCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.LotStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.LotResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.ProcessRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -43,7 +43,7 @@ public class LotService {
 
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
-    private final MemberRepository memberRepository;
+    private final MemberLookup memberLookup;
     private final ProcessRepository processRepository;
     private final MaterialLotService materialLotService;
     private final ProductionScheduleRequestService productionScheduleRequestService;
@@ -316,8 +316,7 @@ public class LotService {
     }
 
     private Member findMember(Long memberId) {
-        return memberRepository.findById(memberId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+        return memberLookup.getRequiredById(memberId);
     }
 
     private Lot findLot(Long id) {

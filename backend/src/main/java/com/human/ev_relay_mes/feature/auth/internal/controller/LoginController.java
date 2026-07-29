@@ -1,12 +1,12 @@
-package com.human.ev_relay_mes.Controller;
+package com.human.ev_relay_mes.feature.auth.internal.controller;
 
-import com.human.ev_relay_mes.Dto.Request.LoginRequestDto;
-import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
-import com.human.ev_relay_mes.Dto.Response.LoginResponseDto;
 import com.human.ev_relay_mes.Config.SecurityConfig;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
-import com.human.ev_relay_mes.Service.LoginService;
-import com.human.ev_relay_mes.Service.MemberService;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.LoginRequestDto;
+import com.human.ev_relay_mes.feature.auth.api.LoginResponseDto;
+import com.human.ev_relay_mes.feature.auth.api.PasswordChangeRequestDto;
+import com.human.ev_relay_mes.feature.auth.internal.service.LoginService;
+import com.human.ev_relay_mes.feature.auth.internal.service.MemberService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;

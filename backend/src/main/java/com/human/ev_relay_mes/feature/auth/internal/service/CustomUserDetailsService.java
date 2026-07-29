@@ -1,7 +1,8 @@
-package com.human.ev_relay_mes.Security;
+package com.human.ev_relay_mes.feature.auth.internal.service;
 
-import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Repository.MemberRepository;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;

@@ -7,14 +7,14 @@ import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotMaterialUsage;
 import com.human.ev_relay_mes.Entity.MaterialLot;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.BomRepository;
 import com.human.ev_relay_mes.Repository.ItemRepository;
 import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.Repository.MaterialLotRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ public class MaterialLotService {
 
     private final MaterialLotRepository materialLotRepository;
     private final ItemRepository itemRepository;
-    private final MemberRepository memberRepository;
+    private final MemberLookup memberLookup;
     private final BomRepository bomRepository;
     private final LotMaterialUsageRepository lotMaterialUsageRepository;
     private final ApplicationEventPublisher eventPublisher;
@@ -54,8 +54,7 @@ public class MaterialLotService {
             throw new CustomException(ErrorCode.INVALID_ITEM_TYPE,
                     "원자재 LOT에는 RM 또는 SA 품목만 등록할 수 있습니다.");
         }
-        Member member = memberRepository.findById(dto.getReceivedBy())
-                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+        Member member = memberLookup.getRequiredById(dto.getReceivedBy());
         MaterialLot lot = MaterialLot.builder()
                 .materialLotNo(dto.getMaterialLotNo())
                 .item(item)

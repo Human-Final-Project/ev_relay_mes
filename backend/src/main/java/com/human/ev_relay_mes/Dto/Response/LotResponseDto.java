@@ -1,7 +1,7 @@
 package com.human.ev_relay_mes.Dto.Response;
 
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import lombok.Builder;
 import lombok.Getter;
 

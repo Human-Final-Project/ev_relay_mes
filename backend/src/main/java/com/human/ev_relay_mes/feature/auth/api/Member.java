@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Entity;
+package com.human.ev_relay_mes.feature.auth.api;
 
 import jakarta.persistence.*;
 import lombok.*;

@@ -1,8 +1,7 @@
-package com.human.ev_relay_mes.Dto.Request;
+package com.human.ev_relay_mes.feature.auth.api;
 
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -10,24 +9,14 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-public class MemberCreateRequestDto {
+public class MemberUpdateRequestDto {
 
-    @NotBlank
-    private String loginId;
-
-    @NotBlank
-    private String password;
-
-    @NotBlank
-    private String memberName;
-
-    @NotNull
     @Pattern(regexp = "(?i)ADMIN|OPERATOR")
     private String role;
-
     @Pattern(regexp = "(?i)ACTIVE|LOCKED|RETIRED")
     private String status;
-
+    @Size(max = 50)
     private String department;
+    @Size(max = 50)
     private String position;
 }

@@ -5,13 +5,13 @@ import com.human.ev_relay_mes.Dto.Request.WorkOrderStatusRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
 import com.human.ev_relay_mes.Entity.Item;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.ItemRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MemberRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -39,7 +39,7 @@ public class WorkOrderService {
 
     private final WorkOrderRepository workOrderRepository;
     private final ItemRepository itemRepository;
-    private final MemberRepository memberRepository;
+    private final MemberLookup memberLookup;
     private final LotRepository lotRepository;
     private final MaterialLotService materialLotService;
     private final LotService lotService;
@@ -57,8 +57,7 @@ public class WorkOrderService {
         // 실제 차감은 LOT 시작 시 다시 확인한 뒤 처리한다.
         materialLotService.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
 
-        Member creator = memberRepository.findById(memberId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MEMBER_NOT_FOUND));
+        Member creator = memberLookup.getRequiredById(memberId);
         WorkOrder workOrder = WorkOrder.builder()
                 .orderNo(generateOrderNo())
                 .item(item)

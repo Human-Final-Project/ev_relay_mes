@@ -1,8 +1,8 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.auth.internal.repository;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import com.human.ev_relay_mes.Entity.Member;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 
 import java.util.List;
 import java.util.Optional;

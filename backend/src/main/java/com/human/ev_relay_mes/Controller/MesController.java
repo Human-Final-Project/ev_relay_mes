@@ -5,7 +5,7 @@ import com.human.ev_relay_mes.Dto.Request.ProductionLogSearchRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkOrderRequestDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.DashboardService;
 import com.human.ev_relay_mes.Service.MaterialLotService;

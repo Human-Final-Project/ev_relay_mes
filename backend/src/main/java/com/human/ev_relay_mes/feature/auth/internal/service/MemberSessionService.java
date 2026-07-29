@@ -1,5 +1,6 @@
-package com.human.ev_relay_mes.Security;
+package com.human.ev_relay_mes.feature.auth.internal.service;
 
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.session.SessionInformation;
 import org.springframework.security.core.session.SessionRegistry;

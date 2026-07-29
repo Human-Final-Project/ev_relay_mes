@@ -1,14 +1,13 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.auth.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.MemberCreateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.MemberUpdateRequestDto;
-import com.human.ev_relay_mes.Dto.Request.PasswordChangeRequestDto;
-import com.human.ev_relay_mes.Dto.Response.MemberResponseDto;
-import com.human.ev_relay_mes.Entity.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.Repository.MemberRepository;
-import com.human.ev_relay_mes.Security.MemberSessionService;
+import com.human.ev_relay_mes.feature.auth.api.Member;
+import com.human.ev_relay_mes.feature.auth.api.MemberCreateRequestDto;
+import com.human.ev_relay_mes.feature.auth.api.MemberResponseDto;
+import com.human.ev_relay_mes.feature.auth.api.MemberUpdateRequestDto;
+import com.human.ev_relay_mes.feature.auth.api.PasswordChangeRequestDto;
+import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;

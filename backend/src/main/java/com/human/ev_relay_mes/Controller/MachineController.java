@@ -4,7 +4,7 @@ import com.human.ev_relay_mes.Dto.Request.MachineAlarmSearchRequestDto;
 import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineResponseDto;
 import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
-import com.human.ev_relay_mes.Security.CustomUserDetails;
+import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Service.MachineAlarmService;
