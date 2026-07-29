@@ -1,9 +1,9 @@
-package com.human.ev_relay_mes;
+package com.human.ev_relay_mes.feature.notice.internal;
 
 import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Entity.Notice;
 import com.human.ev_relay_mes.Repository.MemberRepository;
-import com.human.ev_relay_mes.Repository.NoticeRepository;
+import com.human.ev_relay_mes.feature.notice.internal.entity.Notice;
+import com.human.ev_relay_mes.feature.notice.internal.repository.NoticeRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -60,6 +60,12 @@ class NoticeApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].title").value("전체 공지"))
                 .andExpect(jsonPath("$[0].authorName").value("admin"));
+    }
+
+    @Test
+    void unauthenticatedUserCannotReadNotices() throws Exception {
+        mockMvc.perform(get("/api/notices"))
+                .andExpect(status().isUnauthorized());
     }
 
     @Test
@@ -128,6 +134,23 @@ class NoticeApiTest {
                                 }
                                 """))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "admin", roles = "ADMIN")
+    void updatingMissingNoticeKeepsNotFoundContract() throws Exception {
+        mockMvc.perform(put("/api/notices/{noticeId}", 999999)
+                        .with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "title": "없는 공지",
+                                  "content": "수정되면 안 됩니다.",
+                                  "pinned": false
+                                }
+                                """))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("N001"));
     }
 
     private Member member(String loginId, Member.Role role) {

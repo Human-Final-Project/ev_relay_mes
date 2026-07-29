@@ -1,13 +1,13 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.notice.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.NoticeRequestDto;
-import com.human.ev_relay_mes.Dto.Response.NoticeResponseDto;
 import com.human.ev_relay_mes.Entity.Member;
-import com.human.ev_relay_mes.Entity.Notice;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.MemberRepository;
-import com.human.ev_relay_mes.Repository.NoticeRepository;
+import com.human.ev_relay_mes.feature.notice.api.NoticeRequestDto;
+import com.human.ev_relay_mes.feature.notice.api.NoticeResponseDto;
+import com.human.ev_relay_mes.feature.notice.internal.entity.Notice;
+import com.human.ev_relay_mes.feature.notice.internal.repository.NoticeRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,7 +24,7 @@ public class NoticeService {
 
     public List<NoticeResponseDto> getNotices() {
         return noticeRepository.findAllByOrderByPinnedDescCreatedAtDesc().stream()
-                .map(NoticeResponseDto::fromEntity)
+                .map(this::toResponse)
                 .toList();
     }
 
@@ -38,7 +38,7 @@ public class NoticeService {
                 .pinned(dto.isPinned())
                 .author(author)
                 .build();
-        return NoticeResponseDto.fromEntity(noticeRepository.save(notice));
+        return toResponse(noticeRepository.save(notice));
     }
 
     @Transactional
@@ -48,6 +48,19 @@ public class NoticeService {
         notice.setTitle(dto.getTitle().trim());
         notice.setContent(dto.getContent().trim());
         notice.setPinned(dto.isPinned());
-        return NoticeResponseDto.fromEntity(notice);
+        return toResponse(notice);
+    }
+
+    private NoticeResponseDto toResponse(Notice notice) {
+        return NoticeResponseDto.builder()
+                .noticeId(notice.getNoticeId())
+                .title(notice.getTitle())
+                .content(notice.getContent())
+                .pinned(notice.isPinned())
+                .authorName(notice.getAuthor().getMemberName())
+                .authorLoginId(notice.getAuthor().getLoginId())
+                .createdAt(notice.getCreatedAt())
+                .updatedAt(notice.getUpdatedAt())
+                .build();
     }
 }

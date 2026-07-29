@@ -1,8 +1,8 @@
-package com.human.ev_relay_mes.Controller;
+package com.human.ev_relay_mes.feature.notice.internal.controller;
 
-import com.human.ev_relay_mes.Dto.Request.NoticeRequestDto;
-import com.human.ev_relay_mes.Dto.Response.NoticeResponseDto;
-import com.human.ev_relay_mes.Service.NoticeService;
+import com.human.ev_relay_mes.feature.notice.api.NoticeRequestDto;
+import com.human.ev_relay_mes.feature.notice.api.NoticeResponseDto;
+import com.human.ev_relay_mes.feature.notice.internal.service.NoticeService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
