@@ -1,5 +1,6 @@
-package com.human.ev_relay_mes.Entity;
+package com.human.ev_relay_mes.feature.material.api;
 
+import com.human.ev_relay_mes.Entity.Lot;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;

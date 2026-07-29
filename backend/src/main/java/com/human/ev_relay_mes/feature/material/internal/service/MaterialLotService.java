@@ -1,19 +1,21 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.material.internal.service;
 
-import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
-import com.human.ev_relay_mes.Dto.Response.MaterialLotResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Bom;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.LotMaterialUsage;
-import com.human.ev_relay_mes.Entity.MaterialLot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
-import com.human.ev_relay_mes.Repository.MaterialLotRepository;
+import com.human.ev_relay_mes.feature.material.api.LotMaterialUsage;
+import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
+import com.human.ev_relay_mes.feature.material.api.MaterialLot;
+import com.human.ev_relay_mes.feature.material.api.MaterialLotRequestDto;
+import com.human.ev_relay_mes.feature.material.api.MaterialLotResponseDto;
+import com.human.ev_relay_mes.feature.material.api.MaterialStockChangedEvent;
+import com.human.ev_relay_mes.feature.material.internal.repository.LotMaterialUsageRepository;
+import com.human.ev_relay_mes.feature.material.internal.repository.MaterialLotRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -30,7 +32,7 @@ import java.util.Set;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class MaterialLotService {
+public class MaterialLotService implements MaterialInventory {
 
     private final MaterialLotRepository materialLotRepository;
     private final MasterDataLookup masterDataLookup;
@@ -199,6 +201,11 @@ public class MaterialLotService {
         return materialLotRepository.findAll().stream().map(MaterialLotResponseDto::fromEntity).toList();
     }
 
+    @Override
+    public List<MaterialLot> getMaterialLotEntities() {
+        return materialLotRepository.findAll();
+    }
+
     public MaterialLotResponseDto getMaterialLot(Long id) {
         return MaterialLotResponseDto.fromEntity(findMaterialLot(id));
     }
@@ -279,6 +286,4 @@ public class MaterialLotService {
         }
     }
 
-    public record MaterialStockChangedEvent(String itemCode) {
-    }
 }

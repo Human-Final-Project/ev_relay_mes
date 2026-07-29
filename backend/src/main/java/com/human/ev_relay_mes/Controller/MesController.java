@@ -1,6 +1,6 @@
 package com.human.ev_relay_mes.Controller;
 
-import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
+import com.human.ev_relay_mes.feature.material.api.MaterialLotRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionLogSearchRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkOrderRequestDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
@@ -8,7 +8,7 @@ import com.human.ev_relay_mes.Dto.Response.WorkOrderResponseDto;
 import com.human.ev_relay_mes.feature.auth.api.CustomUserDetails;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.DashboardService;
-import com.human.ev_relay_mes.Service.MaterialLotService;
+import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkOrderService;
 import jakarta.validation.Valid;
@@ -35,7 +35,7 @@ import java.util.UUID;
 public class MesController {
 
     private final WorkOrderService workOrderService;
-    private final MaterialLotService materialLotService;
+    private final MaterialInventory materialInventory;
     private final ProductionService productionService;
     private final DashboardService dashboardService;
     private final CollectorStatusService collectorStatusService;
@@ -69,7 +69,7 @@ public class MesController {
     @GetMapping("/material/stock")
     public List<MaterialStockView> getMaterialStock() {
         Map<String, MaterialStockAccumulator> stocks = new LinkedHashMap<>();
-        materialLotService.getMaterialLots().stream()
+        materialInventory.getMaterialLots().stream()
                 .filter(lot -> "AVAILABLE".equals(lot.getStatus()) || "HOLD".equals(lot.getStatus()))
                 .forEach(lot -> stocks.computeIfAbsent(
                                 lot.getItemCode(),
@@ -86,14 +86,14 @@ public class MesController {
             @Valid @RequestBody MaterialChangeRequest request,
             @AuthenticationPrincipal CustomUserDetails userDetails) {
         if ("OUT".equalsIgnoreCase(request.type())) {
-            materialLotService.issueMaterial(request.code(), request.amount());
+            materialInventory.issueMaterial(request.code(), request.amount());
         } else {
             MaterialLotRequestDto dto = new MaterialLotRequestDto();
             dto.setMaterialLotNo(generateMaterialLotNo());
             dto.setItemCode(request.code());
             dto.setReceivedQty(request.amount());
             dto.setReceivedBy(userDetails.getMemberId());
-            materialLotService.createMaterialLot(dto);
+            materialInventory.createMaterialLot(dto);
         }
         return ResponseEntity.noContent().build();
     }

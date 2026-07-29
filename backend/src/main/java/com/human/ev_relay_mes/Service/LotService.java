@@ -12,6 +12,8 @@ import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
+import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
+import com.human.ev_relay_mes.feature.material.api.MaterialStockChangedEvent;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,7 +47,7 @@ public class LotService {
     private final WorkOrderRepository workOrderRepository;
     private final MemberLookup memberLookup;
     private final MasterDataLookup masterDataLookup;
-    private final MaterialLotService materialLotService;
+    private final MaterialInventory materialInventory;
     private final ProductionScheduleRequestService productionScheduleRequestService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
 
@@ -259,7 +261,7 @@ public class LotService {
      */
     private boolean requestPipelineStart(Lot lot) {
         lot.setStartRequestedAt(LocalDateTime.now());
-        boolean consumed = materialLotService.tryConsumeMaterials(lot);
+        boolean consumed = materialInventory.tryConsumeMaterials(lot);
         if (!consumed) {
             return false;
         }
@@ -278,7 +280,7 @@ public class LotService {
     }
 
     @TransactionalEventListener(
-            classes = MaterialLotService.MaterialStockChangedEvent.class,
+            classes = MaterialStockChangedEvent.class,
             phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void retryMaterialWaitingLots() {

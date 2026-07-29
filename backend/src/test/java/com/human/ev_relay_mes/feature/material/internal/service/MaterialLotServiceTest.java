@@ -1,13 +1,13 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.material.internal.service;
 
 import com.human.ev_relay_mes.feature.masterdata.api.Bom;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.Entity.MaterialLot;
+import com.human.ev_relay_mes.feature.material.api.MaterialLot;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.LotMaterialUsage;
+import com.human.ev_relay_mes.feature.material.api.LotMaterialUsage;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.Repository.MaterialLotRepository;
-import com.human.ev_relay_mes.Repository.LotMaterialUsageRepository;
+import com.human.ev_relay_mes.feature.material.internal.repository.MaterialLotRepository;
+import com.human.ev_relay_mes.feature.material.internal.repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

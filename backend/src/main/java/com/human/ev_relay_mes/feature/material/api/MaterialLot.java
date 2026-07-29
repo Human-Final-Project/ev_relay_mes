@@ -1,4 +1,4 @@
-package com.human.ev_relay_mes.Entity;
+package com.human.ev_relay_mes.feature.material.api;
 
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;

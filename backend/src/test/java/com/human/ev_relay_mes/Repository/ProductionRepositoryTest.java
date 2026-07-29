@@ -1,9 +1,10 @@
 package com.human.ev_relay_mes.Repository;
 
+import com.human.ev_relay_mes.feature.material.internal.repository.MaterialLotRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.MaterialLot;
+import com.human.ev_relay_mes.feature.material.api.MaterialLot;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;

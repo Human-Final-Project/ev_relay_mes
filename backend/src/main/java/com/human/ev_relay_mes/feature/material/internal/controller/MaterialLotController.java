@@ -1,9 +1,9 @@
-package com.human.ev_relay_mes.Controller;
+package com.human.ev_relay_mes.feature.material.internal.controller;
 
-import com.human.ev_relay_mes.Dto.Request.MaterialLotRequestDto;
-import com.human.ev_relay_mes.Dto.Response.MaterialLotResponseDto;
-import com.human.ev_relay_mes.Entity.MaterialLot;
-import com.human.ev_relay_mes.Service.MaterialLotService;
+import com.human.ev_relay_mes.feature.material.api.MaterialLot;
+import com.human.ev_relay_mes.feature.material.api.MaterialLotRequestDto;
+import com.human.ev_relay_mes.feature.material.api.MaterialLotResponseDto;
+import com.human.ev_relay_mes.feature.material.internal.service.MaterialLotService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

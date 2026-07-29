@@ -28,7 +28,7 @@ class WorkOrderServiceTest {
     @Mock private MasterDataLookup masterDataLookup;
     @Mock private MemberLookup memberLookup;
     @Mock private LotRepository lotRepository;
-    @Mock private MaterialLotService materialLotService;
+    @Mock private com.human.ev_relay_mes.feature.material.api.MaterialInventory materialInventory;
     @Mock private LotService lotService;
 
     @InjectMocks

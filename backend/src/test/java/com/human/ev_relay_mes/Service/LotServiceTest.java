@@ -36,7 +36,7 @@ class LotServiceTest {
     @Mock private WorkOrderRepository workOrderRepository;
     @Mock private MemberLookup memberLookup;
     @Mock private MasterDataLookup masterDataLookup;
-    @Mock private MaterialLotService materialLotService;
+    @Mock private com.human.ev_relay_mes.feature.material.api.MaterialInventory materialInventory;
     @Mock private ProductionScheduleRequestService productionScheduleRequestService;
     @Mock private LotProcessResponsibleService lotProcessResponsibleService;
 
@@ -54,7 +54,7 @@ class LotServiceTest {
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
         when(memberLookup.getRequiredById(7L)).thenReturn(creator);
         when(masterDataLookup.getFirstProcess()).thenReturn(op20);
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
             Lot saved = invocation.getArgument(0);
             saved.setLotId(1L);
@@ -80,7 +80,7 @@ class LotServiceTest {
         when(lotRepository.existsByWorkOrder_WorkOrderId(1L)).thenReturn(false);
         when(memberLookup.getRequiredById(7L)).thenReturn(creator);
         when(masterDataLookup.getFirstProcess()).thenReturn(op20);
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = lotService.createInitialLotAndRequestStart(order, 7L);
@@ -96,14 +96,14 @@ class LotServiceTest {
         Lot lot = createLot(1L, "LOT-001");
         when(lotRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(lot));
         LotStatusRequestDto request = status("RUNNING");
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
 
         var response = lotService.updateStatus(1L, request);
 
         assertThat(response.getStatus()).isEqualTo("RUNNING");
         assertThat(lot.getStartedAt()).isNotNull();
         assertThat(lot.getWorkOrder().getStatus()).isEqualTo(WorkOrder.Status.RUNNING);
-        verify(materialLotService).tryConsumeMaterials(any(Lot.class));
+        verify(materialInventory).tryConsumeMaterials(any(Lot.class));
         verify(productionScheduleRequestService).requestAllIdleMachines();
     }
 
@@ -111,7 +111,7 @@ class LotServiceTest {
     void keepsStartRequestedLotWaitingWhenMaterialIsInsufficient() {
         Lot lot = createLot(1L, "LOT-001");
         when(lotRepository.findByIdForUpdate(1L)).thenReturn(Optional.of(lot));
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(false);
 
         var response = lotService.updateStatus(1L, status("RUNNING"));
 
@@ -125,7 +125,7 @@ class LotServiceTest {
         Lot secondLot = createLot(2L, "LOT-002");
         secondLot.getWorkOrder().setStatus(WorkOrder.Status.RELEASED);
         when(lotRepository.findByIdForUpdate(2L)).thenReturn(Optional.of(secondLot));
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
 
         var response = lotService.updateStatus(2L, status("RUNNING"));
 
@@ -170,7 +170,7 @@ class LotServiceTest {
         when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
         when(memberLookup.getRequiredById(7L)).thenReturn(member);
         when(masterDataLookup.getFirstProcess()).thenReturn(op20);
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> {
             Lot saved = invocation.getArgument(0);
             saved.setLotId(2L);
@@ -182,7 +182,7 @@ class LotServiceTest {
         assertThat(response.getProductionRound()).isEqualTo(2);
         assertThat(response.getInputQty()).isEqualTo(8);
         assertThat(response.getStatus()).isEqualTo("RUNNING");
-        verify(materialLotService).tryConsumeMaterials(any(Lot.class));
+        verify(materialInventory).tryConsumeMaterials(any(Lot.class));
         verify(productionScheduleRequestService).requestAllIdleMachines();
     }
 
@@ -212,7 +212,7 @@ class LotServiceTest {
         when(lotRepository.findMaxProductionRoundByWorkOrderId(1L)).thenReturn(1);
         when(memberLookup.getRequiredById(7L)).thenReturn(member);
         when(masterDataLookup.getFirstProcess()).thenReturn(op20);
-        when(materialLotService.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
+        when(materialInventory.tryConsumeMaterials(any(Lot.class))).thenReturn(true);
         when(lotRepository.save(any(Lot.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         var response = lotService.createSupplementLot(1L, 7L);

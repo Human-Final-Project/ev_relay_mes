@@ -1,6 +1,6 @@
-package com.human.ev_relay_mes.Repository;
+package com.human.ev_relay_mes.feature.material.internal.repository;
 
-import com.human.ev_relay_mes.Entity.LotMaterialUsage;
+import com.human.ev_relay_mes.feature.material.api.LotMaterialUsage;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

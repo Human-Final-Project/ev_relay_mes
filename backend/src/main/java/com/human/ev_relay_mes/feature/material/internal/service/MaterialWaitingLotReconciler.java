@@ -1,5 +1,6 @@
-package com.human.ev_relay_mes.Service;
+package com.human.ev_relay_mes.feature.material.internal.service;
 
+import com.human.ev_relay_mes.Service.LotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

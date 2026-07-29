@@ -1,6 +1,5 @@
-package com.human.ev_relay_mes.Dto.Response;
+package com.human.ev_relay_mes.feature.material.api;
 
-import com.human.ev_relay_mes.Entity.MaterialLot;
 import lombok.Builder;
 import lombok.Getter;
 

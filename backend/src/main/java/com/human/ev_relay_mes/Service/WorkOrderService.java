@@ -11,6 +11,7 @@ import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
+import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +42,7 @@ public class WorkOrderService {
     private final MasterDataLookup masterDataLookup;
     private final MemberLookup memberLookup;
     private final LotRepository lotRepository;
-    private final MaterialLotService materialLotService;
+    private final MaterialInventory materialInventory;
     private final LotService lotService;
 
     @Transactional
@@ -55,7 +56,7 @@ public class WorkOrderService {
 
         // 작업지시 생성 시점에는 생산 가능 여부만 확인한다.
         // 실제 차감은 LOT 시작 시 다시 확인한 뒤 처리한다.
-        materialLotService.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
+        materialInventory.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
 
         Member creator = memberLookup.getRequiredById(memberId);
         WorkOrder workOrder = WorkOrder.builder()
@@ -94,7 +95,7 @@ public class WorkOrderService {
                     "원자재 품목으로는 작업지시를 생성할 수 없습니다.");
         }
 
-        materialLotService.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
+        materialInventory.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
 
         workOrder.setItem(item);
         workOrder.setTargetQty(dto.getTargetQty());

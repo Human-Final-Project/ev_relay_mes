@@ -3,14 +3,14 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.MaterialLot;
+import com.human.ev_relay_mes.feature.material.api.MaterialLot;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
 import com.human.ev_relay_mes.Repository.MachineAlarmHistoryRepository;
 import com.human.ev_relay_mes.Repository.MachineRepository;
-import com.human.ev_relay_mes.Repository.MaterialLotRepository;
+import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.Repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,7 +35,7 @@ public class DashboardService {
     private final InspectionRepository inspectionRepository;
     private final DefectHistoryRepository defectHistoryRepository;
     private final MachineAlarmHistoryRepository machineAlarmHistoryRepository;
-    private final MaterialLotRepository materialLotRepository;
+    private final MaterialInventory materialInventory;
 
     public DashboardSummary getSummary() {
         LocalDateTime startAt = LocalDate.now().atStartOfDay();
@@ -84,7 +84,7 @@ public class DashboardService {
                 machineAlarmHistoryRepository
                         .findByOccurredAtBetweenOrderByOccurredAtDesc(startAt, endAt).size());
 
-        MaterialSummary materials = summarizeMaterials(materialLotRepository.findAll());
+        MaterialSummary materials = summarizeMaterials(materialInventory.getMaterialLotEntities());
 
         return new DashboardSummary(
                 production, workOrderSummary, machineSummary, quality, alarms, materials,
