@@ -1,12 +1,12 @@
 package com.human.ev_relay_mes.feature.masterdata.internal.repository;
 
 import com.human.ev_relay_mes.Repository.RepositoryTestSupport;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.masterdata.api.Bom;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

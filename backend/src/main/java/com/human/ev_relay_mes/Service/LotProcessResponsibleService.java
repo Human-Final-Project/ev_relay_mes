@@ -3,8 +3,9 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Response.LotProcessResponsibleResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotProcessResponsible;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
 import com.human.ev_relay_mes.Repository.LotProcessResponsibleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,7 +19,7 @@ import java.util.List;
 public class LotProcessResponsibleService {
 
     private final LotProcessResponsibleRepository responsibleRepository;
-    private final MachineWorkerAssignmentService assignmentService;
+    private final WorkforceAssignmentLookup assignmentLookup;
 
     @Transactional
     public void captureIfAbsent(Lot lot, Process process, Machine machine) {
@@ -29,7 +30,7 @@ public class LotProcessResponsibleService {
                 .isPresent()) {
             return;
         }
-        assignmentService.findResponsible(machine.getMachineId())
+        assignmentLookup.findResponsible(machine.getMachineId())
                 .ifPresent(assignment -> responsibleRepository.save(
                         LotProcessResponsible.builder()
                                 .lot(lot)

@@ -1,13 +1,13 @@
 package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +32,7 @@ public class ProductionSchedulerService {
     private static final String ASSEMBLY = "OP40_OP50";
 
     private final LotRepository lotRepository;
-    private final MachineRepository machineRepository;
+    private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
     private final WorkCommandService workCommandService;
@@ -55,8 +55,7 @@ public class ProductionSchedulerService {
         // 여기서 설비를 먼저 잠그면 OP20/OP30 동시 IDLE 이벤트가 서로 반대
         // 순서로 잠금을 잡을 수 있다. 실제 예약 잠금은 WorkCommandService가
         // 항상 OP20 -> OP30 순서로 획득한다.
-        Machine machine = machineRepository.findById(machineId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine machine = machineRegistry.getRequiredMachine(machineId);
         if (machine.getStatus() != Machine.Status.IDLE
                 || workCommandService.hasActiveCommandForMachine(machineId)) {
             return false;
@@ -79,7 +78,7 @@ public class ProductionSchedulerService {
     @Transactional
     public int tryAssignAllIdleMachines() {
         int assigned = 0;
-        for (Machine machine : machineRepository.findAll().stream()
+        for (Machine machine : machineRegistry.getAllMachines().stream()
                 .sorted((left, right) -> Integer.compare(
                         left.getProcess().getProcessOrder(),
                         right.getProcess().getProcessOrder()))

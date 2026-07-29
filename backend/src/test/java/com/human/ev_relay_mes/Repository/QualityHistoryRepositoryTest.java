@@ -1,5 +1,7 @@
 package com.human.ev_relay_mes.Repository;
 
+import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHistoryRepository;
+import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.Entity.DefectHistory;
@@ -7,9 +9,9 @@ import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
-import com.human.ev_relay_mes.Entity.Machine;
-import com.human.ev_relay_mes.Entity.MachineAlarmHistory;
-import com.human.ev_relay_mes.Entity.MachineStatusHistory;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmHistory;
+import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistory;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkOrder;

@@ -3,12 +3,12 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import org.junit.jupiter.api.Test;
@@ -30,7 +30,7 @@ import static org.mockito.Mockito.when;
 class ProductionSchedulerServiceTest {
 
     @Mock private LotRepository lotRepository;
-    @Mock private MachineRepository machineRepository;
+    @Mock private MachineRegistry machineRegistry;
     @Mock private MasterDataLookup masterDataLookup;
     @Mock private ProductionLogRepository productionLogRepository;
     @Mock private WorkCommandService workCommandService;
@@ -75,7 +75,7 @@ class ProductionSchedulerServiceTest {
                 .inputQty(10)
                 .build();
 
-        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-SEAL-01")).thenReturn(machine);
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(first, second));
         when(masterDataLookup.findPreviousProcess(4))
@@ -114,7 +114,7 @@ class ProductionSchedulerServiceTest {
                 .lot(nextLot).process(assembly).inputQty(10).okQty(8).ngQty(2)
                 .status("COMPLETED").build();
 
-        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-SEAL-01")).thenReturn(machine);
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(zeroInputLot, nextLot));
         when(masterDataLookup.findPreviousProcess(4))
@@ -150,7 +150,7 @@ class ProductionSchedulerServiceTest {
                 .build();
         Lot lot = lot(1L, "LOT-RACE", sealing);
 
-        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-SEAL-01")).thenReturn(machine);
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of(lot));
         when(masterDataLookup.findPreviousProcess(4))
@@ -178,7 +178,7 @@ class ProductionSchedulerServiceTest {
         Lot held = lot(1L, "LOT-HOLD", sealing);
         held.setStatus(Lot.Status.HOLD);
 
-        when(machineRepository.findById("EQ-SEAL-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-SEAL-01")).thenReturn(machine);
         when(lotRepository.findPipelineCandidatesForUpdate(Lot.Status.RUNNING))
                 .thenReturn(List.of());
 

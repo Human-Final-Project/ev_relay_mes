@@ -3,13 +3,13 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class ProductionServiceTest {
     @Mock
     private ProductionLogRepository productionLogRepository;
     @Mock
-    private MachineRepository machineRepository;
+    private MachineRegistry machineRegistry;
     @Mock
     private MasterDataLookup masterDataLookup;
     @Mock
@@ -79,7 +79,7 @@ class ProductionServiceTest {
         var ordered = inOrder(lotRepository, productionLogRepository);
         ordered.verify(lotRepository).findByLotNoForUpdate("LOT-001");
         ordered.verify(productionLogRepository).findByEventId("production-001");
-        verifyNoInteractions(machineRepository, masterDataLookup, workCommandService);
+        verifyNoInteractions(machineRegistry, masterDataLookup, workCommandService);
     }
 
     @Test
@@ -132,7 +132,7 @@ class ProductionServiceTest {
         request.setProcessCode("OP80");
 
         when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-PACK-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-PACK-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP80")).thenReturn(packing);
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP80"))
@@ -229,7 +229,7 @@ class ProductionServiceTest {
         var response = productionService.saveResult(request);
 
         assertThat(response.getInputQty()).isEqualTo(6);
-        verifyNoInteractions(machineRepository, masterDataLookup, workCommandService);
+        verifyNoInteractions(machineRegistry, masterDataLookup, workCommandService);
     }
 
     @Test
@@ -255,7 +255,7 @@ class ProductionServiceTest {
         List<ProductionLog> op30Results = new ArrayList<>();
 
         when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-WELD-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-WELD-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP30")).thenReturn(op30);
         when(masterDataLookup.findProcess("OP40_OP50")).thenReturn(Optional.of(assembly));
         when(productionLogRepository
@@ -333,7 +333,7 @@ class ProductionServiceTest {
         request.setProcessCode("OP40_OP50");
 
         when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-ASSY-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-ASSY-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP40_OP50")).thenReturn(assembly);
         when(productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc("LOT-001", "OP40_OP50"))
@@ -384,7 +384,7 @@ class ProductionServiceTest {
         List<ProductionLog> op30Results = new ArrayList<>();
 
         when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-WELD-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-WELD-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP30")).thenReturn(op30);
         when(masterDataLookup.findProcess("OP40_OP50")).thenReturn(Optional.of(assembly));
         when(productionLogRepository
@@ -414,7 +414,7 @@ class ProductionServiceTest {
 
     private void mockBase(Fixture fixture) {
         when(lotRepository.findByLotNoForUpdate("LOT-001")).thenReturn(Optional.of(fixture.lot));
-        when(machineRepository.findById("MC-001")).thenReturn(Optional.of(fixture.machine));
+        when(machineRegistry.getRequiredMachine("MC-001")).thenReturn(fixture.machine);
         when(masterDataLookup.getRequiredProcess("OP10")).thenReturn(fixture.process);
     }
 

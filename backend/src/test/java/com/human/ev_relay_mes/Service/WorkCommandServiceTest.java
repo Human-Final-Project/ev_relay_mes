@@ -2,14 +2,14 @@ package com.human.ev_relay_mes.Service;
 
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
@@ -37,7 +37,7 @@ class WorkCommandServiceTest {
     @Mock
     private WorkCommandRepository workCommandRepository;
     @Mock
-    private MachineRepository machineRepository;
+    private MachineRegistry machineRegistry;
     @Mock
     private MasterDataLookup masterDataLookup;
     @Mock
@@ -62,8 +62,8 @@ class WorkCommandServiceTest {
 
         when(masterDataLookup.findProcess("OP20")).thenReturn(Optional.of(op20));
         when(masterDataLookup.findProcess("OP30")).thenReturn(Optional.of(op30));
-        when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
-        when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
+        when(machineRegistry.getUsableMachinesForUpdate("OP20")).thenReturn(List.of(wind));
+        when(machineRegistry.getUsableMachinesForUpdate("OP30")).thenReturn(List.of(weld));
         when(workCommandRepository.save(any(WorkCommand.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -87,8 +87,8 @@ class WorkCommandServiceTest {
 
         when(masterDataLookup.findProcess("OP20")).thenReturn(Optional.of(op20));
         when(masterDataLookup.findProcess("OP30")).thenReturn(Optional.of(op30));
-        when(machineRepository.findUsableByProcessForUpdate("OP20")).thenReturn(List.of(wind));
-        when(machineRepository.findUsableByProcessForUpdate("OP30")).thenReturn(List.of(weld));
+        when(machineRegistry.getUsableMachinesForUpdate("OP20")).thenReturn(List.of(wind));
+        when(machineRegistry.getUsableMachinesForUpdate("OP30")).thenReturn(List.of(weld));
         when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
                 eq("EQ-WIND-01"), anyCollection())).thenReturn(false);
         when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
@@ -107,7 +107,7 @@ class WorkCommandServiceTest {
         Machine machine = machine("EQ-SEAL-01", process);
         Lot lot = Lot.builder().lotNo("LOT-002").currentProcess(process).inputQty(10).build();
 
-        when(machineRepository.findUsableByProcessForUpdate("OP60")).thenReturn(List.of(machine));
+        when(machineRegistry.getUsableMachinesForUpdate("OP60")).thenReturn(List.of(machine));
         when(workCommandRepository.existsByMachine_MachineIdAndStatusIn(
                 eq("EQ-SEAL-01"), anyCollection())).thenReturn(true);
 
@@ -296,8 +296,8 @@ class WorkCommandServiceTest {
         interrupted.setStatus(WorkCommand.Status.CANCELED);
         ProductionLog partial = ProductionLog.builder().inputQty(4).build();
 
-        when(machineRepository.findByIdForUpdate("EQ-WIND-01"))
-                .thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachineForUpdate("EQ-WIND-01"))
+                .thenReturn(machine);
         when(workCommandRepository
                 .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
                         "EQ-WIND-01", WorkCommand.Status.CANCELED))
@@ -329,8 +329,8 @@ class WorkCommandServiceTest {
         WorkCommand interrupted = command(701L, lot, machine, process);
         interrupted.setStatus(WorkCommand.Status.CANCELED);
 
-        when(machineRepository.findByIdForUpdate("EQ-TEST-01"))
-                .thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachineForUpdate("EQ-TEST-01"))
+                .thenReturn(machine);
         when(workCommandRepository
                 .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
                         "EQ-TEST-01", WorkCommand.Status.CANCELED))

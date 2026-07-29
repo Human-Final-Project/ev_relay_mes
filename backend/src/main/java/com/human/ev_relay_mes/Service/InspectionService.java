@@ -10,14 +10,14 @@ import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import lombok.RequiredArgsConstructor;
@@ -37,7 +37,7 @@ public class InspectionService {
 
     private final InspectionRepository inspectionRepository;
     private final InspectionUnitResultRepository unitResultRepository;
-    private final MachineRepository machineRepository;
+    private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
     private final InspectionStandardOperations inspectionStandardOperations;
@@ -68,8 +68,7 @@ public class InspectionService {
 
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
-        Machine machine = machineRepository.findById(dto.getMachineId())
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
 
         validateLot(lot, process);
@@ -128,8 +127,7 @@ public class InspectionService {
     public InspectionUnitResultResponseDto saveJudgment(UnitJudgmentReceiveRequestDto dto) {
         Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
-        Machine machine = machineRepository.findById(dto.getMachineId())
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         validateLot(lot, process);
         validateMachineAndProcess(machine, process);

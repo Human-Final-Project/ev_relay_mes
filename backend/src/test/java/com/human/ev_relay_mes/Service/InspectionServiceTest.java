@@ -6,12 +6,12 @@ import com.human.ev_relay_mes.Entity.Inspection;
 import com.human.ev_relay_mes.Entity.InspectionUnitResult;
 import com.human.ev_relay_mes.Entity.Lot;
 import com.human.ev_relay_mes.Entity.LotInspectionStandardSnapshot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Repository.InspectionRepository;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class InspectionServiceTest {
 
     @Mock InspectionRepository inspectionRepository;
     @Mock InspectionUnitResultRepository inspectionUnitResultRepository;
-    @Mock MachineRepository machineRepository;
+    @Mock MachineRegistry machineRegistry;
     @Mock MasterDataLookup masterDataLookup;
     @Mock LotRepository lotRepository;
     @Mock InspectionStandardOperations inspectionStandardOperations;
@@ -80,7 +80,7 @@ class InspectionServiceTest {
         var response = inspectionService.saveResult(dto);
 
         assertThat(response.getInspectionId()).isEqualTo(13L);
-        verifyNoInteractions(machineRepository, masterDataLookup, lotRepository);
+        verifyNoInteractions(machineRegistry, masterDataLookup, lotRepository);
     }
 
     @Test
@@ -116,7 +116,7 @@ class InspectionServiceTest {
 
         when(inspectionRepository.findByEventId(dto.getEventId())).thenReturn(Optional.empty());
         when(lotRepository.findByLotNoForUpdate("LOT-070")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-TEST-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-TEST-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP70")).thenReturn(process);
         when(productionService.expectedInputQtyFor(lot, process)).thenReturn(1);
         when(inspectionStandardOperations.resolveSnapshot(lot, process, "CONTACT_RESISTANCE"))
@@ -182,7 +182,7 @@ class InspectionServiceTest {
         dto.setDefectCode("SPRING_MISSING_NG");
 
         when(lotRepository.findByLotNoForUpdate("LOT-040")).thenReturn(Optional.of(lot));
-        when(machineRepository.findById("EQ-ASSY-01")).thenReturn(Optional.of(machine));
+        when(machineRegistry.getRequiredMachine("EQ-ASSY-01")).thenReturn(machine);
         when(masterDataLookup.getRequiredProcess("OP40_OP50")).thenReturn(process);
         when(productionService.expectedInputQtyFor(lot, process)).thenReturn(2);
         InspectionUnitResult persisted = InspectionUnitResult.builder()

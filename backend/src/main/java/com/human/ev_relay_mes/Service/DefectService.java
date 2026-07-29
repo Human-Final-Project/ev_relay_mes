@@ -6,13 +6,13 @@ import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.DefectCode;
 import com.human.ev_relay_mes.Entity.DefectHistory;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.DefectHistoryRepository;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -28,7 +28,7 @@ import java.util.List;
 public class DefectService {
 
     private final DefectHistoryRepository defectHistoryRepository;
-    private final MachineRepository machineRepository;
+    private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
 
@@ -48,8 +48,7 @@ public class DefectService {
             throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
                     "폐기된 LOT에는 불량을 등록할 수 없습니다.");
         }
-        Machine machine = machineRepository.findById(dto.getMachineId())
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         DefectCode defectCode = masterDataLookup.getRequiredDefectCode(dto.getDefectCode());
         validateRelations(machine, process, defectCode);

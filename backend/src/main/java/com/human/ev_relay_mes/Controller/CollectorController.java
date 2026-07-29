@@ -2,23 +2,23 @@ package com.human.ev_relay_mes.Controller;
 
 import com.human.ev_relay_mes.Dto.Request.DefectHistoryCreateRequestDto;
 import com.human.ev_relay_mes.Dto.Request.InspectionResultReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Request.MachineAlarmReceiveRequestDto;
-import com.human.ev_relay_mes.Dto.Request.MachineStatusReceiveRequestDto;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
+import com.human.ev_relay_mes.feature.machine.api.MachineStatusReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Dto.Request.UnitJudgmentReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.DefectHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionResponseDto;
-import com.human.ev_relay_mes.Dto.Response.MachineAlarmResponseDto;
-import com.human.ev_relay_mes.Dto.Response.MachineStatusHistoryResponseDto;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmResponseDto;
+import com.human.ev_relay_mes.feature.machine.api.MachineStatusHistoryResponseDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Dto.Response.InspectionUnitResultResponseDto;
 import com.human.ev_relay_mes.Service.CollectorStatusService;
 import com.human.ev_relay_mes.Service.DefectService;
 import com.human.ev_relay_mes.Service.InspectionService;
-import com.human.ev_relay_mes.Service.MachineAlarmService;
-import com.human.ev_relay_mes.Service.MachineService;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
+import com.human.ev_relay_mes.feature.machine.api.MachineMonitoring;
 import com.human.ev_relay_mes.Service.ProductionService;
 import com.human.ev_relay_mes.Service.WorkCommandService;
 import jakarta.validation.Valid;
@@ -39,8 +39,8 @@ public class CollectorController {
     private final ProductionService productionService;
     private final InspectionService inspectionService;
     private final DefectService defectService;
-    private final MachineService machineService;
-    private final MachineAlarmService machineAlarmService;
+    private final MachineMonitoring machineMonitoring;
+    private final MachineAlarmOperations machineAlarmOperations;
     private final WorkCommandService workCommandService;
     private final CollectorStatusService collectorStatusService;
 
@@ -80,13 +80,13 @@ public class CollectorController {
     @PostMapping("/machine-statuses")
     public ResponseEntity<MachineStatusHistoryResponseDto> receiveMachineStatus(
             @Valid @RequestBody MachineStatusReceiveRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(machineService.updateStatus(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(machineMonitoring.updateStatus(dto));
     }
 
     @PostMapping("/machine-alarms")
     public ResponseEntity<MachineAlarmResponseDto> receiveAlarm(
             @Valid @RequestBody MachineAlarmReceiveRequestDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(machineAlarmService.createAlarm(dto));
+        return ResponseEntity.status(HttpStatus.CREATED).body(machineAlarmOperations.createAlarm(dto));
     }
 
     @GetMapping("/commands/pending")

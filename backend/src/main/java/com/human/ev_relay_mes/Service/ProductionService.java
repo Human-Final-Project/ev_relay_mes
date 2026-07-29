@@ -4,14 +4,14 @@ import com.human.ev_relay_mes.Dto.Request.ProductionLogSearchRequestDto;
 import com.human.ev_relay_mes.Dto.Request.ProductionResultReceiveRequestDto;
 import com.human.ev_relay_mes.Dto.Response.ProductionLogResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.ProductionLog;
 import com.human.ev_relay_mes.Entity.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.LotRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +34,7 @@ public class ProductionService {
     private static final String INSPECTION_PROCESS = "OP70";
 
     private final ProductionLogRepository productionLogRepository;
-    private final MachineRepository machineRepository;
+    private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
     private final WorkCommandService workCommandService;
@@ -67,8 +67,7 @@ public class ProductionService {
         }
 
         validateLot(lot, dto.getProcessCode());
-        Machine machine = machineRepository.findById(dto.getMachineId())
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
         Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
         validateMachineAndProcess(machine, process);
 

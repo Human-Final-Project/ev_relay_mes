@@ -3,13 +3,13 @@ package com.human.ev_relay_mes.Service;
 import com.human.ev_relay_mes.Dto.Request.WorkCommandAckRequestDto;
 import com.human.ev_relay_mes.Dto.Response.WorkCommandResponseDto;
 import com.human.ev_relay_mes.Entity.Lot;
-import com.human.ev_relay_mes.Entity.Machine;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.Entity.WorkCommand;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.Repository.InspectionUnitResultRepository;
-import com.human.ev_relay_mes.Repository.MachineRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.Repository.ProductionLogRepository;
@@ -53,7 +53,7 @@ public class WorkCommandService {
             WorkCommand.Status.ACCEPTED);
 
     private final WorkCommandRepository workCommandRepository;
-    private final MachineRepository machineRepository;
+    private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final ProductionLogRepository productionLogRepository;
     private final InspectionUnitResultRepository inspectionUnitResultRepository;
@@ -200,8 +200,7 @@ public class WorkCommandService {
     @Transactional
     public Optional<WorkCommandResponseDto> createResumeCommand(
             String machineId, String lotNo, String processCode) {
-        Machine lockedMachine = machineRepository.findByIdForUpdate(machineId)
-                .orElseThrow(() -> new CustomException(ErrorCode.MACHINE_NOT_FOUND));
+        Machine lockedMachine = machineRegistry.getRequiredMachineForUpdate(machineId);
 
         WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
         if (interrupted == null || interrupted.getLot().getStatus() != Lot.Status.HOLD) {
@@ -460,7 +459,7 @@ public class WorkCommandService {
     }
 
     private Optional<Machine> findAvailableMachineForUpdate(String processCode) {
-        return machineRepository.findUsableByProcessForUpdate(processCode).stream()
+        return machineRegistry.getUsableMachinesForUpdate(processCode).stream()
                 .filter(machine -> machine.getStatus() == Machine.Status.IDLE)
                 .filter(machine -> !workCommandRepository.existsByMachine_MachineIdAndStatusIn(
                         machine.getMachineId(), ACTIVE_STATUSES))
