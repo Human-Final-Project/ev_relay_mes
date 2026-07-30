@@ -1,11 +1,13 @@
 import React from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import NotificationBell from "../components/NotificationBell";
 
 const TITLES = {
   "/dashboard": "대시보드", "/work-orders": "작업지시", "/lots": "LOT 추적",
   "/production": "생산 모니터링", "/production-results": "생산 실적", "/alarms": "설비 알람", "/quality": "품질 관리", "/materials": "원자재 관리",
   "/master-data": "기준정보", "/workers": "작업자 배정", "/members": "사용자 관리",
   "/account": "내 계정",
+  "/notifications": "알림 이력",
 };
 
 export default function Header({ currentTime, onLogout, currentUser }) {
@@ -20,6 +22,7 @@ export default function Header({ currentTime, onLogout, currentUser }) {
       <span className="header-separator"/>
       <span className="current-time">{currentTime}</span>
       <span className="header-separator"/>
+      <NotificationBell/>
       <Link to="/account" className="profile-link"><span className="profile-avatar"><span className="material-symbols-outlined">person</span></span><span className="profile-copy"><strong>{currentUser?.memberName || currentUser?.loginId}</strong><span>{roleLabel}</span></span></Link>
       <button type="button" onClick={logout} className="icon-button" title="로그아웃"><span className="material-symbols-outlined">logout</span></button>
     </div>

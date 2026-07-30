@@ -16,6 +16,7 @@ import WorkerAssignmentPage from "./pages/WorkerAssignmentPage";
 import AdminEmployeePage from "./pages/AdminEmployeePage";
 import AccountPage from "./pages/AccountPage";
 import NoticePage from "./pages/NoticePage";
+import NotificationPage from "./pages/NotificationPage";
 
 function App() {
   const [currentUser,setCurrentUser]=useState(null); const [checking,setChecking]=useState(true);
@@ -26,7 +27,7 @@ function App() {
   return <BrowserRouter><Routes>
     <Route path="/login" element={<LoginRoute currentUser={currentUser} onLoginSuccess={setCurrentUser}/>}/>
     <Route element={<ProtectedLayout currentUser={currentUser} onLogout={logout}/>}>
-      <Route path="/dashboard" element={<DashboardPage/>}/>
+      <Route path="/dashboard" element={<DashboardPage currentUser={currentUser}/>}/>
       <Route path="/work-orders" element={<WorkOrderPage currentUser={currentUser}/>}/>
       <Route path="/lots" element={<LotPage currentUser={currentUser}/>}/>
       <Route path="/production" element={<ProductionPage currentUser={currentUser}/>}/>
@@ -39,6 +40,7 @@ function App() {
       <Route path="/members" element={currentUser?.role==="ADMIN"?<AdminEmployeePage/>:<Navigate to="/dashboard" replace/>}/>
       <Route path="/account" element={<AccountPage currentUser={currentUser} onLoggedOut={()=>setCurrentUser(null)}/>}/>
       <Route path="/notices" element={<NoticePage currentUser={currentUser}/>}/>
+      <Route path="/notifications" element={<NotificationPage/>}/>
     </Route>
     <Route path="/" element={<Navigate to={currentUser?"/dashboard":"/login"} replace/>}/>
     <Route path="*" element={<Navigate to="/" replace/>}/>

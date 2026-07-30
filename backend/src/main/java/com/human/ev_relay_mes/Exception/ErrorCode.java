@@ -123,6 +123,9 @@ public enum ErrorCode {
     RESPONSIBLE_ACCOUNT_REQUIRED(HttpStatus.CONFLICT, "WK007", "책임자는 활성 사용자 계정과 연결된 작업자만 배정할 수 있습니다."),
     MACHINE_RESPONSIBLE_NOT_ASSIGNED(HttpStatus.CONFLICT, "WK008", "모든 설비에 책임자를 배정한 뒤 생산을 시작해야 합니다."),
 
+    // Notification
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "N001", "알림을 찾을 수 없습니다."),
+
     // Defect
     DEFECT_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "D001", "불량 코드를 찾을 수 없습니다."),
     DUPLICATE_DEFECT_CODE(HttpStatus.CONFLICT, "D002", "이미 존재하는 불량 코드입니다."),

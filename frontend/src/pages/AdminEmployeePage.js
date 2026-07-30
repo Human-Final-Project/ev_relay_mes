@@ -1,7 +1,16 @@
 import React, { useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
+
+const MEMBER_SORTERS = {
+  identity: (row) => `${row.loginId} ${row.memberName}`,
+  organization: (row) => `${row.department || ""} ${row.position || ""}`,
+  role: (row) => row.role,
+  status: (row) => row.status,
+  creator: (row) => row.createdByName,
+  updatedAt: (row) => row.updatedAt,
+};
 
 const roleOptions = [
   { value: "ADMIN", label: "ADMIN (관리자)" },
@@ -26,6 +35,7 @@ const emptyMember = {
 
 export default function AdminEmployeePage() {
   const result = useApiData(MesApi.getMembers, []);
+  const members = useSortableRows(result.data || [], MEMBER_SORTERS);
   const [form, setForm] = useState(null);
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -68,6 +78,7 @@ export default function AdminEmployeePage() {
 
   const invalid = !form
     || (!form.memberId && (!form.loginId.trim() || !form.password || !form.memberName.trim()))
+    || (!form.memberId && form.role === "OPERATOR" && !/^EVR\d{8}$/.test(form.loginId))
     || !form.role
     || !form.status;
 
@@ -81,8 +92,16 @@ export default function AdminEmployeePage() {
     {error && <ErrorState error={error}/>} 
     {result.loading ? <LoadingState/> : result.error ? <ErrorState error={result.error} onRetry={result.reload}/> : !(result.data || []).length ? <EmptyState/> :
       <div className="mes-table-wrap"><table className="mes-table">
-        <thead><tr><th>로그인 ID/이름</th><th>부서/직급</th><th>역할</th><th>상태</th><th>생성자</th><th>수정 시각</th><th>작업</th></tr></thead>
-        <tbody>{result.data.map((member) => <tr key={member.memberId}>
+        <thead><tr>
+          <SortableTh label="로그인 ID/이름" sortKey="identity" {...members}/>
+          <SortableTh label="부서/직급" sortKey="organization" {...members}/>
+          <SortableTh label="역할" sortKey="role" {...members}/>
+          <SortableTh label="상태" sortKey="status" {...members}/>
+          <SortableTh label="생성자" sortKey="creator" {...members}/>
+          <SortableTh label="수정 시각" sortKey="updatedAt" {...members}/>
+          <th>작업</th>
+        </tr></thead>
+        <tbody>{members.rows.map((member) => <tr key={member.memberId}>
           <td><span className="mono">{member.loginId}</span><br/><strong>{member.memberName}</strong></td>
           <td>{member.department || "-"}<br/><small>{member.position || "-"}</small></td>
           <td><StatusBadge value={member.role}/></td>
@@ -104,7 +123,19 @@ export default function AdminEmployeePage() {
     >
       <div className="mes-form-grid">
         {!form.memberId && <>
-          <Field label="로그인 ID"><input value={form.loginId} onChange={(e) => setForm({ ...form, loginId: e.target.value })}/></Field>
+          <Field label={form.role === "OPERATOR" ? "사번 / 로그인 ID" : "로그인 ID"}>
+            <input
+              value={form.loginId}
+              maxLength={form.role === "OPERATOR" ? 11 : 50}
+              placeholder={form.role === "OPERATOR" ? "EVR00000001" : "관리자 로그인 ID"}
+              onChange={(e) => setForm({
+                ...form,
+                loginId: form.role === "OPERATOR"
+                  ? e.target.value.toUpperCase()
+                  : e.target.value,
+              })}
+            />
+          </Field>
           <Field label="초기 비밀번호"><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}/></Field>
           <Field label="이름"><input value={form.memberName} onChange={(e) => setForm({ ...form, memberName: e.target.value })}/></Field>
         </>}
@@ -115,6 +146,8 @@ export default function AdminEmployeePage() {
             {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
           </select>
         </Field>
+        {!form.memberId && form.role === "OPERATOR" &&
+          <p className="form-hint">사번은 EVR + 숫자 8자리로 입력합니다.</p>}
         <Field label="상태">
           <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })}>
             {statusOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}

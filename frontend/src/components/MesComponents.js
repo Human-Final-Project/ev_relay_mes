@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 
 const LABELS = {
   IDLE: "대기", RUNNING: "가동 중", ERROR: "이상", STOPPED: "정지",
@@ -10,6 +10,7 @@ const LABELS = {
   OK: "OK", NG: "NG", INITIAL: "최초", SUPPLEMENT: "보충",
   ADMIN: "관리자", MANAGER: "매니저", OPERATOR: "운영자", VIEWER: "운영자",
   RESPONSIBLE: "책임자", WORKER: "일반 작업자", ACCOUNT: "계정 연동", FIELD: "현장 등록",
+  RESOLVED: "해결됨",
   RM: "원자재", SA: "반제품", FG: "완제품", INFO: "정보", WARN: "경고", WARNING: "경고", CRITICAL: "심각",
 };
 
@@ -50,4 +51,77 @@ export function Modal({ title, children, onClose, footer }) {
 
 export function Field({ label, children }) {
   return <label className="mes-field"><span>{label}</span>{children}</label>;
+}
+
+function normalizeSortValue(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (value instanceof Date) return value.getTime();
+  if (React.isValidElement(value)) {
+    if (value.props.value !== undefined) return normalizeSortValue(value.props.value);
+    return normalizeSortValue(value.props.children);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeSortValue(item)).filter((item) => item !== null).join(" ");
+  }
+  return String(value).trim();
+}
+
+function compareSortValues(left, right) {
+  const a = normalizeSortValue(left);
+  const b = normalizeSortValue(right);
+  if (a === null && b === null) return 0;
+  if (a === null) return 1;
+  if (b === null) return -1;
+  if (typeof a === "number" && typeof b === "number") return a - b;
+  return String(a).localeCompare(String(b), "ko", { numeric: true, sensitivity: "base" });
+}
+
+export function useSortableRows(rows = [], accessors = {}) {
+  const [sort, setSort] = useState({ key: null, direction: "asc" });
+  const sortedRows = useMemo(() => {
+    if (!sort.key || !accessors[sort.key]) return rows;
+    const accessor = accessors[sort.key];
+    return [...rows]
+      .map((row, index) => ({ row, index }))
+      .sort((left, right) => {
+        const leftValue = normalizeSortValue(accessor(left.row));
+        const rightValue = normalizeSortValue(accessor(right.row));
+        if (leftValue === null && rightValue === null) return left.index - right.index;
+        if (leftValue === null) return 1;
+        if (rightValue === null) return -1;
+        const result = compareSortValues(leftValue, rightValue);
+        return (sort.direction === "asc" ? result : -result) || left.index - right.index;
+      })
+      .map(({ row }) => row);
+  }, [rows, accessors, sort]);
+
+  const toggleSort = (key) => setSort((current) => ({
+    key,
+    direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+  }));
+
+  return { rows: sortedRows, sort, onSort: toggleSort };
+}
+
+export function SortableTh({ label, sortKey, sort, onSort, className }) {
+  const active = sort.key === sortKey;
+  const direction = active ? sort.direction : null;
+  return <th
+    className={className}
+    aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}
+  >
+    <button
+      type="button"
+      className={`mes-sort-button ${active ? "active" : ""}`}
+      onClick={() => onSort(sortKey)}
+      title={`${label} 기준 정렬`}
+    >
+      <span>{label}</span>
+      <span className="material-symbols-outlined" aria-hidden="true">
+        {active ? (direction === "asc" ? "arrow_upward" : "arrow_downward") : "unfold_more"}
+      </span>
+    </button>
+  </th>;
 }

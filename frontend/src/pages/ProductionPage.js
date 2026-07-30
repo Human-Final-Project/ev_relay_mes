@@ -1,10 +1,19 @@
 import React, { useEffect, useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, LoadingState, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
 
 const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
 const sequentialProcessCodes = ["OP40_OP50", "OP60", "OP70", "OP80"];
+const PIPELINE_SORTERS = {
+  order: (row) => row.orderNo,
+  lot: (row) => row.lotNo,
+  process: (row) => row.currentProcessCode,
+  type: (row) => `${row.lotType || ""} ${row.productionRound || ""}`,
+  input: (row) => row.inputQty,
+  status: (row) => row.status,
+  startedAt: (row) => row.startedAt,
+};
 
 export default function ProductionPage() {
   const machines = useApiData(MesApi.getMachines, []);
@@ -15,6 +24,7 @@ export default function ProductionPage() {
   const [updatedAt, setUpdatedAt] = useState(new Date());
   const reloadMachines = machines.reload;
   const reloadPipelineLots = pipelineLots.reload;
+  const sortedPipelineLots = useSortableRows(pipelineLots.data || [], PIPELINE_SORTERS);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -118,8 +128,16 @@ export default function ProductionPage() {
           <div className="pipeline-heading"><div><h2>파이프라인 LOT 현황</h2><p>현재 생산 중이거나 설비 복구를 기다리는 LOT입니다.</p></div><strong>{(pipelineLots.data || []).length}개 진행</strong></div>
           {!(pipelineLots.data || []).length ? <EmptyState message="현재 파이프라인에 투입된 LOT이 없습니다."/> :
             <div className="mes-table-wrap"><table className="mes-table pipeline-table">
-              <thead><tr><th>작업지시</th><th>LOT</th><th>현재 공정</th><th>구분</th><th>투입</th><th>상태</th><th>시작</th></tr></thead>
-              <tbody>{pipelineLots.data.map((lot) => <tr key={lot.lotId}>
+              <thead><tr>
+                <SortableTh label="작업지시" sortKey="order" {...sortedPipelineLots}/>
+                <SortableTh label="LOT" sortKey="lot" {...sortedPipelineLots}/>
+                <SortableTh label="현재 공정" sortKey="process" {...sortedPipelineLots}/>
+                <SortableTh label="구분" sortKey="type" {...sortedPipelineLots}/>
+                <SortableTh label="투입" sortKey="input" {...sortedPipelineLots}/>
+                <SortableTh label="상태" sortKey="status" {...sortedPipelineLots}/>
+                <SortableTh label="시작" sortKey="startedAt" {...sortedPipelineLots}/>
+              </tr></thead>
+              <tbody>{sortedPipelineLots.rows.map((lot) => <tr key={lot.lotId}>
                 <td>{lot.orderNo}<br/><small>WO #{lot.workOrderId}</small></td>
                 <td className="mono">{lot.lotNo}</td>
                 <td><strong>{lot.currentProcessCode || "-"}</strong><br/><small>{lot.currentProcessName || "공정 대기"}</small></td>

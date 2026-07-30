@@ -1,7 +1,22 @@
 import React, { useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
+
+const MATERIAL_LOT_SORTERS = {
+  lot: (row) => row.materialLotNo,
+  item: (row) => `${row.itemName || ""} ${row.itemCode || ""}`,
+  received: (row) => row.receivedQty,
+  remaining: (row) => row.currentQty,
+  status: (row) => row.status,
+  receivedAt: (row) => row.receivedAt,
+};
+const ITEM_SORTERS = {
+  code: (row) => row.itemCode,
+  name: (row) => row.itemName,
+  type: (row) => row.itemType,
+  active: (row) => row.useYn,
+};
 
 export default function MaterialPage({ currentUser }) {
   const [tab, setTab] = useState("lots");
@@ -127,10 +142,18 @@ export default function MaterialPage({ currentUser }) {
 }
 
 function MaterialLotTable({ rows = [] }) {
+  const sorted = useSortableRows(rows, MATERIAL_LOT_SORTERS);
   if (!rows.length) return <EmptyState/>;
   return <div className="mes-table-wrap"><table className="mes-table">
-    <thead><tr><th>원자재 LOT</th><th>품목</th><th>입고 수량</th><th>잔여 수량</th><th>상태</th><th>입고 처리</th></tr></thead>
-    <tbody>{rows.map((row) => <tr key={row.materialLotId}>
+    <thead><tr>
+      <SortableTh label="원자재 LOT" sortKey="lot" {...sorted}/>
+      <SortableTh label="품목" sortKey="item" {...sorted}/>
+      <SortableTh label="입고 수량" sortKey="received" {...sorted}/>
+      <SortableTh label="잔여 수량" sortKey="remaining" {...sorted}/>
+      <SortableTh label="상태" sortKey="status" {...sorted}/>
+      <SortableTh label="입고 처리" sortKey="receivedAt" {...sorted}/>
+    </tr></thead>
+    <tbody>{sorted.rows.map((row) => <tr key={row.materialLotId}>
       <td><strong>{row.materialLotNo}</strong><br/><span className="mono">#{row.materialLotId}</span></td>
       <td>{row.itemName}<br/><span className="mono">{row.itemCode}</span></td>
       <td>{row.receivedQty}</td><td>{row.currentQty}</td><td><StatusBadge value={row.status}/></td><td>{row.receivedBy}<br/>{formatDate(row.receivedAt)}</td>
@@ -139,10 +162,17 @@ function MaterialLotTable({ rows = [] }) {
 }
 
 function ItemTable({ rows = [], canEdit, onEdit, onActive }) {
+  const sorted = useSortableRows(rows, ITEM_SORTERS);
   if (!rows.length) return <EmptyState/>;
   return <div className="mes-table-wrap"><table className="mes-table">
-    <thead><tr><th>품목 코드</th><th>품목명</th><th>유형</th><th>사용 여부</th><th>작업</th></tr></thead>
-    <tbody>{rows.map((row) => <tr key={row.itemCode}>
+    <thead><tr>
+      <SortableTh label="품목 코드" sortKey="code" {...sorted}/>
+      <SortableTh label="품목명" sortKey="name" {...sorted}/>
+      <SortableTh label="유형" sortKey="type" {...sorted}/>
+      <SortableTh label="사용 여부" sortKey="active" {...sorted}/>
+      <th>작업</th>
+    </tr></thead>
+    <tbody>{sorted.rows.map((row) => <tr key={row.itemCode}>
       <td className="mono">{row.itemCode}</td><td>{row.itemName}</td><td><StatusBadge value={row.itemType}/></td><td>{row.useYn}</td>
       <td>{canEdit && <div className="mes-actions"><button className="btn small secondary" onClick={() => onEdit(row)}>수정</button><button className="btn small secondary" onClick={() => onActive(row, row.useYn !== "Y")}>{row.useYn === "Y" ? "비활성" : "활성"}</button></div>}</td>
     </tr>)}</tbody>

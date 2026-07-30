@@ -21,12 +21,15 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class WorkerService implements WorkforceMemberLinkOperations {
 
+    private static final java.util.regex.Pattern EMPLOYEE_NO =
+            java.util.regex.Pattern.compile("EVR\\d{8}");
     private final WorkerRepository workerRepository;
     private final MachineWorkerAssignmentRepository assignmentRepository;
 
     @Transactional
     public WorkerResponseDto create(WorkerRequestDto dto) {
         String workerNo = dto.getWorkerNo().trim();
+        validateWorkerNo(workerNo);
         if (workerRepository.existsByWorkerNo(workerNo)) {
             throw new CustomException(ErrorCode.WORKER_NO_DUPLICATED);
         }
@@ -55,6 +58,7 @@ public class WorkerService implements WorkforceMemberLinkOperations {
     public WorkerResponseDto update(Long workerId, WorkerRequestDto dto) {
         Worker worker = findWorker(workerId);
         String workerNo = dto.getWorkerNo().trim();
+        validateWorkerNo(workerNo);
         if (workerRepository.existsByWorkerNoAndWorkerIdNot(workerNo, workerId)) {
             throw new CustomException(ErrorCode.WORKER_NO_DUPLICATED);
         }
@@ -142,6 +146,14 @@ public class WorkerService implements WorkforceMemberLinkOperations {
                 Worker.Status.class,
                 status,
                 ErrorCode.INVALID_WORKER_STATUS);
+    }
+
+    private void validateWorkerNo(String workerNo) {
+        if (!EMPLOYEE_NO.matcher(workerNo).matches()) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "사번은 EVR과 숫자 8자리 형식이어야 합니다. 예: EVR00000001");
+        }
     }
 
     private String normalize(String value) {

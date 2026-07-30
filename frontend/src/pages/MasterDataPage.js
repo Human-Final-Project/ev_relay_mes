@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, SortableTh, useSortableRows } from "../components/MesComponents";
 
 export default function MasterDataPage({ currentUser }) {
   const [tab, setTab] = useState("boms");
@@ -126,6 +126,14 @@ function itemLabel(item) {
 }
 
 function SimpleTable({ heads, rows = [] }) {
+  const accessors = Object.fromEntries(
+    heads.flatMap((head, index) => head && head !== "작업" ? [[String(index), (row) => row[index]]] : [])
+  );
+  const sorted = useSortableRows(rows, accessors);
   if (!rows.length) return <EmptyState/>;
-  return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map((head) => <th key={head}>{head}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={index}>{row.map((value, cellIndex) => <td key={cellIndex}>{value}</td>)}</tr>)}</tbody></table></div>;
+  return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map((head, index) =>
+    accessors[String(index)]
+      ? <SortableTh key={head} label={head} sortKey={String(index)} {...sorted}/>
+      : <th key={head || index}>{head}</th>
+  )}</tr></thead><tbody>{sorted.rows.map((row, index) => <tr key={index}>{row.map((value, cellIndex) => <td key={cellIndex}>{value}</td>)}</tr>)}</tbody></table></div>;
 }

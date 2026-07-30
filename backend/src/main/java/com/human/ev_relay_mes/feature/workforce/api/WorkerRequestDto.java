@@ -14,6 +14,9 @@ public class WorkerRequestDto {
 
     @NotBlank
     @Size(max = 30)
+    @Pattern(
+            regexp = "EVR\\d{8}",
+            message = "사번은 EVR과 숫자 8자리 형식이어야 합니다. 예: EVR00000001")
     private String workerNo;
 
     @NotBlank

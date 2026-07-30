@@ -15,6 +15,26 @@ test("removes empty production search parameters",async()=>{
   expect(httpClient.get).toHaveBeenCalledWith("/api/production-logs",{params:{lotNo:"LOT-001"}});
 });
 
+test("loads and saves a separately configured weekly production target", async () => {
+  httpClient.get.mockResolvedValue({data:{}});
+  httpClient.request.mockResolvedValue({data:{}});
+
+  await MesApi.getWeeklyProductionTarget("2026-07-27");
+  expect(httpClient.get).toHaveBeenCalledWith(
+    "/api/dashboard/weekly-target",
+    {params:{weekStart:"2026-07-27"}},
+  );
+
+  const target = {targetQty:1000, targetDefectRate:3};
+  await MesApi.saveWeeklyProductionTarget("2026-07-27", target);
+  expect(httpClient.request).toHaveBeenCalledWith({
+    method:"put",
+    url:"/api/dashboard/weekly-target",
+    data:target,
+    params:{weekStart:"2026-07-27"},
+  });
+});
+
 
 test("releases a work order and starts automatic LOT production",async()=>{
   httpClient.request.mockResolvedValue({status:200});
@@ -56,6 +76,16 @@ test("updates a notice through the administrator endpoint",async()=>{
   const notice={title:"수정 공지",content:"수정 내용",pinned:false};
   await MesApi.updateNotice(3,notice);
   expect(httpClient.request).toHaveBeenCalledWith({method:"put",url:"/api/notices/3",data:notice});
+});
+
+test("marks a notification as read through the authenticated endpoint", async () => {
+  httpClient.request.mockResolvedValue({status:200});
+  await MesApi.markNotificationRead(9);
+  expect(httpClient.request).toHaveBeenCalledWith({
+    method:"patch",
+    url:"/api/notifications/9/read",
+    data:undefined,
+  });
 });
 
 test("returns only running and held lots in pipeline FIFO order",async()=>{

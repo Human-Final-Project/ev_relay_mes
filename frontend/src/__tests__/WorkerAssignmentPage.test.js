@@ -24,6 +24,7 @@ test("작업자 등록은 부서와 직급을 필수로 입력한다", async () 
   render(<WorkerAssignmentPage currentUser={{ role: "ADMIN" }}/>);
 
   fireEvent.click(await screen.findByRole("button", { name: "일반 작업자 등록" }));
+  expect(screen.getByLabelText("사번")).toHaveAttribute("placeholder", "EVR00000001");
   expect(screen.getByLabelText("부서 (필수)")).toBeInTheDocument();
   expect(screen.getByLabelText("직급 (필수)")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "저장" })).toBeDisabled();

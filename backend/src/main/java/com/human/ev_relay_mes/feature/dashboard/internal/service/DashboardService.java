@@ -15,6 +15,7 @@ import com.human.ev_relay_mes.feature.dashboard.api.DashboardSummary.WorkOrderSu
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
+import com.human.ev_relay_mes.feature.material.api.MaterialStockThreshold;
 import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import lombok.RequiredArgsConstructor;
@@ -32,7 +33,7 @@ import java.util.Map;
 @Transactional(readOnly = true)
 public class DashboardService implements DashboardQuery {
 
-    private static final int LOW_STOCK_THRESHOLD = 100;
+    private static final int LOW_STOCK_THRESHOLD = MaterialStockThreshold.LOW_STOCK;
 
     private final ProductionData productionData;
     private final MachineRegistry machineRegistry;

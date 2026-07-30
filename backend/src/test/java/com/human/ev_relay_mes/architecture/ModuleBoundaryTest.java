@@ -23,6 +23,7 @@ class ModuleBoundaryTest {
     private static final Set<String> PLANNED_MODULES = Set.of(
             "auth",
             "notice",
+            "notification",
             "masterdata",
             "material",
             "workforce",

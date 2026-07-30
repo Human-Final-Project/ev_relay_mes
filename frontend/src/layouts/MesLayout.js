@@ -112,35 +112,41 @@ const layoutStyles = `
   .mesdash .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
   
 
-  /* 🔔 알림 버튼 및 드롭다운 토글 기능용 전역 스타일 디자인 추가 */
-  .mesdash .user-actions button { position: relative; }
-  .mesdash .user-actions button .notification-badge {
-    position: absolute; top: 2px; right: 2px; width: 6px; height: 6px;
-    background-color: var(--error); border-radius: 50%;
-  }
+  .mesdash .notification-center { position:relative; }
+  .mesdash .notification-button { position:relative; width:36px; height:36px; border:1px solid #dfe6ee; border-radius:10px; background:#fff; color:#50647f; }
+  .mesdash .notification-button:hover { color:#2563eb; background:#f2f6fb; }
+  .mesdash .notification-button .material-symbols-outlined { font-size:21px; }
+  .mesdash .notification-dot { position:absolute; top:6px; right:7px; width:8px; height:8px; border:2px solid #fff; border-radius:50%; background:#dc2626; box-shadow:0 0 0 1px rgba(220,38,38,.16); }
   .mesdash .noti-dropdown {
-    position: absolute; top: 50px; right: 0; width: 320px; max-height: 400px;
-    background-color: var(--surface-container-lowest); border: 1px solid var(--outline-variant);
-    border-radius: 8px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); z-index: 100; overflow-y: auto;
+    position:absolute; top:44px; right:0; width:min(380px,calc(100vw - 24px)); max-height:480px;
+    background:#fff; border:1px solid #dbe4ee;
+    border-radius:13px; box-shadow:0 18px 48px rgba(15,35,64,.2); z-index:100; overflow:hidden;
   }
   .mesdash .noti-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: var(--sm) var(--md); border-bottom: 1px solid var(--outline-variant);
-    font-size: 13px; font-weight: 700; background-color: var(--surface-container-low);
+    display:flex; justify-content:space-between; align-items:center;
+    padding:13px 15px; border-bottom:1px solid #e4eaf1;
+    font-size:13px; font-weight:700; background:#f7f9fc;
   }
-  .mesdash .noti-count { font-size: 11px; color: var(--outline); font-weight: normal; }
-  .mesdash .noti-list { display: flex; flex-direction: column; }
-  .mesdash .noti-item { padding: var(--md); border-bottom: 1px solid rgba(197, 198, 205, 0.2); border-left: 4px solid transparent; text-align: left; }
-  .mesdash .noti-item.info { border-left-color: var(--primary); background-color: rgba(5, 102, 217, 0.02); }
-  .mesdash .noti-item.warn { border-left-color: #b78103; background-color: rgba(183, 129, 3, 0.02); }
-  .mesdash .noti-item.error { border-left-color: var(--error); background-color: rgba(186, 26, 26, 0.04); }
-  .mesdash .noti-item-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
-  .mesdash .noti-title { font-size: 13px; font-weight: 700; }
+  .mesdash .noti-header>div { display:flex; align-items:center; gap:8px; }
+  .mesdash .noti-header button { border:0; background:transparent; color:#2563eb; font-size:10px; font-weight:800; cursor:pointer; }
+  .mesdash .noti-count { padding:3px 6px; border-radius:999px; color:#dc2626; background:#fee2e2; font-size:9px; font-weight:800; }
+  .mesdash .noti-list { max-height:350px; display:flex; flex-direction:column; overflow-y:auto; }
+  .mesdash .noti-item { width:100%; display:grid; gap:5px; padding:12px 14px; border:0; border-bottom:1px solid #edf1f5; border-left:4px solid transparent; background:#fff; color:inherit; text-align:left; cursor:pointer; }
+  .mesdash .noti-item:hover { background:#f7faff; }
+  .mesdash .noti-item.read { opacity:.72; }
+  .mesdash .noti-item.info { border-left-color:var(--primary); }
+  .mesdash .noti-item.warn { border-left-color:#d97706; }
+  .mesdash .noti-item.error { border-left-color:var(--error); background:#fffafa; }
+  .mesdash .noti-item-header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .mesdash .noti-title { overflow:hidden; font-size:12px; font-weight:800; text-overflow:ellipsis; white-space:nowrap; }
   .mesdash .noti-item.info .noti-title { color: var(--primary); }
   .mesdash .noti-item.warn .noti-title { color: #b78103; }
   .mesdash .noti-item.error .noti-title { color: var(--error); }
-  .mesdash .noti-time { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--outline); }
-  .mesdash .noti-desc { margin: 0; font-size: 12px; color: var(--on-surface-variant); line-height: 1.4; }
+  .mesdash .noti-unread-dot { width:7px; height:7px; flex:0 0 7px; border-radius:50%; background:#dc2626; }
+  .mesdash .noti-time { color:#8795a8; font-family:"JetBrains Mono",monospace; font-size:8px; }
+  .mesdash .noti-desc { display:block; overflow:hidden; color:#52677f; font-size:10px; line-height:1.4; text-overflow:ellipsis; white-space:nowrap; }
+  .mesdash .noti-empty { padding:36px 16px; color:#7890aa; font-size:11px; text-align:center; }
+  .mesdash .noti-all-link { display:block; padding:11px; border-top:1px solid #e4eaf1; color:#2563eb; background:#f8fafc; font-size:10px; font-weight:800; text-align:center; text-decoration:none; }
 
   @media(max-width:900px) {
     .mesdash .sidebar { width:76px; }

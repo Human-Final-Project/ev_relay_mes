@@ -1,7 +1,18 @@
 import React, { useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
+
+const ALARM_SORTERS = {
+  machine: (row) => `${row.machineName || ""} ${row.machineId || ""}`,
+  process: (row) => `${row.processName || row.processCode || ""} ${row.lotNo || ""}`,
+  alarm: (row) => `${row.alarmName || ""} ${row.alarmCode || ""}`,
+  level: (row) => row.alarmLevel,
+  occurredAt: (row) => row.occurredAt,
+  status: (row) => row.cleared,
+  clearedAt: (row) => row.clearedAt,
+  message: (row) => row.message,
+};
 
 const emptyFilters = {
   machineId: "",
@@ -20,6 +31,7 @@ export default function AlarmHistoryPage({ currentUser }) {
   const alarms = useApiData(() => MesApi.getMachineAlarms(applied), [JSON.stringify(applied)]);
   const machines = useApiData(MesApi.getMachines, []);
   const alarmCodes = useApiData(MesApi.getAlarmCodes, []);
+  const sortedAlarms = useSortableRows(alarms.data || [], ALARM_SORTERS);
   const canClear = ["ADMIN", "MANAGER", "OPERATOR"].includes(currentUser?.role);
 
   const applyFilters = () => {
@@ -97,8 +109,18 @@ export default function AlarmHistoryPage({ currentUser }) {
     <section className="mes-card">
       {loading ? <LoadingState/> : error ? <ErrorState error={error} onRetry={alarms.reload}/> : !(alarms.data || []).length ? <EmptyState/> :
         <div className="mes-table-wrap"><table className="mes-table">
-          <thead><tr><th>설비</th><th>공정/LOT</th><th>알람</th><th>레벨</th><th>발생 시각</th><th>상태</th><th>해제 시각</th><th>메시지</th><th></th></tr></thead>
-          <tbody>{alarms.data.map((alarm) => {
+          <thead><tr>
+            <SortableTh label="설비" sortKey="machine" {...sortedAlarms}/>
+            <SortableTh label="공정/LOT" sortKey="process" {...sortedAlarms}/>
+            <SortableTh label="알람" sortKey="alarm" {...sortedAlarms}/>
+            <SortableTh label="레벨" sortKey="level" {...sortedAlarms}/>
+            <SortableTh label="발생 시각" sortKey="occurredAt" {...sortedAlarms}/>
+            <SortableTh label="상태" sortKey="status" {...sortedAlarms}/>
+            <SortableTh label="해제 시각" sortKey="clearedAt" {...sortedAlarms}/>
+            <SortableTh label="메시지" sortKey="message" {...sortedAlarms}/>
+            <th>작업</th>
+          </tr></thead>
+          <tbody>{sortedAlarms.rows.map((alarm) => {
             const blocking = String(alarm.alarmLevel).toUpperCase() === "ERROR";
             return <tr key={alarm.machineAlarmHistoryId}>
               <td>{alarm.machineName}<br/><span className="mono">{alarm.machineId}</span></td>

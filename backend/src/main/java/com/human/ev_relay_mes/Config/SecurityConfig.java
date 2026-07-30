@@ -130,6 +130,8 @@ public class SecurityConfig {
                                 .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/machines/alarms/*/clear")
                                 .hasAnyRole("ADMIN", "MANAGER", "OPERATOR")
+                        .requestMatchers(HttpMethod.PATCH, "/api/notifications/**")
+                                .authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/workers/**")
                                 .hasAnyRole("ADMIN", "MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/**")

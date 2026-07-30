@@ -35,6 +35,26 @@ test("작업지시 제품을 활성 완제품 선택 목록으로 표시한다",
   expect(product).not.toHaveTextContent("FG-OLD");
 });
 
+test("submits the weekly target and planned schedule together", async () => {
+  render(<WorkOrderPage currentUser={{role:"MANAGER"}}/>);
+  const createButton = await screen.findByRole("button", {name:"작업지시 생성"});
+  await waitFor(() => expect(createButton).toBeEnabled());
+  fireEvent.click(createButton);
+
+  fireEvent.change(screen.getByLabelText("제품(코드)"), {target:{value:"FG-001"}});
+  fireEvent.change(screen.getByLabelText("목표 수량"), {target:{value:"120"}});
+  fireEvent.change(screen.getByLabelText("계획 시작"), {target:{value:"2026-07-27T08:00"}});
+  fireEvent.change(screen.getByLabelText("계획 종료"), {target:{value:"2026-07-31T18:00"}});
+  fireEvent.click(screen.getByRole("button", {name:"저장"}));
+
+  await waitFor(() => expect(MesApi.createWorkOrder).toHaveBeenCalledWith({
+    itemCode: "FG-001",
+    targetQty: 120,
+    plannedStartAt: "2026-07-27T08:00",
+    plannedEndAt: "2026-07-31T18:00",
+  }));
+});
+
 
 test("확정과 최초 LOT 자동 시작을 한 번에 요청한다",async()=>{
   MesApi.getWorkOrders.mockResolvedValue({data:[{

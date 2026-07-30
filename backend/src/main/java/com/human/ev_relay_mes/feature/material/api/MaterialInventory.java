@@ -23,4 +23,6 @@ public interface MaterialInventory {
     boolean tryConsumeMaterials(Lot productionLot);
 
     List<MaterialLot> getMaterialLotEntities();
+
+    long getAvailableQuantity(String itemCode);
 }

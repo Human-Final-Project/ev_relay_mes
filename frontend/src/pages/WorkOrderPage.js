@@ -1,9 +1,19 @@
 import React, { useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
 
-const emptyOrder = { itemCode: "", targetQty: "" };
+const emptyOrder = { itemCode: "", targetQty: "", plannedStartAt: "", plannedEndAt: "" };
+const ORDER_SORTERS = {
+  order: (row) => row.orderNo,
+  item: (row) => `${row.itemName || ""} ${row.itemCode || ""}`,
+  target: (row) => row.targetQty,
+  completed: (row) => row.completedOkQty,
+  remaining: (row) => row.remainingQty,
+  schedule: (row) => row.plannedEndAt || row.plannedStartAt,
+  status: (row) => row.status,
+  automation: (row) => automationLabel(row.automationStatus),
+};
 
 export default function WorkOrderPage({ currentUser }) {
   const [status, setStatus] = useState("");
@@ -19,6 +29,7 @@ export default function WorkOrderPage({ currentUser }) {
       .toLowerCase()
       .includes(search.toLowerCase())
   );
+  const sortedOrders = useSortableRows(orders, ORDER_SORTERS);
   const products = (items.data || []).filter(
     (item) => item.itemType === "FG" && (item.useYn === "Y" || item.itemCode === form?.itemCode)
   );
@@ -48,6 +59,8 @@ export default function WorkOrderPage({ currentUser }) {
     const payload = {
       itemCode: form.itemCode,
       targetQty: Number(form.targetQty),
+      plannedStartAt: form.plannedStartAt,
+      plannedEndAt: form.plannedEndAt,
     };
     const succeeded = await run(() =>
       form.workOrderId
@@ -60,7 +73,7 @@ export default function WorkOrderPage({ currentUser }) {
   return <div className="mes-page">
     <PageHeader
       title="작업지시"
-      description="생산 품목과 목표 수량만 입력해 작업지시를 생성합니다. 확정하면 최초 LOT가 자동 생성됩니다."
+      description="작업지시 목표 수량은 양품 생산 완료와 자동 보충 생산의 기준입니다. 계획 일정은 대시보드 일정 위험에 반영됩니다."
       actions={canManage && <button className="btn" disabled={items.loading} onClick={() => setForm({ ...emptyOrder })}>작업지시 생성</button>}
     />
 
@@ -80,18 +93,37 @@ export default function WorkOrderPage({ currentUser }) {
     {actionError && <ErrorState error={actionError}/>} 
     {result.loading ? <LoadingState/> : result.error ? <ErrorState error={result.error} onRetry={result.reload}/> : orders.length === 0 ? <EmptyState/> :
       <div className="mes-table-wrap"><table className="mes-table">
-        <thead><tr><th>작업지시</th><th>품목</th><th>목표</th><th>완료 OK</th><th>잔여</th><th>상태</th><th>자동 생산 상태</th><th>작업</th></tr></thead>
-        <tbody>{orders.map((order) => <tr key={order.workOrderId}>
+        <thead><tr>
+          <SortableTh label="작업지시" sortKey="order" {...sortedOrders}/>
+          <SortableTh label="품목" sortKey="item" {...sortedOrders}/>
+          <SortableTh label="목표" sortKey="target" {...sortedOrders}/>
+          <SortableTh label="완료 OK" sortKey="completed" {...sortedOrders}/>
+          <SortableTh label="잔여" sortKey="remaining" {...sortedOrders}/>
+          <SortableTh label="계획 일정" sortKey="schedule" {...sortedOrders}/>
+          <SortableTh label="상태" sortKey="status" {...sortedOrders}/>
+          <SortableTh label="자동 생산 상태" sortKey="automation" {...sortedOrders}/>
+          <th>작업</th>
+        </tr></thead>
+        <tbody>{sortedOrders.rows.map((order) => <tr key={order.workOrderId}>
           <td><strong>{order.orderNo}</strong><br/><span className="mono">#{order.workOrderId}</span></td>
           <td>{order.itemName}<br/><span className="mono">{order.itemCode}</span></td>
           <td>{order.targetQty}</td>
           <td>{order.completedOkQty}</td>
           <td>{order.remainingQty}</td>
+          <td>{order.plannedStartAt && order.plannedEndAt
+            ? <><span>{formatDate(order.plannedStartAt)}</span><br/><span>{formatDate(order.plannedEndAt)}</span></>
+            : <span className="mes-status status-warn">일정 미지정</span>}</td>
           <td><StatusBadge value={order.status}/></td>
           <td>{automationLabel(order.automationStatus)}</td>
           <td>{canManage && <div className="mes-actions">
             {order.status === "CREATED" && <button className="btn small" disabled={saving} onClick={() => run(() => MesApi.releaseWorkOrder(order.workOrderId))}>확정 및 생산 시작</button>}
-            {order.status === "CREATED" && <button className="btn small secondary" disabled={saving} onClick={() => setForm({ workOrderId: order.workOrderId, itemCode: order.itemCode, targetQty: order.targetQty })}>수정</button>}
+            {order.status === "CREATED" && <button className="btn small secondary" disabled={saving} onClick={() => setForm({
+              workOrderId: order.workOrderId,
+              itemCode: order.itemCode,
+              targetQty: order.targetQty,
+              plannedStartAt: toDateTimeInput(order.plannedStartAt),
+              plannedEndAt: toDateTimeInput(order.plannedEndAt),
+            })}>수정</button>}
             {order.status === "CREATED" && <button className="btn small danger" disabled={saving} onClick={() => window.confirm(`${order.orderNo}를 삭제할까요?`) && run(() => MesApi.deleteWorkOrder(order.workOrderId))}>삭제</button>}
           </div>}</td>
         </tr>)}</tbody>
@@ -100,7 +132,7 @@ export default function WorkOrderPage({ currentUser }) {
     {form && <Modal
       title={form.workOrderId ? "작업지시 수정" : "작업지시 생성"}
       onClose={() => setForm(null)}
-      footer={<><button className="btn secondary" onClick={() => setForm(null)}>취소</button><button className="btn" disabled={saving || !form.itemCode || Number(form.targetQty) <= 0} onClick={submit}>저장</button></>}
+      footer={<><button className="btn secondary" onClick={() => setForm(null)}>취소</button><button className="btn" disabled={saving || !form.itemCode || Number(form.targetQty) <= 0 || !validSchedule(form)} onClick={submit}>저장</button></>}
     >
       <div className="mes-form-grid">
         <Field label="제품(코드)">
@@ -110,7 +142,10 @@ export default function WorkOrderPage({ currentUser }) {
           </select>
         </Field>
         <Field label="목표 수량"><input type="number" min="1" value={form.targetQty} onChange={(event) => setForm({ ...form, targetQty: event.target.value })}/></Field>
+        <Field label="계획 시작"><input type="datetime-local" value={form.plannedStartAt || ""} onChange={(event) => setForm({ ...form, plannedStartAt: event.target.value })}/></Field>
+        <Field label="계획 종료"><input type="datetime-local" value={form.plannedEndAt || ""} min={form.plannedStartAt || undefined} onChange={(event) => setForm({ ...form, plannedEndAt: event.target.value })}/></Field>
       </div>
+      <p className="form-hint">주간 생산 목표는 대시보드에서 별도로 설정합니다. 이 목표 수량은 해당 작업지시의 양품 생산 기준입니다.</p>
       {items.error && <ErrorState error={items.error}/>} 
       {actionError && <ErrorState error={actionError}/>} 
     </Modal>}
@@ -127,6 +162,15 @@ export default function WorkOrderPage({ currentUser }) {
       <p className="form-hint">{assignmentIssue.message}</p>
     </Modal>}
   </div>;
+}
+
+function validSchedule(form) {
+  if (!form.plannedStartAt || !form.plannedEndAt) return false;
+  return new Date(form.plannedEndAt).getTime() > new Date(form.plannedStartAt).getTime();
+}
+
+function toDateTimeInput(value) {
+  return value ? String(value).slice(0, 16) : "";
 }
 
 function automationLabel(value) {

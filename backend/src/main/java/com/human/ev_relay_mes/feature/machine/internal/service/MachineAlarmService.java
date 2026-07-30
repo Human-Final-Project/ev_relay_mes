@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmHistory;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmOperations;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmChangedEvent;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
@@ -19,6 +20,7 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHi
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,6 +44,7 @@ public class MachineAlarmService implements MachineAlarmOperations {
     private final WorkCommandOperations workCommandService;
     private final MachineAlarmRecoveryCoordinator recoveryCoordinator;
     private final MachineAlarmResponseAssembler responseAssembler;
+    private final ApplicationEventPublisher eventPublisher;
 
     // L2 수집기가 전달한 설비 알람을 검증하고 발생 이력으로 저장할 때 사용한다.
     @Transactional
@@ -80,6 +83,14 @@ public class MachineAlarmService implements MachineAlarmOperations {
             machine.setStatus(Machine.Status.ERROR);
             workCommandService.pauseForMachineError(machine.getMachineId());
         }
+        eventPublisher.publishEvent(new MachineAlarmChangedEvent(
+                savedHistory.getMachineAlarmHistoryId(),
+                machine.getMachineId(),
+                alarmCode.getAlarmName(),
+                alarmLevel,
+                savedHistory.getMessage(),
+                savedHistory.getOccurredAt(),
+                false));
         return responseAssembler.toResponse(savedHistory);
     }
 
@@ -120,6 +131,14 @@ public class MachineAlarmService implements MachineAlarmOperations {
         history.setClearedAt(LocalDateTime.now());
         history.setClearedBy(member);
         recoveryCoordinator.recoverAfterClear(history);
+        eventPublisher.publishEvent(new MachineAlarmChangedEvent(
+                history.getMachineAlarmHistoryId(),
+                history.getMachine().getMachineId(),
+                history.getAlarmCode().getAlarmName(),
+                history.getAlarmLevel(),
+                history.getMessage(),
+                history.getOccurredAt(),
+                true));
         return responseAssembler.toResponse(history);
     }
 

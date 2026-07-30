@@ -4,7 +4,13 @@ import AuthApi from "../api/AuthApi";
 import MesApi from "../api/MesApi";
 
 jest.mock("../api/AuthApi",()=>({__esModule:true,default:{getCurrentUser:jest.fn(),logout:jest.fn()}}));
-jest.mock("../api/MesApi",()=>({__esModule:true,default:{getCollectorStatus:jest.fn()}}));
+jest.mock("../api/MesApi",()=>({__esModule:true,default:{
+  getCollectorStatus:jest.fn(),
+  getNotifications:jest.fn(),
+  getNotificationUnreadCount:jest.fn(),
+  markNotificationRead:jest.fn(),
+  markAllNotificationsRead:jest.fn(),
+}}));
 jest.mock("../pages/DashboardPage",()=>()=> <div>생산 대시보드</div>);
 
 const adminUser={memberId:1,loginId:"admin",memberName:"시스템 관리자",role:"ADMIN",status:"ACTIVE"};
@@ -19,6 +25,8 @@ beforeEach(()=>{
       connectedMachineIds: [],
     },
   });
+  MesApi.getNotifications.mockResolvedValue({data:[]});
+  MesApi.getNotificationUnreadCount.mockResolvedValue({data:{count:0}});
   window.history.pushState({},"","/");
 });
 

@@ -170,7 +170,7 @@ V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-20260708-001,100,97,3,COMPLETED
 초기 로그인 계정:
 
 - 관리자: `admin`
-- 설비 책임자: `resp.wind`, `resp.weld`, `resp.assy`, `resp.seal`, `resp.test`, `resp.pack`
+- 설비 책임자: `EVR00000001` ~ `EVR00000006`
 - 초기 비밀번호: 모두 `admin1234!`
 
 책임자 6명은 각 설비의 `RESPONSIBLE`로 초기 배정됩니다. 초기 로그인 후 비밀번호를 변경해야 합니다.

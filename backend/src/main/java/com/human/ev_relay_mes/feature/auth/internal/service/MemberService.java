@@ -16,12 +16,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.regex.Pattern;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MemberService {
 
+    private static final Pattern EMPLOYEE_LOGIN_ID =
+            Pattern.compile("EVR\\d{8}");
 
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
@@ -31,14 +34,21 @@ public class MemberService {
     // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
     public MemberResponseDto createMember(MemberCreateRequestDto dto, Long createdById) {
-        if (memberRepository.existsByLoginId(dto.getLoginId())) {
+        String loginId = dto.getLoginId().trim();
+        Member.Role role = parseRole(dto.getRole());
+        if (role == Member.Role.OPERATOR
+                && !EMPLOYEE_LOGIN_ID.matcher(loginId).matches()) {
+            throw new CustomException(
+                    ErrorCode.INVALID_INPUT_VALUE,
+                    "운영자 사번은 EVR과 숫자 8자리 형식이어야 합니다. 예: EVR00000001");
+        }
+        if (memberRepository.existsByLoginId(loginId)) {
             throw new CustomException(ErrorCode.DUPLICATE_LOGIN_ID);
         }
 
-        Member.Role role = parseRole(dto.getRole());
         Member createdBy = findMember(createdById);
         Member member = Member.builder()
-                .loginId(dto.getLoginId())
+                .loginId(loginId)
                 .password(passwordEncoder.encode(dto.getPassword()))
                 .memberName(dto.getMemberName())
                 .role(role)

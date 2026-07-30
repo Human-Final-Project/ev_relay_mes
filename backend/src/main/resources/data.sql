@@ -36,22 +36,22 @@ INSERT INTO members (
 INSERT INTO members (
     login_id, password, member_name, role, status, department, position, created_by
 ) VALUES
-('resp.wind', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000001', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '김권선', 'OPERATOR', 'ACTIVE', '생산팀', '권선 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
-('resp.weld', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000002', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '이용접', 'OPERATOR', 'ACTIVE', '생산팀', '용접 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
-('resp.assy', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000003', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '박조립', 'OPERATOR', 'ACTIVE', '생산팀', '조립 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
-('resp.seal', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000004', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '최실링', 'OPERATOR', 'ACTIVE', '생산팀', '실링 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
-('resp.test', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000005', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '정검사', 'OPERATOR', 'ACTIVE', '품질팀', '검사 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
-('resp.pack', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+('EVR00000006', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
  '한포장', 'OPERATOR', 'ACTIVE', '생산팀', '포장 책임자',
  (SELECT member_id FROM members admin WHERE admin.login_id = 'admin'));
 
@@ -59,18 +59,18 @@ INSERT INTO members (
 INSERT INTO workers (
     worker_no, worker_name, department, position, member_id, status
 ) VALUES
-('RESP-WIND', '김권선', '생산팀', '권선 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.wind'), 'ACTIVE'),
-('RESP-WELD', '이용접', '생산팀', '용접 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.weld'), 'ACTIVE'),
-('RESP-ASSY', '박조립', '생산팀', '조립 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.assy'), 'ACTIVE'),
-('RESP-SEAL', '최실링', '생산팀', '실링 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.seal'), 'ACTIVE'),
-('RESP-TEST', '정검사', '품질팀', '검사 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.test'), 'ACTIVE'),
-('RESP-PACK', '한포장', '생산팀', '포장 책임자',
- (SELECT member_id FROM members WHERE login_id = 'resp.pack'), 'ACTIVE');
+('EVR00000001', '김권선', '생산팀', '권선 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000001'), 'ACTIVE'),
+('EVR00000002', '이용접', '생산팀', '용접 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000002'), 'ACTIVE'),
+('EVR00000003', '박조립', '생산팀', '조립 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000003'), 'ACTIVE'),
+('EVR00000004', '최실링', '생산팀', '실링 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000004'), 'ACTIVE'),
+('EVR00000005', '정검사', '품질팀', '검사 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000005'), 'ACTIVE'),
+('EVR00000006', '한포장', '생산팀', '포장 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'EVR00000006'), 'ACTIVE');
 
 INSERT INTO items (item_code, item_name, item_type, use_yn) VALUES
 ('RM-CU-001', '코일용 구리선', 'RM', 'Y'),
@@ -211,12 +211,12 @@ INSERT INTO machines (
 INSERT INTO machine_worker_assignments (
     machine_id, worker_id, assignment_role
 ) VALUES
-('EQ-WIND-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-WIND'), 'RESPONSIBLE'),
-('EQ-WELD-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-WELD'), 'RESPONSIBLE'),
-('EQ-ASSY-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-ASSY'), 'RESPONSIBLE'),
-('EQ-SEAL-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-SEAL'), 'RESPONSIBLE'),
-('EQ-TEST-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-TEST'), 'RESPONSIBLE'),
-('EQ-PACK-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-PACK'), 'RESPONSIBLE');
+('EQ-WIND-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000001'), 'RESPONSIBLE'),
+('EQ-WELD-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000002'), 'RESPONSIBLE'),
+('EQ-ASSY-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000003'), 'RESPONSIBLE'),
+('EQ-SEAL-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000004'), 'RESPONSIBLE'),
+('EQ-TEST-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000005'), 'RESPONSIBLE'),
+('EQ-PACK-01', (SELECT worker_id FROM workers WHERE worker_no = 'EVR00000006'), 'RESPONSIBLE');
 
 INSERT INTO inspection_standards (
     process_code, inspection_item, item_name, unit,

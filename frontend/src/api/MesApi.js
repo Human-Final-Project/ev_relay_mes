@@ -13,6 +13,10 @@ async function mutate(method, url, data, config) {
 
 const MesApi = {
   getDashboardSummary: () => httpClient.get("/api/mes/dashboard/summary"),
+  getWeeklyProductionTarget: (weekStart) =>
+    httpClient.get("/api/dashboard/weekly-target", query({ weekStart })),
+  saveWeeklyProductionTarget: (weekStart, data) =>
+    mutate("put", "/api/dashboard/weekly-target", data, { params: { weekStart } }),
   getCollectorStatus: () => httpClient.get("/api/mes/collector-status"),
   getWorkOrders: (params) => httpClient.get("/api/work-orders", query(params)),
   createWorkOrder: (data) => mutate("post", "/api/work-orders", data),
@@ -95,6 +99,13 @@ const MesApi = {
   getNotices: () => httpClient.get("/api/notices"),
   createNotice: (data) => mutate("post", "/api/notices", data),
   updateNotice: (id, data) => mutate("put", `/api/notices/${id}`, data),
+  getNotifications: (params) => httpClient.get("/api/notifications", query(params)),
+  getNotificationUnreadCount: () =>
+    httpClient.get("/api/notifications/unread-count"),
+  markNotificationRead: (id) =>
+    mutate("patch", `/api/notifications/${id}/read`),
+  markAllNotificationsRead: () =>
+    mutate("patch", "/api/notifications/read-all"),
 };
 
 export default MesApi;

@@ -15,6 +15,7 @@ com.human.ev_relay_mes
 └─ feature
    ├─ auth
    ├─ notice
+   ├─ notification
    ├─ masterdata
    ├─ material
    ├─ workforce
@@ -35,12 +36,13 @@ feature.<module>
 
 ## 현재 모듈 경계
 
-2026-07-29 기준으로 10개 기능 모듈의 이관을 완료했다.
+2026-07-30 기준으로 11개 기능 모듈을 운영한다.
 
 | 모듈 | 책임 | 대표 공개 계약 |
 |---|---|---|
 | `auth` | 로그인, 세션, 회원 계정 | 사용자 조회 및 인증 계약 |
 | `notice` | 공지사항 작성·조회 | 공지사항 DTO와 작업 계약 |
+| `notification` | 설비 이상·재고 부족 알림, 사용자별 읽음 이력 | 알림 조회·읽음 처리와 이벤트 계약 |
 | `masterdata` | 품목, BOM, 공정, 검사·불량·알람 기준정보 | 기준정보 조회·관리 계약 |
 | `material` | 자재 LOT 입고, 재고, 생산 투입 | 자재 재고·사용 계약 |
 | `workforce` | 작업자와 설비 배정 | 작업자 조회·배정 계약 |

@@ -122,6 +122,8 @@ public class MaterialLotService implements MaterialInventory {
         Map<String, Integer> requiredQtyByItem = requirementCalculator.calculate(
                 parentItemCode, productionQty);
         stockAllocator.allocate(requiredQtyByItem, productionLot);
+        requiredQtyByItem.keySet().forEach(itemCode ->
+                eventPublisher.publishEvent(new MaterialStockChangedEvent(itemCode)));
     }
 
     public List<MaterialLotResponseDto> getMaterialLots() {
@@ -131,6 +133,12 @@ public class MaterialLotService implements MaterialInventory {
     @Override
     public List<MaterialLot> getMaterialLotEntities() {
         return materialLotRepository.findAll();
+    }
+
+    @Override
+    public long getAvailableQuantity(String itemCode) {
+        return materialLotRepository.sumAvailableQty(
+                itemCode, MaterialLot.Status.AVAILABLE);
     }
 
     public MaterialLotResponseDto getMaterialLot(Long id) {
@@ -143,18 +151,24 @@ public class MaterialLotService implements MaterialInventory {
             throw new CustomException(ErrorCode.INVALID_MATERIAL_LOT_QUANTITY);
         }
         stockAllocator.allocateSingleItem(itemCode, quantity);
+        eventPublisher.publishEvent(new MaterialStockChangedEvent(itemCode));
     }
 
     @Transactional
     public MaterialLotResponseDto updateStatus(Long id, MaterialLot.Status status) {
         MaterialLot materialLot = findMaterialLot(id);
         materialLot.setStatus(status);
+        eventPublisher.publishEvent(new MaterialStockChangedEvent(
+                materialLot.getItem().getItemCode()));
         return MaterialLotResponseDto.fromEntity(materialLot);
     }
 
     @Transactional
     public void deleteMaterialLot(Long id) {
-        materialLotRepository.delete(findMaterialLot(id));
+        MaterialLot materialLot = findMaterialLot(id);
+        String itemCode = materialLot.getItem().getItemCode();
+        materialLotRepository.delete(materialLot);
+        eventPublisher.publishEvent(new MaterialStockChangedEvent(itemCode));
     }
 
     private MaterialLot findMaterialLot(Long id) {

@@ -1,11 +1,20 @@
 import React, { useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, PageHeader, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, PageHeader, SortableTh, formatDate, useSortableRows } from "../components/MesComponents";
 import { DonutChart, StackedBarChart, summarizeByProcess } from "../components/MesCharts";
 
 const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
 const emptyFilters = { workOrderId: "", lotNo: "", machineId: "", startAt: "", endAt: "" };
+const LOG_SORTERS = {
+  lot: (row) => row.lotNo,
+  process: (row) => `${row.processCode || ""} ${row.machineId || ""}`,
+  input: (row) => row.inputQty,
+  ok: (row) => row.okQty,
+  ng: (row) => row.ngQty,
+  efficiency: (row) => row.inputQty ? row.okQty / row.inputQty : null,
+  endedAt: (row) => row.endedAt,
+};
 
 export default function ProductionResultPage() {
   const [filters, setFilters] = useState(emptyFilters);
@@ -20,6 +29,7 @@ export default function ProductionResultPage() {
   );
   const logs = useApiData(() => MesApi.getProductionLogs(applied), [JSON.stringify(applied)]);
   const allLogs = useApiData(() => MesApi.getProductionLogs({ status: "COMPLETED" }), []);
+  const sortedLogs = useSortableRows(logs.data || [], LOG_SORTERS);
 
   const overallProcessRows = useMemo(
     () => summarizeByProcess(allLogs.data || [], processOrder),
@@ -116,8 +126,16 @@ export default function ProductionResultPage() {
 
     {logs.loading ? <LoadingState/> : logs.error ? <ErrorState error={logs.error} onRetry={logs.reload}/> : !(logs.data || []).length ? <EmptyState message="조회 조건에 해당하는 생산 실적이 없습니다."/> :
       <div className="mes-table-wrap"><table className="mes-table">
-        <thead><tr><th>LOT</th><th>공정/설비</th><th>투입</th><th>OK</th><th>NG</th><th>공정효율</th><th>종료</th></tr></thead>
-        <tbody>{logs.data.map((log) => <tr key={log.productionLogId}>
+        <thead><tr>
+          <SortableTh label="LOT" sortKey="lot" {...sortedLogs}/>
+          <SortableTh label="공정/설비" sortKey="process" {...sortedLogs}/>
+          <SortableTh label="투입" sortKey="input" {...sortedLogs}/>
+          <SortableTh label="OK" sortKey="ok" {...sortedLogs}/>
+          <SortableTh label="NG" sortKey="ng" {...sortedLogs}/>
+          <SortableTh label="공정효율" sortKey="efficiency" {...sortedLogs}/>
+          <SortableTh label="종료" sortKey="endedAt" {...sortedLogs}/>
+        </tr></thead>
+        <tbody>{sortedLogs.rows.map((log) => <tr key={log.productionLogId}>
           <td className="mono">{log.lotNo}</td>
           <td>{log.processName}<br/><span className="mono">{log.processCode} · {log.machineId}</span></td>
           <td>{log.inputQty}</td><td>{log.okQty}</td><td>{log.ngQty}</td>

@@ -1,7 +1,35 @@
 import React, { useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
+
+const INSPECTION_SORTERS = {
+  lot: (row) => `${row.lotNo || ""} ${row.unitSeq || ""}`,
+  machine: (row) => `${row.processCode || ""} ${row.machineId || ""}`,
+  item: (row) => row.inspectionItem,
+  measured: (row) => row.measuredValue,
+  lower: (row) => row.lowerLimit,
+  version: (row) => row.standardVersion,
+  result: (row) => row.result,
+  inspectedAt: (row) => row.inspectedAt,
+};
+const DEFECT_SORTERS = {
+  lot: (row) => row.lotNo,
+  machine: (row) => `${row.processCode || ""} ${row.machineId || ""}`,
+  defect: (row) => `${row.defectName || ""} ${row.defectCode || ""}`,
+  quantity: (row) => row.defectQty,
+  description: (row) => row.defectDescription,
+  occurredAt: (row) => row.occurredAt,
+};
+const STANDARD_SORTERS = {
+  process: (row) => `${row.processCode || ""} ${row.processName || ""}`,
+  item: (row) => row.itemName,
+  inspection: (row) => row.inspectionItem,
+  unit: (row) => row.unit,
+  lower: (row) => row.lowerLimit,
+  upper: (row) => row.upperLimit,
+  version: (row) => row.standardVersion,
+};
 
 const emptyFilters = {
   workOrderId: "",
@@ -151,10 +179,20 @@ export default function QualityPage({ currentUser }) {
 }
 
 function InspectionTable({ rows = [] }) {
+  const sorted = useSortableRows(rows, INSPECTION_SORTERS);
   if (!rows.length) return <EmptyState/>;
   return <div className="mes-table-wrap"><table className="mes-table">
-    <thead><tr><th>LOT/제품 순번</th><th>설비·공정</th><th>검사 항목</th><th>측정값</th><th>기준 범위</th><th>버전</th><th>결과</th><th>검사 시각</th></tr></thead>
-    <tbody>{rows.map((row) => <tr key={row.inspectionId}>
+    <thead><tr>
+      <SortableTh label="LOT/제품 순번" sortKey="lot" {...sorted}/>
+      <SortableTh label="설비·공정" sortKey="machine" {...sorted}/>
+      <SortableTh label="검사 항목" sortKey="item" {...sorted}/>
+      <SortableTh label="측정값" sortKey="measured" {...sorted}/>
+      <SortableTh label="기준 범위" sortKey="lower" {...sorted}/>
+      <SortableTh label="버전" sortKey="version" {...sorted}/>
+      <SortableTh label="결과" sortKey="result" {...sorted}/>
+      <SortableTh label="검사 시각" sortKey="inspectedAt" {...sorted}/>
+    </tr></thead>
+    <tbody>{sorted.rows.map((row) => <tr key={row.inspectionId}>
       <td><span className="mono">{row.lotNo}</span><br/>#{row.unitSeq}</td>
       <td>{row.machineName}<br/><span className="mono">{row.machineId} · {row.processCode}</span></td>
       <td>{row.inspectionItem}</td><td><strong>{row.measuredValue}</strong> {row.unit}</td><td>{row.lowerLimit} ~ {row.upperLimit}</td><td>v{row.standardVersion}</td><td><StatusBadge value={row.result}/></td><td>{formatDate(row.inspectedAt)}</td>
@@ -163,20 +201,38 @@ function InspectionTable({ rows = [] }) {
 }
 
 function DefectTable({ rows = [] }) {
+  const sorted = useSortableRows(rows, DEFECT_SORTERS);
   if (!rows.length) return <EmptyState/>;
   return <div className="mes-table-wrap"><table className="mes-table">
-    <thead><tr><th>LOT</th><th>설비·공정</th><th>불량 코드/명</th><th>수량</th><th>불량 설명</th><th>발생 시각</th></tr></thead>
-    <tbody>{rows.map((row) => <tr key={row.defectHistoryId}>
+    <thead><tr>
+      <SortableTh label="LOT" sortKey="lot" {...sorted}/>
+      <SortableTh label="설비·공정" sortKey="machine" {...sorted}/>
+      <SortableTh label="불량 코드/명" sortKey="defect" {...sorted}/>
+      <SortableTh label="수량" sortKey="quantity" {...sorted}/>
+      <SortableTh label="불량 설명" sortKey="description" {...sorted}/>
+      <SortableTh label="발생 시각" sortKey="occurredAt" {...sorted}/>
+    </tr></thead>
+    <tbody>{sorted.rows.map((row) => <tr key={row.defectHistoryId}>
       <td className="mono">{row.lotNo}</td><td>{row.machineName}<br/><span className="mono">{row.machineId} · {row.processCode}</span></td><td>{row.defectName}<br/><span className="mono">{row.defectCode}</span></td><td>{row.defectQty}</td><td>{row.defectDescription || "-"}</td><td>{formatDate(row.occurredAt)}</td>
     </tr>)}</tbody>
   </table></div>;
 }
 
 function StandardTable({ rows = [], canEdit, onEdit }) {
+  const sorted = useSortableRows(rows, STANDARD_SORTERS);
   if (!rows.length) return <EmptyState/>;
   return <div className="mes-table-wrap"><table className="mes-table">
-    <thead><tr><th>공정</th><th>품목</th><th>검사 항목</th><th>단위</th><th>하한</th><th>상한</th><th>버전</th><th></th></tr></thead>
-    <tbody>{rows.map((row) => <tr key={row.standardId}>
+    <thead><tr>
+      <SortableTh label="공정" sortKey="process" {...sorted}/>
+      <SortableTh label="품목" sortKey="item" {...sorted}/>
+      <SortableTh label="검사 항목" sortKey="inspection" {...sorted}/>
+      <SortableTh label="단위" sortKey="unit" {...sorted}/>
+      <SortableTh label="하한" sortKey="lower" {...sorted}/>
+      <SortableTh label="상한" sortKey="upper" {...sorted}/>
+      <SortableTh label="버전" sortKey="version" {...sorted}/>
+      <th>작업</th>
+    </tr></thead>
+    <tbody>{sorted.rows.map((row) => <tr key={row.standardId}>
       <td>{row.processName}<br/><span className="mono">{row.processCode}</span></td><td>{row.itemName}</td><td>{row.inspectionItem}</td><td>{row.unit}</td><td>{row.lowerLimit}</td><td>{row.upperLimit}</td><td>v{row.standardVersion}</td><td>{canEdit && <button className="btn small secondary" onClick={() => onEdit({ ...row })}>기준 수정</button>}</td>
     </tr>)}</tbody>
   </table></div>;

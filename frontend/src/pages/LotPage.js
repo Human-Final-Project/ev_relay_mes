@@ -2,15 +2,25 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
-import { EmptyState, ErrorState, Field, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, PageHeader, SortableTh, StatusBadge, formatDate, useSortableRows } from "../components/MesComponents";
 import LotLabelModal from "../components/LotLabelModal";
 
 const processCodes=["OP20","OP30","OP40_OP50","OP60","OP70","OP80"];
+const LOT_SORTERS = {
+  lot: (row) => row.lotNo,
+  order: (row) => `${row.orderNo || ""} ${row.itemName || ""}`,
+  type: (row) => `${row.lotType || ""} ${row.productionRound || ""}`,
+  process: (row) => row.currentProcessCode,
+  quantity: (row) => row.inputQty,
+  status: (row) => row.status,
+  automation: (row) => lotAutomationLabel(row),
+};
 
 export default function LotPage({currentUser}){
   const [searchParams,setSearchParams]=useSearchParams();
   const [status,setStatus]=useState(""); const [selected,setSelected]=useState(null); const [detail,setDetail]=useState(null); const [detailError,setDetailError]=useState(null); const [loadingDetail,setLoadingDetail]=useState(false); const [tab,setTab]=useState("timeline"); const [labelOpen,setLabelOpen]=useState(false);
   const list=useApiData(()=>MesApi.getLots({status}),[status]);
+  const sortedLots=useSortableRows(list.data||[],LOT_SORTERS);
   const linkedLotNo=searchParams.get("lotNo");
   useEffect(()=>{if(!linkedLotNo||selected?.lotNo===linkedLotNo)return;const match=(list.data||[]).find(l=>l.lotNo===linkedLotNo);setSelected(match||{lotNo:linkedLotNo});setTab("timeline");},[linkedLotNo,list.data,selected?.lotNo]);
   useEffect(()=>{ if(!selected){setDetail(null);return;} let active=true; setLoadingDetail(true); setDetailError(null); Promise.all([MesApi.getLotByNo(selected.lotNo),MesApi.getLotCommands(selected.lotNo),MesApi.getLotResponsibles(selected.lotNo),MesApi.getLotMaterialUsages(selected.lotNo),MesApi.getProductionLogs({lotNo:selected.lotNo}),MesApi.getInspections({lotNo:selected.lotNo}),MesApi.getDefects({lotNo:selected.lotNo}),MesApi.getLotTimelineAlarms(selected.lotNo)]).then(([lot,commands,responsibles,materials,logs,inspections,defects,alarms])=>{if(active)setDetail({lot:lot.data,commands:commands.data,responsibles:responsibles.data,materials:materials.data,logs:logs.data,inspections:inspections.data,defects:defects.data,alarms:alarms.data})}).catch(e=>active&&setDetailError(e)).finally(()=>active&&setLoadingDetail(false)); return()=>{active=false};},[selected]);
@@ -19,7 +29,7 @@ export default function LotPage({currentUser}){
   const selectLot=(lot)=>{setSelected(lot);setTab("timeline");setLabelOpen(false);setSearchParams({lotNo:lot.lotNo},{replace:true});};
   return <div className="mes-page"><PageHeader title="LOT 추적" description="최초·보충 LOT의 자동 투입 상태와 공정·작업명령·생산·검사 이력을 추적합니다." actions={<button className="btn secondary" onClick={list.reload}>새로고침</button>}/>
     <div className="mes-card mes-filter"><Field label="LOT 상태"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">전체</option>{["WAITING","RUNNING","COMPLETED","HOLD","SCRAPPED"].map(v=><option key={v}>{v}</option>)}</select></Field></div>
-    {list.loading?<LoadingState/>:list.error?<ErrorState error={list.error} onRetry={list.reload}/>:<div className="split-detail"><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>작업지시/품목</th><th>유형</th><th>현재 공정</th><th>수량</th><th>상태</th><th>자동 처리 상태</th></tr></thead><tbody>{(list.data||[]).map(l=><tr key={l.lotId} onClick={()=>selectLot(l)} style={{cursor:"pointer",background:selected?.lotId===l.lotId?"#eff6ff":""}}><td><strong>{l.lotNo}</strong><br/><span className="mono">#{l.lotId}</span></td><td>{l.orderNo}<br/>{l.itemName}</td><td><StatusBadge value={l.lotType}/> #{l.productionRound}</td><td>{l.currentProcessName}<br/><span className="mono">{l.currentProcessCode}</span></td><td>{l.inputQty} / OK {l.okQty} / NG {l.ngQty}</td><td><StatusBadge value={l.status}/></td><td>{lotAutomationLabel(l)}</td></tr>)}</tbody></table></div><aside className="mes-card">{!selected?<EmptyState message="LOT를 선택하면 상세 정보가 표시됩니다."/>:loadingDetail?<LoadingState/>:detailError?<ErrorState error={detailError}/>:detail&&<LotSummary detail={detail} onOpenLabel={()=>setLabelOpen(true)}/>}</aside></div>}
+    {list.loading?<LoadingState/>:list.error?<ErrorState error={list.error} onRetry={list.reload}/>:<div className="split-detail"><div className="mes-table-wrap"><table className="mes-table"><thead><tr><SortableTh label="LOT" sortKey="lot" {...sortedLots}/><SortableTh label="작업지시/품목" sortKey="order" {...sortedLots}/><SortableTh label="유형" sortKey="type" {...sortedLots}/><SortableTh label="현재 공정" sortKey="process" {...sortedLots}/><SortableTh label="수량" sortKey="quantity" {...sortedLots}/><SortableTh label="상태" sortKey="status" {...sortedLots}/><SortableTh label="자동 처리 상태" sortKey="automation" {...sortedLots}/></tr></thead><tbody>{sortedLots.rows.map(l=><tr key={l.lotId} onClick={()=>selectLot(l)} style={{cursor:"pointer",background:selected?.lotId===l.lotId?"#eff6ff":""}}><td><strong>{l.lotNo}</strong><br/><span className="mono">#{l.lotId}</span></td><td>{l.orderNo}<br/>{l.itemName}</td><td><StatusBadge value={l.lotType}/> #{l.productionRound}</td><td>{l.currentProcessName}<br/><span className="mono">{l.currentProcessCode}</span></td><td>{l.inputQty} / OK {l.okQty} / NG {l.ngQty}</td><td><StatusBadge value={l.status}/></td><td>{lotAutomationLabel(l)}</td></tr>)}</tbody></table></div><aside className="mes-card">{!selected?<EmptyState message="LOT를 선택하면 상세 정보가 표시됩니다."/>:loadingDetail?<LoadingState/>:detailError?<ErrorState error={detailError}/>:detail&&<LotSummary detail={detail} onOpenLabel={()=>setLabelOpen(true)}/>}</aside></div>}
     {detail&&<section className="mes-card"><div className="tabs">{[["timeline","통합 타임라인"],["progress","공정 진행"],["materials","투입 원자재"],["commands","작업명령"],["logs","생산 실적"],["quality","검사·불량"],["people","담당자"]].map(([key,label])=><button key={key} className={`tab ${tab===key?"active":""}`} onClick={()=>setTab(key)}>{label}</button>)}</div><div style={{paddingTop:16}}>{tab==="timeline"&&<Timeline rows={timeline}/>} {tab==="progress"&&<ProgressView rows={progress}/>} {tab==="materials"&&<Materials rows={detail.materials}/>} {tab==="commands"&&<Commands rows={detail.commands}/>} {tab==="logs"&&<Logs rows={detail.logs}/>} {tab==="quality"&&<Quality inspections={detail.inspections} defects={detail.defects}/>} {tab==="people"&&<People rows={detail.responsibles}/>}</div></section>}
     {detail&&labelOpen&&<LotLabelModal lot={detail.lot} onClose={()=>setLabelOpen(false)}/>}
   </div>;
@@ -33,7 +43,7 @@ function Commands({rows=[]}){return <Table heads={["명령","설비/공정","수
 function Logs({rows=[]}){return <Table heads={["공정","설비","투입","OK","NG","상태","종료"]} rows={rows.map(r=>[r.processCode,r.machineId,r.inputQty,r.okQty,r.ngQty,<StatusBadge value={r.status}/>,formatDate(r.endedAt)])}/>}
 function Quality({inspections=[],defects=[]}){return <div className="mes-grid two"><div><h3>검사 결과</h3><Table heads={["순번","항목","측정값","기준","결과"]} rows={inspections.map(r=>[r.unitSeq,r.inspectionItem,`${r.measuredValue} ${r.unit}`,`${r.lowerLimit}~${r.upperLimit}`,<StatusBadge value={r.result}/>])}/></div><div><h3>불량 이력</h3><Table heads={["공정","코드","수량","발생"]} rows={defects.map(r=>[r.processCode,r.defectName||r.defectCode,r.defectQty,formatDate(r.occurredAt)])}/></div></div>}
 function People({rows=[]}){return <Table heads={["공정","설비","작업자","역할","배정 시각"]} rows={rows.map(r=>[`${r.processName} (${r.processCode})`,r.machineName||r.machineId,`${r.workerName} (${r.workerNo})`,r.assignmentRole||"-",formatDate(r.capturedAt)])}/>}
-function Table({heads,rows}){if(!rows.length)return <EmptyState/>;return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map(h=><th key={h}>{h}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>}
+function Table({heads,rows}){const accessors=Object.fromEntries(heads.map((_,index)=>[String(index),(row)=>row[index]]));const sorted=useSortableRows(rows,accessors);if(!rows.length)return <EmptyState/>;return <div className="mes-table-wrap"><table className="mes-table"><thead><tr>{heads.map((head,index)=><SortableTh key={head} label={head} sortKey={String(index)} {...sorted}/>)}</tr></thead><tbody>{sorted.rows.map((r,i)=><tr key={i}>{r.map((v,j)=><td key={j}>{v}</td>)}</tr>)}</tbody></table></div>}
 function lotAutomationLabel(lot){
   if(lot.status==="WAITING" && lot.startRequestedAt) return "자재 입고 대기";
   if(lot.status==="WAITING") return "자동 투입 준비";

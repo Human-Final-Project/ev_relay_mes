@@ -1,25 +1,31 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
 import { DonutChart } from "../components/MesCharts";
-import { EmptyState, ErrorState, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import { EmptyState, ErrorState, Field, LoadingState, Modal, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
 import { Link } from "react-router-dom";
 
 const processOrder = ["OP20", "OP30", "OP40_OP50", "OP60", "OP70", "OP80"];
-const processNames = {
-  OP20: "코일 권선",
-  OP30: "접점 용접",
-  OP40_OP50: "자동 조립",
-  OP60: "실링/가스충전",
-  OP70: "최종 검사",
-  OP80: "마킹/포장",
-};
 const chartColors = ["#2563eb", "#0ea5e9", "#14b8a6", "#22c55e", "#f59e0b", "#ef4444"];
 
-export default function DashboardPage() {
-  const today = useMemo(() => todayRange(), []);
-  const summary = useApiData(MesApi.getDashboardSummary, []);
+export default function DashboardPage({ currentUser }) {
+  const today = todayRange();
+  const week = currentWeekRange();
+  const weekStart = toLocalDate(week.start);
   const machines = useApiData(MesApi.getMachines, []);
+  const workOrders = useApiData(() => MesApi.getWorkOrders({}), []);
+  const weeklyTarget = useApiData(
+    () => MesApi.getWeeklyProductionTarget(weekStart),
+    [weekStart]
+  );
+  const weeklyLogs = useApiData(
+    () => MesApi.getProductionLogs({
+      startAt: toLocalDateTime(week.start),
+      endAt: toLocalDateTime(week.end),
+      status: "COMPLETED",
+    }),
+    [weekStart]
+  );
   const productionLogs = useApiData(
     () => MesApi.getProductionLogs({ startAt: today.startAt, endAt: today.endAt, status: "COMPLETED" }),
     [today.startAt, today.endAt]
@@ -29,45 +35,84 @@ export default function DashboardPage() {
     [today.startAt, today.endAt]
   );
   const notices = useApiData(MesApi.getNotices, []);
-  const reloadSummary = summary.reload;
+  const [targetForm, setTargetForm] = useState(null);
+  const [targetSaving, setTargetSaving] = useState(false);
+  const [targetError, setTargetError] = useState(null);
+  const canSetTarget = ["ADMIN", "MANAGER"].includes(currentUser?.role);
   const reloadMachines = machines.reload;
   const reloadProductionLogs = productionLogs.reload;
   const reloadDefects = defects.reload;
+  const reloadWorkOrders = workOrders.reload;
+  const reloadWeeklyTarget = weeklyTarget.reload;
+  const reloadWeeklyLogs = weeklyLogs.reload;
 
   useEffect(() => {
     const machineTimer = setInterval(reloadMachines, 1000);
     const aggregateTimer = setInterval(() => {
-      reloadSummary();
       reloadProductionLogs();
       reloadDefects();
+      reloadWorkOrders();
+      reloadWeeklyTarget();
+      reloadWeeklyLogs();
     }, 5000);
     return () => {
       clearInterval(machineTimer);
       clearInterval(aggregateTimer);
     };
-  }, [reloadMachines, reloadSummary, reloadProductionLogs, reloadDefects]);
+  }, [reloadMachines, reloadProductionLogs, reloadDefects,
+    reloadWorkOrders, reloadWeeklyTarget, reloadWeeklyLogs]);
 
   const reload = () => {
-    summary.reload();
     machines.reload();
     productionLogs.reload();
     defects.reload();
+    workOrders.reload();
+    weeklyTarget.reload();
+    weeklyLogs.reload();
     notices.reload();
   };
-  const resources = [summary, machines, productionLogs, defects];
+  const resources = [machines, productionLogs, defects, workOrders, weeklyTarget, weeklyLogs];
   const loading = resources.some((resource) => resource.loading && resource.data === null);
   const error = resources.find((resource) => resource.error && resource.data === null)?.error;
 
-  const data = summary.data || {};
-  const production = data.production || {};
-  const totalProduction = Number(production.okQty || 0) + Number(production.ngQty || 0);
-  const defectRate = totalProduction > 0 ? Number(production.ngQty || 0) / totalProduction * 100 : 0;
   const hourly = useMemo(() => summarizeHourly(productionLogs.data || []), [productionLogs.data]);
   const defectTypes = useMemo(() => summarizeDefects(defects.data || []), [defects.data]);
-  const efficiency = useMemo(() => summarizeEfficiency(productionLogs.data || []), [productionLogs.data]);
+  const weeklySchedule = summarizeWeeklySchedule(workOrders.data || [], week);
+  const weeklyOutput = summarizeFinalOutput(weeklyLogs.data || []);
+  const target = weeklyTarget.data || { targetQty: 0, targetDefectRate: 5, configured: false };
+  const attainment = target.targetQty > 0
+    ? Math.min(100, weeklyOutput.ok / target.targetQty * 100) : 0;
+  const remaining = Math.max(0, Number(target.targetQty || 0) - weeklyOutput.ok);
+  const defectRate = weeklyOutput.total > 0 ? weeklyOutput.ng / weeklyOutput.total * 100 : 0;
+  const targetDefectRate = Number(target.targetDefectRate ?? 5);
   const sortedMachines = useMemo(() => [...(machines.data || [])].sort(
     (left, right) => processOrder.indexOf(left.processCode) - processOrder.indexOf(right.processCode)
   ), [machines.data]);
+
+  const openTargetForm = () => {
+    setTargetError(null);
+    setTargetForm({
+      targetQty: target.configured ? String(target.targetQty) : "",
+      targetDefectRate: String(target.targetDefectRate ?? 5),
+    });
+  };
+
+  const saveTarget = async () => {
+    setTargetSaving(true);
+    setTargetError(null);
+    try {
+      await MesApi.saveWeeklyProductionTarget(weekStart, {
+        targetQty: Number(targetForm.targetQty),
+        targetDefectRate: Number(targetForm.targetDefectRate),
+      });
+      setTargetForm(null);
+      await weeklyTarget.reload();
+    } catch (error) {
+      setTargetError(error);
+    } finally {
+      setTargetSaving(false);
+    }
+  };
 
   if (loading) return <LoadingState/>;
   if (error) return <ErrorState error={error} onRetry={reload}/>;
@@ -75,15 +120,18 @@ export default function DashboardPage() {
   return <div className="mes-page operations-dashboard dashboard-v2">
     <PageHeader
       title="대시보드"
-      description="당일 생산·품질 지표와 실시간 설비 가동 현황을 확인합니다."
-      actions={<><span className="live-indicator">● 설비 1초 · 집계 5초 갱신</span><button className="btn secondary" onClick={reload}>지금 갱신</button></>}
+      description={`${formatWeekLabel(week)} 목표 달성과 불량·일정 위험을 실시간으로 확인합니다.`}
+      actions={<><span className="live-indicator">● 설비 1초 · 집계 5초 갱신</span>{canSetTarget && <button className="btn" onClick={openTargetForm}>주간 목표 설정</button>}<button className="btn secondary" onClick={reload}>지금 갱신</button></>}
     />
 
     <DashboardNotices notices={notices}/>
 
     <div className="dashboard-primary-kpis">
-      <MetricCard label="당일 총 생산량" value={totalProduction.toLocaleString()} unit="EA" description={`OK ${Number(production.okQty || 0).toLocaleString()} · NG ${Number(production.ngQty || 0).toLocaleString()}`} icon="factory"/>
-      <MetricCard label="당일 불량률" value={`${defectRate.toFixed(1)}%`} unit="NG RATE" description={`${Number(production.ngQty || 0).toLocaleString()}개 불량`} icon="percent" tone={defectRate > 5 ? "danger" : "normal"}/>
+      <MetricCard label="금주 목표" value={Number(target.targetQty || 0).toLocaleString()} unit="EA" description={target.configured ? "별도 주간 생산 목표" : "목표 미설정"} icon="flag" tone={target.configured ? "normal" : "warning"}/>
+      <MetricCard label="금주 양품 실적" value={weeklyOutput.ok.toLocaleString()} unit="EA" description={`부족 ${remaining.toLocaleString()}개`} icon="factory"/>
+      <MetricCard label="금주 달성률" value={`${attainment.toFixed(1)}%`} unit="PLAN" description={`목표 대비 ${weeklyOutput.ok.toLocaleString()} / ${Number(target.targetQty || 0).toLocaleString()}`} icon="speed" tone={attainment < 80 ? "warning" : "normal"}/>
+      <MetricCard label="금주 불량률" value={`${defectRate.toFixed(1)}%`} unit="NG RATE" description={`목표 ${targetDefectRate.toFixed(1)}% 이하 · NG ${weeklyOutput.ng.toLocaleString()}`} icon="percent" tone={defectRate > targetDefectRate ? "danger" : "normal"}/>
+      <MetricCard label="일정 위험" value={(weeklySchedule.warning + weeklySchedule.delayed).toLocaleString()} unit="ORDERS" description={`주의 ${weeklySchedule.warning} · 지연 ${weeklySchedule.delayed} · 미지정 ${weeklySchedule.unscheduled}`} icon="event_busy" tone={weeklySchedule.delayed ? "danger" : weeklySchedule.warning || weeklySchedule.unscheduled ? "warning" : "normal"}/>
     </div>
 
     <div className="dashboard-analysis-grid">
@@ -103,7 +151,7 @@ export default function DashboardPage() {
       </section>
     </div>
 
-    <section className="mes-card">
+    <section className="mes-card dashboard-machine-panel">
       <div className="pipeline-heading"><div><h2>설비 가동 현황</h2><p>실시간 설비 상태와 현재 작업 LOT</p></div><MachineStatusSummary rows={sortedMachines}/></div>
       <div className="dashboard-machine-grid">
         {sortedMachines.map((machine) => <article className={`dashboard-machine-card status-${String(machine.status || "IDLE").toLowerCase()}`} key={machine.machineId}>
@@ -114,15 +162,53 @@ export default function DashboardPage() {
       </div>
     </section>
 
-    <section className="mes-card">
-      <div className="chart-heading"><div><h2>공정효율</h2><p>당일 공정별 OK 수량 ÷ 투입 수량</p></div></div>
-      <EfficiencyChart rows={efficiency}/>
-    </section>
+    {targetForm && <Modal
+      title={`${formatWeekLabel(week)} 주간 목표 설정`}
+      onClose={() => setTargetForm(null)}
+      footer={<>
+        <button className="btn secondary" onClick={() => setTargetForm(null)}>취소</button>
+        <button
+          className="btn"
+          disabled={targetSaving
+            || Number(targetForm.targetQty) <= 0
+            || targetForm.targetDefectRate === ""
+            || Number(targetForm.targetDefectRate) < 0
+            || Number(targetForm.targetDefectRate) > 100}
+          onClick={saveTarget}
+        >저장</button>
+      </>}
+    >
+      <div className="mes-form-grid">
+        <Field label="주간 목표 수량">
+          <input
+            type="number"
+            min="1"
+            value={targetForm.targetQty}
+            onChange={(event) => setTargetForm({...targetForm, targetQty:event.target.value})}
+          />
+        </Field>
+        <Field label="목표 불량률">
+          <input
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={targetForm.targetDefectRate}
+            onChange={(event) => setTargetForm({...targetForm, targetDefectRate:event.target.value})}
+          />
+        </Field>
+      </div>
+      <p className="form-hint">
+        주간 목표는 대시보드 성과 기준입니다. 작업지시 목표 수량과 자동 보충 생산에는 영향을 주지 않습니다.
+      </p>
+      {targetError && <ErrorState error={targetError}/>}
+    </Modal>}
+
   </div>;
 }
 
 function DashboardNotices({ notices }) {
-  const rows = (notices.data || []).slice(0, 3);
+  const rows = (notices.data || []).slice(0, 1);
   return <section className="mes-card dashboard-notice-panel">
     <div className="dashboard-notice-heading">
       <div><span className="material-symbols-outlined">campaign</span><h2>최근 공지</h2></div>
@@ -165,18 +251,6 @@ function HourlyBarChart({ rows }) {
   </div>;
 }
 
-function EfficiencyChart({ rows }) {
-  if (!rows.some((row) => row.input > 0)) return <EmptyState message="오늘 집계할 생산 실적이 없습니다."/>;
-  return <div className="efficiency-chart">
-    {rows.map((row) => <div className="efficiency-row" key={row.code}>
-      <div><strong>{row.code}</strong><span>{row.name}</span></div>
-      <div className="efficiency-track"><span style={{ width: `${row.rate}%` }}/></div>
-      <strong>{row.input > 0 ? `${row.rate.toFixed(1)}%` : "-"}</strong>
-      <small>OK {row.ok} / 투입 {row.input}</small>
-    </div>)}
-  </div>;
-}
-
 function MachineStatusSummary({ rows }) {
   const counts = rows.reduce((result, row) => {
     result[row.status] = (result[row.status] || 0) + 1;
@@ -199,6 +273,17 @@ function summarizeHourly(logs) {
   return rows;
 }
 
+function summarizeFinalOutput(logs) {
+  return logs
+    .filter((log) => log.processCode === "OP80")
+    .reduce((result, log) => {
+      result.ok += Number(log.okQty) || 0;
+      result.ng += Number(log.ngQty) || 0;
+      result.total = result.ok + result.ng;
+      return result;
+    }, { ok: 0, ng: 0, total: 0 });
+}
+
 function summarizeDefects(rows) {
   const grouped = new Map();
   rows.forEach((row) => {
@@ -211,15 +296,46 @@ function summarizeDefects(rows) {
     .map(([label, value], index) => ({ label, value, color: chartColors[index % chartColors.length] }));
 }
 
-function summarizeEfficiency(logs) {
-  const grouped = Object.fromEntries(processOrder.map((code) => [code, { code, name: processNames[code], input: 0, ok: 0 }]));
-  logs.forEach((log) => {
-    const row = grouped[log.processCode];
-    if (!row) return;
-    row.input += Number(log.inputQty) || 0;
-    row.ok += Number(log.okQty) || 0;
+function summarizeWeeklySchedule(orders, week) {
+  const now = new Date();
+  const activeStatuses = new Set(["CREATED", "RELEASED", "RUNNING"]);
+  const included = orders.filter((order) => {
+    if (order.status === "CANCELED") return false;
+    const start = parseDate(order.plannedStartAt);
+    const end = parseDate(order.plannedEndAt);
+    if (!start || !end) return activeStatuses.has(order.status);
+    return start < week.end && end > week.start;
   });
-  return processOrder.map((code) => ({ ...grouped[code], rate: grouped[code].input > 0 ? grouped[code].ok / grouped[code].input * 100 : 0 }));
+
+  const result = {
+    orderCount: included.length,
+    normal: 0,
+    warning: 0,
+    delayed: 0,
+    unscheduled: 0,
+  };
+
+  included.forEach((order) => {
+    const target = Number(order.targetQty) || 0;
+    const completed = Number(order.completedOkQty) || 0;
+    const remaining = Math.max(0, target - completed);
+    const start = parseDate(order.plannedStartAt);
+    const end = parseDate(order.plannedEndAt);
+    if (!start || !end) {
+      result.unscheduled += 1;
+    } else if (remaining === 0 || order.status === "COMPLETED") {
+      result.normal += 1;
+    } else if (end < now) {
+      result.delayed += 1;
+    } else {
+      const duration = Math.max(1, end.getTime() - start.getTime());
+      const elapsedRate = Math.min(1, Math.max(0, (now.getTime() - start.getTime()) / duration));
+      const completionRate = target > 0 ? completed / target : 0;
+      if (elapsedRate - completionRate >= 0.1) result.warning += 1;
+      else result.normal += 1;
+    }
+  });
+  return result;
 }
 
 function todayRange() {
@@ -230,7 +346,35 @@ function todayRange() {
   return { startAt: toLocalDateTime(start), endAt: toLocalDateTime(end) };
 }
 
+function currentWeekRange() {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const day = start.getDay();
+  start.setDate(start.getDate() - (day === 0 ? 6 : day - 1));
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+  return { start, end };
+}
+
+function formatWeekLabel(week) {
+  const format = (date) => `${date.getMonth() + 1}.${date.getDate()}`;
+  const inclusiveEnd = new Date(week.end);
+  inclusiveEnd.setDate(inclusiveEnd.getDate() - 1);
+  return `${format(week.start)}~${format(inclusiveEnd)}`;
+}
+
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function toLocalDateTime(date) {
   const pad = (value) => String(value).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+function toLocalDate(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }

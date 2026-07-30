@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class MemberServiceTest {
@@ -52,14 +53,14 @@ class MemberServiceTest {
                 .role(Member.Role.OPERATOR)
                 .status(Member.Status.ACTIVE)
                 .build();
-        when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
+        lenient().when(memberRepository.findById(1L)).thenReturn(Optional.of(member));
     }
 
 
     @Test
     void createsMemberWithSelectedStatus() {
         MemberCreateRequestDto dto = new MemberCreateRequestDto();
-        dto.setLoginId("operator2");
+        dto.setLoginId("EVR00000007");
         dto.setPassword("password");
         dto.setMemberName("operator2");
         dto.setRole("OPERATOR");
@@ -70,6 +71,20 @@ class MemberServiceTest {
 
         assertThat(response.getRole()).isEqualTo("OPERATOR");
         assertThat(response.getStatus()).isEqualTo("LOCKED");
+    }
+
+    @Test
+    void rejectsOperatorLoginIdThatIsNotFixedEmployeeNumberFormat() {
+        MemberCreateRequestDto dto = new MemberCreateRequestDto();
+        dto.setLoginId("operator2");
+        dto.setPassword("password");
+        dto.setMemberName("operator2");
+        dto.setRole("OPERATOR");
+
+        assertThatThrownBy(() -> memberService.createMember(dto, 1L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
     }
 
     @Test

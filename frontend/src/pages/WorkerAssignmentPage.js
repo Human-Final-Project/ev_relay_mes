@@ -8,9 +8,25 @@ import {
   LoadingState,
   Modal,
   PageHeader,
+  SortableTh,
   StatusBadge,
   formatDate,
+  useSortableRows,
 } from "../components/MesComponents";
+
+const ASSIGNMENT_SORTERS = {
+  worker: (row) => `${row.workerName || ""} ${row.workerNo || ""}`,
+  organization: (row) => `${row.department || ""} ${row.position || ""}`,
+  role: (row) => row.assignmentRole,
+  assignedAt: (row) => row.assignedAt,
+};
+const WORKER_SORTERS = {
+  worker: (row) => `${row.workerNo || ""} ${row.workerName || ""}`,
+  type: (row) => row.memberId ? "ACCOUNT" : "FIELD",
+  department: (row) => row.department,
+  position: (row) => row.position,
+  status: (row) => row.status,
+};
 
 export default function WorkerAssignmentPage({ currentUser }) {
   const machines = useApiData(MesApi.getMachines, []);
@@ -23,6 +39,8 @@ export default function WorkerAssignmentPage({ currentUser }) {
   const [mode, setMode] = useState("worker");
   const [workerForm, setWorkerForm] = useState(null);
   const canEdit = ["ADMIN", "MANAGER"].includes(currentUser?.role);
+  const sortedAssignments = useSortableRows(assignments, ASSIGNMENT_SORTERS);
+  const sortedWorkers = useSortableRows(workers.data || [], WORKER_SORTERS);
 
   const assignableWorkers = useMemo(
     () => (workers.data || []).filter((worker) =>
@@ -149,8 +167,14 @@ export default function WorkerAssignmentPage({ currentUser }) {
         {loading ? <LoadingState/> : !machineId ? <EmptyState message="설비를 선택하세요."/> :
           !assignments.length ? <EmptyState message="배정된 작업자가 없습니다."/> :
             <div className="mes-table-wrap"><table className="mes-table">
-              <thead><tr><th>작업자</th><th>부서/직급</th><th>역할</th><th>배정</th><th></th></tr></thead>
-              <tbody>{assignments.map((assignment) => <tr key={assignment.assignmentId}>
+              <thead><tr>
+                <SortableTh label="작업자" sortKey="worker" {...sortedAssignments}/>
+                <SortableTh label="부서/직급" sortKey="organization" {...sortedAssignments}/>
+                <SortableTh label="역할" sortKey="role" {...sortedAssignments}/>
+                <SortableTh label="배정" sortKey="assignedAt" {...sortedAssignments}/>
+                <th>작업</th>
+              </tr></thead>
+              <tbody>{sortedAssignments.rows.map((assignment) => <tr key={assignment.assignmentId}>
                 <td>{assignment.workerName}<br/><span className="mono">{assignment.workerNo}</span></td>
                 <td>{assignment.department || "-"} / {assignment.position || "-"}</td>
                 <td><StatusBadge value={assignment.assignmentRole}/></td>
@@ -174,8 +198,15 @@ export default function WorkerAssignmentPage({ currentUser }) {
         {workers.loading ? <LoadingState/> : workers.error ?
           <ErrorState error={workers.error}/> :
           <div className="mes-table-wrap"><table className="mes-table">
-            <thead><tr><th>사번/이름</th><th>구분</th><th>부서</th><th>직급</th><th>상태</th><th></th></tr></thead>
-            <tbody>{(workers.data || []).map((worker) => <tr key={worker.workerId}>
+            <thead><tr>
+              <SortableTh label="사번/이름" sortKey="worker" {...sortedWorkers}/>
+              <SortableTh label="구분" sortKey="type" {...sortedWorkers}/>
+              <SortableTh label="부서" sortKey="department" {...sortedWorkers}/>
+              <SortableTh label="직급" sortKey="position" {...sortedWorkers}/>
+              <SortableTh label="상태" sortKey="status" {...sortedWorkers}/>
+              <th>작업</th>
+            </tr></thead>
+            <tbody>{sortedWorkers.rows.map((worker) => <tr key={worker.workerId}>
               <td><span className="mono">{worker.workerNo}</span><br/>{worker.workerName}</td>
               <td>{worker.memberId
                 ? <><StatusBadge value="ACCOUNT"/><br/><small>{worker.loginId}</small></>
@@ -199,7 +230,7 @@ export default function WorkerAssignmentPage({ currentUser }) {
         <button className="btn secondary" onClick={() => setWorkerForm(null)}>취소</button>
         <button
           className="btn"
-          disabled={!workerForm.workerNo?.trim()
+          disabled={!/^EVR\d{8}$/.test(workerForm.workerNo || "")
             || !workerForm.workerName?.trim()
             || !workerForm.department?.trim()
             || !workerForm.position?.trim()}
@@ -208,11 +239,22 @@ export default function WorkerAssignmentPage({ currentUser }) {
       </>}
     >
       <div className="mes-form-grid">
-        <Field label="사번"><input value={workerForm.workerNo} onChange={(event) => setWorkerForm({ ...workerForm, workerNo: event.target.value })}/></Field>
+        <Field label="사번">
+          <input
+            value={workerForm.workerNo}
+            maxLength={11}
+            placeholder="EVR00000001"
+            onChange={(event) => setWorkerForm({
+              ...workerForm,
+              workerNo: event.target.value.toUpperCase(),
+            })}
+          />
+        </Field>
         <Field label="이름"><input value={workerForm.workerName} onChange={(event) => setWorkerForm({ ...workerForm, workerName: event.target.value })}/></Field>
         <Field label="부서 (필수)"><input value={workerForm.department || ""} onChange={(event) => setWorkerForm({ ...workerForm, department: event.target.value })}/></Field>
         <Field label="직급 (필수)"><input value={workerForm.position || ""} onChange={(event) => setWorkerForm({ ...workerForm, position: event.target.value })}/></Field>
       </div>
+      <p className="form-hint">사번은 EVR + 숫자 8자리로 입력합니다.</p>
       {error && <ErrorState error={error}/>}
     </Modal>}
   </div>;
