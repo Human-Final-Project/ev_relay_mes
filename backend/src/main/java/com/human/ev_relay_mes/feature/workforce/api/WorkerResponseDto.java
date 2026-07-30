@@ -16,6 +16,8 @@ public class WorkerResponseDto {
     private String department;
     private String position;
     private String status;
+    private Long memberId;
+    private String loginId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 
@@ -27,6 +29,10 @@ public class WorkerResponseDto {
                 .department(worker.getDepartment())
                 .position(worker.getPosition())
                 .status(worker.getStatus().name())
+                .memberId(worker.getMember() == null
+                        ? null : worker.getMember().getMemberId())
+                .loginId(worker.getMember() == null
+                        ? null : worker.getMember().getLoginId())
                 .createdAt(worker.getCreatedAt())
                 .updatedAt(worker.getUpdatedAt())
                 .build();

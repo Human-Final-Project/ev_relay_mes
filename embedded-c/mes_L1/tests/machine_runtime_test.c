@@ -112,7 +112,7 @@ static void test_replays_unreported_unit(void)
     CHECK(actions.actions[0].data.judgment.unit_seq == 2);
 }
 
-static void test_three_percent_combined_ng(void)
+static void test_two_percent_combined_ng(void)
 {
     const char *machines[] = {
         "EQ-WIND-01", "EQ-WELD-01", "EQ-ASSY-01",
@@ -132,7 +132,7 @@ static void test_three_percent_combined_ng(void)
             if (l1_ng || action_has_measurement_ng(&actions)) ++ng_units;
             CHECK(l1_machine_runtime_mark_reported(&runtime, 1) == 0);
         }
-        CHECK(ng_units == 3);
+        CHECK(ng_units == 2);
         CHECK(runtime.state == L1_RUNTIME_IDLE);
     }
 }
@@ -295,7 +295,7 @@ int main(void)
 {
     test_process_event_shapes();
     test_replays_unreported_unit();
-    test_three_percent_combined_ng();
+    test_two_percent_combined_ng();
     test_error_and_resume();
     test_op20_op30_have_no_blocking_alarms();
     test_warning_alarm_does_not_pause_production();

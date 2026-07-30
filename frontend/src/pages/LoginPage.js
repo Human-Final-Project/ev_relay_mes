@@ -3,7 +3,7 @@ import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthApi from "../api/AuthApi";
 
-function LoginPage({ onLoginSuccess }) { 
+function LoginPage({ onLoginSuccess, redirectTo = "/dashboard" }) {
   const navigate = useNavigate();
 
   const [employeeId, setEmployeeId] = useState("");
@@ -26,7 +26,7 @@ function LoginPage({ onLoginSuccess }) {
       const response = await AuthApi.login(loginId, password);
       const user = response.data;
       onLoginSuccess(user);
-      navigate("/dashboard", { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (error) {
       setErrorMessage(
         error.response?.data?.message ||
@@ -71,7 +71,10 @@ function LoginPage({ onLoginSuccess }) {
           margin:0;
           padding:0;
           font-family:"Inter",sans-serif;
-          background:var(--surface-container-low);
+          background:
+            radial-gradient(circle at 18% 16%,rgba(14,165,233,.13),transparent 30%),
+            radial-gradient(circle at 82% 84%,rgba(37,99,235,.12),transparent 34%),
+            linear-gradient(145deg,#f7faff,#eaf1fa);
         }
 
         .material-symbols-outlined{
@@ -101,16 +104,17 @@ function LoginPage({ onLoginSuccess }) {
         .bg-pattern{
           position:absolute;
           inset:0;
-          background-image:radial-gradient(#6e7881 0.5px,transparent 0.5px);
-          background-size:24px 24px;
-          opacity:.2;
+          background-image:radial-gradient(#71839a .6px,transparent .6px);
+          background-size:22px 22px;
+          opacity:.14;
           z-index:0;
         }
 
         .login-container{
           position:relative;
           width:100%;
-          max-width:420px;
+          max-width:440px;
+          padding:20px;
           z-index:10;
         }
 
@@ -119,47 +123,50 @@ function LoginPage({ onLoginSuccess }) {
           flex-direction:column;
           align-items:center;
           text-align:center;
-          margin-bottom:40px;
+          margin-bottom:28px;
         }
 
         .icon-container{
-          margin-bottom:16px;
+          margin-bottom:14px;
         }
 
         .icon-large{
-          width:48px;
-          height:48px;
-          background:var(--primary);
+          width:58px;
+          height:58px;
+          background:linear-gradient(145deg,#1388ee,#0756b9);
           color:white;
           display:flex;
           align-items:center;
           justify-content:center;
-          border-radius:4px;
-          font-size:32px;
+          border:1px solid rgba(255,255,255,.45);
+          border-radius:17px;
+          box-shadow:0 13px 28px rgba(0,91,172,.25);
+          font-size:34px;
         }
 
         .brand-header h1{
           margin:0;
-          font-size:32px;
-          font-weight:600;
+          font-size:30px;
+          font-weight:800;
+          letter-spacing:-.04em;
           color:var(--on-surface);
         }
 
         .brand-header p{
           margin-top:4px;
           font-size:12px;
-          color:var(--primary);
-          font-weight:600;
-          letter-spacing:.05em;
+          color:#37617e;
+          font-weight:700;
+          letter-spacing:.11em;
           text-transform:uppercase;
         }
 
         .login-card{
           background:white;
-          border:1px solid var(--outline-variant);
-          border-radius:8px;
-          padding:40px;
-          box-shadow:0 12px 32px rgba(30,41,59,.05);
+          border:1px solid rgba(190,200,210,.72);
+          border-radius:18px;
+          padding:38px;
+          box-shadow:0 24px 70px rgba(30,53,82,.13);
         }
 
         .card-header{
@@ -168,18 +175,22 @@ function LoginPage({ onLoginSuccess }) {
 
         .card-header h2{
           margin:0;
-          font-size:20px;
+          color:#142b49;
+          font-size:21px;
+          letter-spacing:-.025em;
         }
 
         .card-header p{
           margin-top:8px;
-          color:var(--on-surface-variant);
+          color:#64748b;
+          font-size:13px;
+          line-height:1.5;
         }
 
         .login-form{
           display:flex;
           flex-direction:column;
-          gap:24px;
+          gap:20px;
         }
 
         .form-group{
@@ -190,9 +201,8 @@ function LoginPage({ onLoginSuccess }) {
 
         .form-group label{
           font-size:12px;
-          text-transform:uppercase;
-          color:var(--outline);
-          font-weight:600;
+          color:#52657c;
+          font-weight:750;
         }
 
         .input-wrapper{
@@ -212,17 +222,18 @@ function LoginPage({ onLoginSuccess }) {
 
         .input-wrapper input{
           width:100%;
-          padding:12px 16px 12px 40px;
-          border:1px solid var(--outline-variant);
-          border-radius:4px;
+          min-height:48px;
+          padding:12px 16px 12px 43px;
+          border:1px solid #cbd7e4;
+          border-radius:10px;
           outline:none;
           font-size:16px;
           transition:.2s;
         }
 
         .input-wrapper input:focus{
-          border-color:var(--primary-container);
-          box-shadow:0 0 0 2px rgba(14,165,233,.2);
+          border-color:#3b82f6;
+          box-shadow:0 0 0 3px rgba(59,130,246,.13);
         }
 
         /* 💡 에러메시지 디자인 추가 */
@@ -235,11 +246,12 @@ function LoginPage({ onLoginSuccess }) {
 
         .submit-btn{
           width:100%;
-          padding:16px;
-          background:var(--primary-container);
+          min-height:50px;
+          padding:14px 16px;
+          background:linear-gradient(135deg,#1388ee,#0756b9);
           color:white;
           border:none;
-          border-radius:4px;
+          border-radius:10px;
           display:flex;
           justify-content:center;
           align-items:center;
@@ -251,7 +263,9 @@ function LoginPage({ onLoginSuccess }) {
         }
 
         .submit-btn:hover:not(:disabled){
-          background:var(--primary);
+          background:linear-gradient(135deg,#0878dc,#064a9f);
+          box-shadow:0 13px 26px rgba(7,86,185,.27);
+          transform:translateY(-1px);
         }
 
         .submit-btn:active:not(:disabled){
@@ -376,6 +390,13 @@ function LoginPage({ onLoginSuccess }) {
           .decoration-element{
             display:none;
           }
+        }
+        @media(max-width:520px){
+          .login-container{padding:14px}
+          .brand-header{margin-bottom:20px}
+          .brand-header h1{font-size:26px}
+          .login-card{padding:26px 22px;border-radius:15px}
+          .card-header{margin-bottom:25px}
         }
       `}</style>
 

@@ -35,6 +35,15 @@ test("updates material lot status as a request parameter",async()=>{
   expect(httpClient.request).toHaveBeenCalledWith({method:"patch",url:"/api/material-lots/3/status",data:undefined,params:{status:"HOLD"}});
 });
 
+test("requests machine alarms captured for a LOT timeline",async()=>{
+  httpClient.get.mockResolvedValue({data:[]});
+  await MesApi.getLotTimelineAlarms("LOT-001");
+  expect(httpClient.get).toHaveBeenCalledWith(
+    "/api/machines/alarms",
+    {params:{lotNo:"LOT-001"}},
+  );
+});
+
 test("creates a notice through the administrator endpoint",async()=>{
   httpClient.request.mockResolvedValue({status:201});
   const notice={title:"공지",content:"내용",pinned:true};

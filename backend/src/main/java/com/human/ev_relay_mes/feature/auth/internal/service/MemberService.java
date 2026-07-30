@@ -9,6 +9,7 @@ import com.human.ev_relay_mes.feature.auth.api.MemberResponseDto;
 import com.human.ev_relay_mes.feature.auth.api.MemberUpdateRequestDto;
 import com.human.ev_relay_mes.feature.auth.api.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceMemberLinkOperations;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class MemberService {
     private final MemberRepository memberRepository;
     private final PasswordEncoder passwordEncoder;
     private final MemberSessionService memberSessionService;
+    private final WorkforceMemberLinkOperations workforceMemberLinkOperations;
 
     // 관리자 회원 등록 화면에서 신규 사용자 계정과 최초 권한을 생성할 때 사용한다.
     @Transactional
@@ -46,7 +48,11 @@ public class MemberService {
                 .createdBy(createdBy)
                 .build();
 
-        return toResponse(memberRepository.save(member));
+        Member saved = memberRepository.save(member);
+        if (saved.getRole() == Member.Role.OPERATOR) {
+            workforceMemberLinkOperations.createOrLinkOperator(saved);
+        }
+        return toResponse(saved);
     }
 
     // 회원 관리 화면에 전체 사용자와 권한·상태 정보를 표시할 때 사용한다.
@@ -82,6 +88,11 @@ public class MemberService {
         }
         if (securityChanged) {
             memberSessionService.expireAllSessions(memberId);
+        }
+        if (member.getRole() == Member.Role.OPERATOR) {
+            workforceMemberLinkOperations.createOrLinkOperator(member);
+        } else {
+            workforceMemberLinkOperations.synchronizeLinkedWorker(member);
         }
         return toResponse(member);
     }

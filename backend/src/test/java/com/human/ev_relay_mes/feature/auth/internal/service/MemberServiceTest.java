@@ -7,6 +7,7 @@ import com.human.ev_relay_mes.feature.auth.api.MemberCreateRequestDto;
 import com.human.ev_relay_mes.feature.auth.api.MemberUpdateRequestDto;
 import com.human.ev_relay_mes.feature.auth.api.PasswordChangeRequestDto;
 import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceMemberLinkOperations;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +30,7 @@ class MemberServiceTest {
 
     @Mock MemberRepository memberRepository;
     @Mock MemberSessionService memberSessionService;
+    @Mock WorkforceMemberLinkOperations workforceMemberLinkOperations;
 
     private PasswordEncoder passwordEncoder;
     private MemberService memberService;
@@ -37,7 +39,11 @@ class MemberServiceTest {
     @BeforeEach
     void setUp() {
         passwordEncoder = new BCryptPasswordEncoder();
-        memberService = new MemberService(memberRepository, passwordEncoder, memberSessionService);
+        memberService = new MemberService(
+                memberRepository,
+                passwordEncoder,
+                memberSessionService,
+                workforceMemberLinkOperations);
         member = Member.builder()
                 .memberId(1L)
                 .loginId("operator1")

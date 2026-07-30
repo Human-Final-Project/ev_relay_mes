@@ -15,6 +15,8 @@ import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
 import com.human.ev_relay_mes.feature.production.internal.repository.WorkOrderRepository;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +37,8 @@ public class WorkOrderService implements WorkOrderOperations {
     private final WorkOrderFactory workOrderFactory;
     private final WorkOrderStatePolicy workOrderStatePolicy;
     private final WorkOrderResponseAssembler responseAssembler;
+    private final MachineRegistry machineRegistry;
+    private final WorkforceAssignmentLookup workforceAssignmentLookup;
 
     @Transactional
     public WorkOrderResponseDto createWorkOrder(WorkOrderRequestDto dto, Long memberId) {
@@ -111,6 +115,7 @@ public class WorkOrderService implements WorkOrderOperations {
             return toResponse(workOrder);
         }
         workOrderStatePolicy.validateTransition(workOrder, WorkOrder.Status.RELEASED);
+        validateResponsibleAssignments();
         workOrder.setStatus(WorkOrder.Status.RELEASED);
         lotService.createInitialLotAndRequestStart(
                 workOrder, resolveLotCreatorId(workOrder, memberId));
@@ -131,6 +136,7 @@ public class WorkOrderService implements WorkOrderOperations {
         }
         if (targetStatus == WorkOrder.Status.RELEASED) {
             workOrderStatePolicy.validateTransition(workOrder, targetStatus);
+            validateResponsibleAssignments();
             workOrder.setStatus(targetStatus);
             lotService.createInitialLotAndRequestStart(
                     workOrder, resolveLotCreatorId(workOrder, null));
@@ -146,6 +152,19 @@ public class WorkOrderService implements WorkOrderOperations {
         WorkOrder workOrder = findWorkOrderForUpdate(id);
         workOrderStatePolicy.validateDeletion(workOrder);
         workOrderRepository.delete(workOrder);
+    }
+
+    private void validateResponsibleAssignments() {
+        List<String> missingMachineIds = machineRegistry.getAllMachines().stream()
+                .map(machine -> machine.getMachineId())
+                .filter(machineId -> !workforceAssignmentLookup
+                        .hasActiveResponsible(machineId))
+                .toList();
+        if (!missingMachineIds.isEmpty()) {
+            throw new CustomException(
+                    ErrorCode.MACHINE_RESPONSIBLE_NOT_ASSIGNED,
+                    "책임자 미배정 설비: " + String.join(", ", missingMachineIds));
+        }
     }
 
     private WorkOrderResponseDto toResponse(WorkOrder workOrder) {

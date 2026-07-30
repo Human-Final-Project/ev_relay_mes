@@ -20,7 +20,7 @@
 #endif
 #define MES_BACKEND_BASE_URL "http://127.0.0.1:8111"
 #ifndef MES_COLLECTOR_API_KEY
-#define MES_COLLECTOR_API_KEY "ev-relay-collector-dev-key"
+#error "MES_COLLECTOR_API_KEY must be provided as a compiler definition"
 #endif
 #define MES_HTTP_CONNECT_TIMEOUT_SECONDS 3
 #define MES_HTTP_REQUEST_TIMEOUT_SECONDS 5

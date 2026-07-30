@@ -53,3 +53,27 @@ test("확정과 최초 LOT 자동 시작을 한 번에 요청한다",async()=>{
   fireEvent.click(release);
   await waitFor(()=>expect(MesApi.releaseWorkOrder).toHaveBeenCalledWith(1));
 });
+
+test("책임자가 없는 설비가 있으면 배정 화면 이동을 안내한다", async () => {
+  MesApi.getWorkOrders.mockResolvedValue({data:[{
+    workOrderId:1,
+    orderNo:"WO-001",
+    itemCode:"FG-001",
+    itemName:"완제품",
+    targetQty:10,
+    completedOkQty:0,
+    remainingQty:10,
+    status:"CREATED",
+    automationStatus:"DRAFT",
+  }]});
+  MesApi.releaseWorkOrder.mockRejectedValue({
+    response: {data: {code: "WK008", message: "책임자 미배정 설비: EQ-WIND-01"}},
+  });
+
+  render(<WorkOrderPage currentUser={{role:"MANAGER"}}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"확정 및 생산 시작"}));
+
+  expect(await screen.findByText("설비 책임자 배정 필요")).toBeInTheDocument();
+  expect(screen.getByRole("link", {name: "작업자 배정으로 이동"}))
+    .toHaveAttribute("href", "/workers");
+});

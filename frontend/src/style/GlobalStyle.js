@@ -80,6 +80,13 @@ const GlobalStyle = createGlobalStyle`
     font-family: var(--font-family-base);
   }
   * { box-sizing: border-box; }
+  button, input, select, textarea { font-family: inherit; }
+  button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
+    outline: 3px solid rgba(59, 130, 246, .28);
+    outline-offset: 2px;
+  }
+  ::selection { color:#fff; background:#2563eb; }
+  * { scrollbar-width:thin; scrollbar-color:#bdc9d6 #edf2f7; }
 `;
 
 export default GlobalStyle;

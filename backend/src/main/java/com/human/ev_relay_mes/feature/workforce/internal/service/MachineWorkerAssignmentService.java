@@ -2,6 +2,7 @@ package com.human.ev_relay_mes.feature.workforce.internal.service;
 
 import com.human.ev_relay_mes.feature.workforce.api.MachineWorkerAssignmentResponseDto;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.workforce.api.MachineWorkerAssignment;
 import com.human.ev_relay_mes.feature.workforce.api.Worker;
 import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
@@ -40,6 +41,10 @@ public class MachineWorkerAssignmentService implements WorkforceAssignmentLookup
             Long workerId) {
         Machine machine = findMachineForUpdate(machineId);
         Worker worker = workerService.findActiveWorker(workerId);
+        if (worker.getMember() == null
+                || worker.getMember().getStatus() != Member.Status.ACTIVE) {
+            throw new CustomException(ErrorCode.RESPONSIBLE_ACCOUNT_REQUIRED);
+        }
         Optional<MachineWorkerAssignment> target = assignmentRepository
                 .findByMachine_MachineIdAndWorker_WorkerId(machineId, workerId);
         Optional<MachineWorkerAssignment> current = assignmentRepository
@@ -94,9 +99,20 @@ public class MachineWorkerAssignmentService implements WorkforceAssignmentLookup
 
     @Override
     public Optional<MachineWorkerAssignment> findResponsible(String machineId) {
-        return assignmentRepository.findByMachine_MachineIdAndAssignmentRole(
-                machineId,
-                MachineWorkerAssignment.AssignmentRole.RESPONSIBLE);
+        return assignmentRepository
+                .findByMachine_MachineIdAndAssignmentRole(
+                        machineId,
+                        MachineWorkerAssignment.AssignmentRole.RESPONSIBLE)
+                .filter(assignment -> assignment.getWorker().getStatus()
+                        == Worker.Status.ACTIVE)
+                .filter(assignment -> assignment.getWorker().getMember() != null)
+                .filter(assignment -> assignment.getWorker().getMember().getStatus()
+                        == Member.Status.ACTIVE);
+    }
+
+    @Override
+    public boolean hasActiveResponsible(String machineId) {
+        return findResponsible(machineId).isPresent();
     }
 
     private Machine findMachine(String machineId) {

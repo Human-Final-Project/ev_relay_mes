@@ -20,7 +20,7 @@ export default function Header({ currentTime, onLogout, currentUser }) {
       <span className="header-separator"/>
       <span className="current-time">{currentTime}</span>
       <span className="header-separator"/>
-      <Link to="/account" className="profile-link"><span className="profile-avatar"><span className="material-symbols-outlined">person</span></span><span style={{ textAlign:"left",lineHeight:1.2 }}><strong style={{ display:"block",fontSize:12 }}>{currentUser?.memberName || currentUser?.loginId}</strong><span style={{ fontSize:10,color:"#64748b" }}>{roleLabel}</span></span></Link>
+      <Link to="/account" className="profile-link"><span className="profile-avatar"><span className="material-symbols-outlined">person</span></span><span className="profile-copy"><strong>{currentUser?.memberName || currentUser?.loginId}</strong><span>{roleLabel}</span></span></Link>
       <button type="button" onClick={logout} className="icon-button" title="로그아웃"><span className="material-symbols-outlined">logout</span></button>
     </div>
   </header>;

@@ -7,7 +7,7 @@
 #include "device_config.h"
 #include "net.h"
 
-#define DEFAULT_RANDOM_ALARM_RATE 10
+#define DEFAULT_RANDOM_ALARM_RATE 5
 
 static void print_available_machines(void)
 {

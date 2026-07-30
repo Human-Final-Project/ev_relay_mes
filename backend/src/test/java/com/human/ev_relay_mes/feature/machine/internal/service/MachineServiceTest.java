@@ -238,7 +238,7 @@ class MachineServiceTest {
         when(machineRepository.findById("EQ-WIND-01")).thenReturn(Optional.of(machine));
         when(productionData.getRequiredLot("LOT-001")).thenReturn(lot);
         when(masterDataLookup.getRequiredProcess("OP20")).thenReturn(process);
-        when(workCommandService.completeResumeCommand(lot, process, machine)).thenReturn(true);
+        when(workCommandService.activateResumeCommand(lot, process, machine)).thenReturn(true);
         when(machineStatusHistoryRepository.save(any(MachineStatusHistory.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -247,6 +247,6 @@ class MachineServiceTest {
         assertThat(machine.getStatus()).isEqualTo(Machine.Status.RUNNING);
         assertThat(lot.getStatus()).isEqualTo(Lot.Status.RUNNING);
         assertThat(result.getStatus()).isEqualTo("RUNNING");
-        verify(workCommandService).completeResumeCommand(lot, process, machine);
+        verify(workCommandService).activateResumeCommand(lot, process, machine);
     }
 }

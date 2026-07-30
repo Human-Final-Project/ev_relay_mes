@@ -3,6 +3,7 @@ package com.human.ev_relay_mes.feature.machine.internal.service;
 import com.human.ev_relay_mes.feature.production.api.ProductionSchedulingRequests;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.machine.api.MachineAlarmReceiveRequestDto;
+import com.human.ev_relay_mes.feature.machine.api.MachineAlarmSearchRequestDto;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.AlarmCode;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
@@ -152,6 +153,41 @@ class MachineAlarmServiceTest {
         assertThat(response.getLotNo()).isEqualTo("LOT-001");
         assertThat(response.getProcessCode()).isEqualTo("OP20");
         verify(workCommandService, never()).pauseForMachineError(any());
+    }
+
+    @Test
+    void searchesOnlyAlarmsCapturedForRequestedLot() {
+        Process process = process();
+        Machine machine = machine(process, Machine.Status.ERROR);
+        Lot requestedLot = Lot.builder().lotNo("LOT-001").build();
+        Lot anotherLot = Lot.builder().lotNo("LOT-002").build();
+        MachineAlarmHistory requested = MachineAlarmHistory.builder()
+                .machineAlarmHistoryId(1L)
+                .machine(machine)
+                .alarmCode(alarmCode())
+                .alarmLevel("ERROR")
+                .lot(requestedLot)
+                .process(process)
+                .occurredAt(LocalDateTime.now())
+                .build();
+        MachineAlarmHistory another = MachineAlarmHistory.builder()
+                .machineAlarmHistoryId(2L)
+                .machine(machine)
+                .alarmCode(alarmCode())
+                .alarmLevel("ERROR")
+                .lot(anotherLot)
+                .process(process)
+                .occurredAt(LocalDateTime.now())
+                .build();
+        when(machineAlarmHistoryRepository.findAll(any(org.springframework.data.domain.Sort.class)))
+                .thenReturn(List.of(requested, another));
+        MachineAlarmSearchRequestDto condition = new MachineAlarmSearchRequestDto();
+        condition.setLotNo("LOT-001");
+
+        var result = machineAlarmService.search(condition);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getLotNo()).isEqualTo("LOT-001");
     }
 
     @Test

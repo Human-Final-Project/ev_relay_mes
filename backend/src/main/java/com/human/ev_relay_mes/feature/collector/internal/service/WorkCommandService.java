@@ -13,6 +13,7 @@ import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +49,7 @@ public class WorkCommandService implements WorkCommandOperations {
     private final WorkCommandDispatcher dispatcher;
     private final WorkCommandAcknowledgementProcessor acknowledgementProcessor;
     private final WorkCommandResumeManager resumeManager;
+    private final WorkforceAssignmentLookup workforceAssignmentLookup;
 
     /**
      * 기존 호출부와 테스트를 위한 엄격한 생성 API다.
@@ -87,6 +89,8 @@ public class WorkCommandService implements WorkCommandOperations {
         if (wind == null || weld == null) {
             return Optional.empty();
         }
+        requireResponsible(wind);
+        requireResponsible(weld);
 
         WorkCommand windCommand = buildStartCommand(lot, op20, wind, lot.getInputQty());
         WorkCommand weldCommand = buildStartCommand(lot, op30, weld, lot.getInputQty());
@@ -113,6 +117,7 @@ public class WorkCommandService implements WorkCommandOperations {
         if (machine == null) {
             return Optional.empty();
         }
+        requireResponsible(machine);
         WorkCommand command = buildStartCommand(lot, process, machine, inputQty);
         return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(command)));
     }
@@ -154,6 +159,7 @@ public class WorkCommandService implements WorkCommandOperations {
     @Transactional
     public Optional<WorkCommandResponseDto> createResumeCommand(
             String machineId, String lotNo, String processCode) {
+        requireResponsible(machineId);
         return resumeManager.create(machineId, lotNo, processCode);
     }
 
@@ -163,8 +169,8 @@ public class WorkCommandService implements WorkCommandOperations {
     }
 
     @Transactional
-    public boolean completeResumeCommand(Lot lot, Process process, Machine machine) {
-        return resumeManager.complete(lot, process, machine);
+    public boolean activateResumeCommand(Lot lot, Process process, Machine machine) {
+        return resumeManager.activate(lot, process, machine);
     }
 
     @Transactional
@@ -178,12 +184,17 @@ public class WorkCommandService implements WorkCommandOperations {
     }
 
     @Transactional
-    public void completeStartCommand(Lot lot, Process process, Machine machine) {
-        List<WorkCommand> commands = workCommandRepository
-                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
-                        lot.getLotNo(), process.getProcessCode(), machine.getMachineId(),
-                        WorkCommand.CommandType.START,
-                        EnumSet.of(WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED));
+    public void completeProductionCommands(Lot lot, Process process, Machine machine) {
+        EnumSet<WorkCommand.Status> activeExecutionStatuses =
+                EnumSet.of(WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED);
+        List<WorkCommand> commands = new java.util.ArrayList<>();
+        for (WorkCommand.CommandType commandType :
+                List.of(WorkCommand.CommandType.START, WorkCommand.CommandType.RESUME)) {
+            commands.addAll(workCommandRepository
+                    .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+                            lot.getLotNo(), process.getProcessCode(), machine.getMachineId(),
+                            commandType, activeExecutionStatuses));
+        }
         LocalDateTime now = LocalDateTime.now();
         commands.forEach(command -> {
             command.setStatus(WorkCommand.Status.COMPLETED);
@@ -278,5 +289,17 @@ public class WorkCommandService implements WorkCommandOperations {
                 .lot(lot)
                 .inputQty(inputQty)
                 .build();
+    }
+
+    private void requireResponsible(Machine machine) {
+        requireResponsible(machine.getMachineId());
+    }
+
+    private void requireResponsible(String machineId) {
+        if (!workforceAssignmentLookup.hasActiveResponsible(machineId)) {
+            throw new CustomException(
+                    ErrorCode.MACHINE_RESPONSIBLE_NOT_ASSIGNED,
+                    "책임자 미배정 설비: " + machineId);
+        }
     }
 }

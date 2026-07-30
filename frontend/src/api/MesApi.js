@@ -46,6 +46,8 @@ const MesApi = {
     httpClient.get(`/api/lots/by-no/${encodeURIComponent(lotNo)}/responsibles`),
   getLotMaterialUsages: (lotNo) =>
     httpClient.get(`/api/lots/by-no/${encodeURIComponent(lotNo)}/materials`),
+  getLotTimelineAlarms: (lotNo) =>
+    httpClient.get("/api/machines/alarms", query({ lotNo })),
   getProductionLogs: (params) => httpClient.get("/api/production-logs", query(params)),
 
   getMachines: () => httpClient.get("/api/machines"),

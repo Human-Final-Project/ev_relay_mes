@@ -8,6 +8,6 @@
 #define L1_RECONNECT_DELAY_MS 3000U
 /* Keep each process visible across the frontend's 5-second polling cycle. */
 #define L1_PRODUCTION_TICK_MS 1000U
-#define L1_NG_RATE_PERCENT 3U
+#define L1_NG_RATE_PERCENT 2U
 
 #endif

@@ -4,6 +4,8 @@ import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.internal.repository.MemberRepository;
 import com.human.ev_relay_mes.feature.notice.internal.entity.Notice;
 import com.human.ev_relay_mes.feature.notice.internal.repository.NoticeRepository;
+import com.human.ev_relay_mes.feature.workforce.internal.repository.MachineWorkerAssignmentRepository;
+import com.human.ev_relay_mes.feature.workforce.internal.repository.WorkerRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -30,6 +32,8 @@ class NoticeApiTest {
     @Autowired MockMvc mockMvc;
     @Autowired NoticeRepository noticeRepository;
     @Autowired MemberRepository memberRepository;
+    @Autowired MachineWorkerAssignmentRepository assignmentRepository;
+    @Autowired WorkerRepository workerRepository;
 
     private Member admin;
     private Notice existingNotice;
@@ -37,6 +41,8 @@ class NoticeApiTest {
     @BeforeEach
     void setUp() {
         noticeRepository.deleteAll();
+        assignmentRepository.deleteAll();
+        workerRepository.deleteAll();
         memberRepository.deleteAll();
         admin = memberRepository.save(member("admin", Member.Role.ADMIN));
         Member operator = memberRepository.save(member("operator", Member.Role.OPERATOR));

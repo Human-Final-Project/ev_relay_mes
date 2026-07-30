@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.feature.workforce.api;
 
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -32,6 +33,10 @@ public class Worker {
 
     @Column(name = "position", length = 50)
     private String position;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "member_id", unique = true)
+    private Member member;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 20)

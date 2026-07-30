@@ -25,7 +25,8 @@ export default function Sidebar({ collapsed, onToggle, collectorStatus, currentU
     <div className="sidebar-brand">
       <div className="sidebar-brand-row">
         <Link className="sidebar-brand-link" to="/" title="홈으로 이동">
-          <h1>EV Relay Mini MES</h1><p>System Operator</p>
+          <span className="sidebar-brand-mark"><span className="material-symbols-outlined">electric_bolt</span></span>
+          <span className="sidebar-brand-copy"><h1>EV Relay MES</h1><p>Manufacturing Control</p></span>
         </Link>
         <button type="button" className="sidebar-toggle" onClick={onToggle} aria-label={collapsed ? "사이드바 펼치기" : "사이드바 접기"}>{collapsed ? "≫" : "≪"}</button>
       </div>

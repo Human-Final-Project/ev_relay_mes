@@ -13,6 +13,8 @@ ALTER TABLE defect_codes MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_
 ALTER TABLE alarm_codes MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
 ALTER TABLE machines MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
 ALTER TABLE inspection_standards MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE workers MODIFY created_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
+ALTER TABLE machine_worker_assignments MODIFY assigned_at DATETIME(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6);
 
 -- Initial administrator: admin / admin1234!
 -- Change this password immediately after the first login.
@@ -28,6 +30,47 @@ INSERT INTO members (
     '관리자',
     NULL
 );
+
+-- Initial equipment responsible accounts.
+-- All six accounts initially use admin1234! and must change it after login.
+INSERT INTO members (
+    login_id, password, member_name, role, status, department, position, created_by
+) VALUES
+('resp.wind', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '김권선', 'OPERATOR', 'ACTIVE', '생산팀', '권선 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
+('resp.weld', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '이용접', 'OPERATOR', 'ACTIVE', '생산팀', '용접 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
+('resp.assy', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '박조립', 'OPERATOR', 'ACTIVE', '생산팀', '조립 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
+('resp.seal', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '최실링', 'OPERATOR', 'ACTIVE', '생산팀', '실링 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
+('resp.test', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '정검사', 'OPERATOR', 'ACTIVE', '품질팀', '검사 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin')),
+('resp.pack', '$2a$10$DWXQRR3CGiJdJrJhGlH1Yu4iw6mujOmc5Zl9GSDn7rEcvKP/XSXEi',
+ '한포장', 'OPERATOR', 'ACTIVE', '생산팀', '포장 책임자',
+ (SELECT member_id FROM members admin WHERE admin.login_id = 'admin'));
+
+-- A responsible person is both a login member and a linked worker.
+INSERT INTO workers (
+    worker_no, worker_name, department, position, member_id, status
+) VALUES
+('RESP-WIND', '김권선', '생산팀', '권선 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.wind'), 'ACTIVE'),
+('RESP-WELD', '이용접', '생산팀', '용접 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.weld'), 'ACTIVE'),
+('RESP-ASSY', '박조립', '생산팀', '조립 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.assy'), 'ACTIVE'),
+('RESP-SEAL', '최실링', '생산팀', '실링 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.seal'), 'ACTIVE'),
+('RESP-TEST', '정검사', '품질팀', '검사 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.test'), 'ACTIVE'),
+('RESP-PACK', '한포장', '생산팀', '포장 책임자',
+ (SELECT member_id FROM members WHERE login_id = 'resp.pack'), 'ACTIVE');
 
 INSERT INTO items (item_code, item_name, item_type, use_yn) VALUES
 ('RM-CU-001', '코일용 구리선', 'RM', 'Y'),
@@ -164,6 +207,16 @@ INSERT INTO machines (
 ('EQ-SEAL-01', '실링/가스 충전기', 'EQ-SEAL', 'OP60', 'IDLE'),
 ('EQ-TEST-01', '최종 검사기', 'EQ-TEST', 'OP70', 'IDLE'),
 ('EQ-PACK-01', '포장기', 'EQ-PACK', 'OP80', 'IDLE');
+
+INSERT INTO machine_worker_assignments (
+    machine_id, worker_id, assignment_role
+) VALUES
+('EQ-WIND-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-WIND'), 'RESPONSIBLE'),
+('EQ-WELD-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-WELD'), 'RESPONSIBLE'),
+('EQ-ASSY-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-ASSY'), 'RESPONSIBLE'),
+('EQ-SEAL-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-SEAL'), 'RESPONSIBLE'),
+('EQ-TEST-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-TEST'), 'RESPONSIBLE'),
+('EQ-PACK-01', (SELECT worker_id FROM workers WHERE worker_no = 'RESP-PACK'), 'RESPONSIBLE');
 
 INSERT INTO inspection_standards (
     process_code, inspection_item, item_name, unit,

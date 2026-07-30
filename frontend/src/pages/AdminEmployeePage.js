@@ -20,6 +20,8 @@ const emptyMember = {
   memberName: "",
   role: "OPERATOR",
   status: "ACTIVE",
+  department: "",
+  position: "",
 };
 
 export default function AdminEmployeePage() {
@@ -41,6 +43,8 @@ export default function AdminEmployeePage() {
         await MesApi.updateMember(form.memberId, {
           role: form.role,
           status: form.status,
+          department: form.department,
+          position: form.position,
         });
       } else {
         await MesApi.createMember({
@@ -49,6 +53,8 @@ export default function AdminEmployeePage() {
           memberName: form.memberName,
           role: form.role,
           status: form.status,
+          department: form.department,
+          position: form.position,
         });
       }
       setForm(null);
@@ -68,16 +74,17 @@ export default function AdminEmployeePage() {
   return <div className="mes-page">
     <PageHeader
       title="사용자 관리"
-      description="ADMIN 전용 계정·권한 관리 화면입니다. 사용자 역할은 관리자와 운영자로 관리합니다."
+      description="책임자로 배정할 사람은 OPERATOR 사용자로 등록합니다. 등록 즉시 책임자 후보 작업자와 연동됩니다."
       actions={<button className="btn" onClick={() => setForm({ ...emptyMember })}>사용자 등록</button>}
     />
 
     {error && <ErrorState error={error}/>} 
     {result.loading ? <LoadingState/> : result.error ? <ErrorState error={result.error} onRetry={result.reload}/> : !(result.data || []).length ? <EmptyState/> :
       <div className="mes-table-wrap"><table className="mes-table">
-        <thead><tr><th>로그인 ID/이름</th><th>역할</th><th>상태</th><th>생성자</th><th>수정 시각</th><th>작업</th></tr></thead>
+        <thead><tr><th>로그인 ID/이름</th><th>부서/직급</th><th>역할</th><th>상태</th><th>생성자</th><th>수정 시각</th><th>작업</th></tr></thead>
         <tbody>{result.data.map((member) => <tr key={member.memberId}>
           <td><span className="mono">{member.loginId}</span><br/><strong>{member.memberName}</strong></td>
+          <td>{member.department || "-"}<br/><small>{member.position || "-"}</small></td>
           <td><StatusBadge value={member.role}/></td>
           <td><StatusBadge value={member.status}/></td>
           <td>{member.createdByName || "-"}</td>
@@ -101,6 +108,8 @@ export default function AdminEmployeePage() {
           <Field label="초기 비밀번호"><input type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })}/></Field>
           <Field label="이름"><input value={form.memberName} onChange={(e) => setForm({ ...form, memberName: e.target.value })}/></Field>
         </>}
+        <Field label="부서"><input value={form.department || ""} onChange={(e) => setForm({ ...form, department: e.target.value })}/></Field>
+        <Field label="직급"><input value={form.position || ""} onChange={(e) => setForm({ ...form, position: e.target.value })}/></Field>
         <Field label="역할">
           <select value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
             {roleOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}

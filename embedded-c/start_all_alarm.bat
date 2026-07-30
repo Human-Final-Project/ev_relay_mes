@@ -6,7 +6,7 @@ set "L1_DIR=!EMBEDDED_DIR!mes_L1"
 set "L2_DIR=!EMBEDDED_DIR!mes_collector"
 set "L1_EXE=!L1_DIR!\l1_simulator.exe"
 set "L2_EXE=!L2_DIR!\mes_collector.exe"
-set "ALARM_RATE=25"
+set "ALARM_RATE=5"
 
 rem Prevent duplicate collectors/simulators from making communication alarms and stale sessions.
 tasklist /FI "IMAGENAME eq mes_collector.exe" 2>NUL | find /I "mes_collector.exe" >NUL

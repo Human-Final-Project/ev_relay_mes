@@ -11,6 +11,9 @@ import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
+import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
 import com.human.ev_relay_mes.feature.production.internal.repository.WorkOrderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,6 +39,8 @@ class WorkOrderServiceTest {
     @Mock private LotRepository lotRepository;
     @Mock private com.human.ev_relay_mes.feature.material.api.MaterialInventory materialInventory;
     @Mock private LotService lotService;
+    @Mock private MachineRegistry machineRegistry;
+    @Mock private WorkforceAssignmentLookup workforceAssignmentLookup;
 
     private WorkOrderService workOrderService;
 
@@ -50,7 +55,9 @@ class WorkOrderServiceTest {
                 lotService,
                 new WorkOrderFactory(workOrderRepository),
                 new WorkOrderStatePolicy(lotRepository),
-                new WorkOrderResponseAssembler(lotRepository));
+                new WorkOrderResponseAssembler(lotRepository),
+                machineRegistry,
+                workforceAssignmentLookup);
     }
 
     @Test
@@ -117,6 +124,24 @@ class WorkOrderServiceTest {
         assertThat(response.getStatus()).isEqualTo("RELEASED");
         assertThat(workOrder.getStatus()).isEqualTo(WorkOrder.Status.RELEASED);
         verify(lotService).createInitialLotAndRequestStart(workOrder, 7L);
+    }
+
+    @Test
+    void rejectsReleaseWhenAnyMachineHasNoActiveResponsible() {
+        WorkOrder workOrder = workOrder(8L, WorkOrder.Status.CREATED, 100);
+        workOrder.setCreatedBy(Member.builder().memberId(7L).build());
+        Machine wind = Machine.builder().machineId("EQ-WIND-01").build();
+        when(workOrderRepository.findByIdForUpdate(8L)).thenReturn(Optional.of(workOrder));
+        when(machineRegistry.getAllMachines()).thenReturn(List.of(wind));
+        when(workforceAssignmentLookup.hasActiveResponsible("EQ-WIND-01"))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> workOrderService.releaseAndStart(8L, 7L))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.MACHINE_RESPONSIBLE_NOT_ASSIGNED);
+
+        assertThat(workOrder.getStatus()).isEqualTo(WorkOrder.Status.CREATED);
     }
 
     @Test

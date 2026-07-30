@@ -30,7 +30,7 @@ class ProductionProcessCompletionCoordinator {
 
     void complete(Lot lot, Machine machine, Process process,
                   int totalOkQty, LocalDateTime endedAt) {
-        workCommandService.completeStartCommand(lot, process, machine);
+        workCommandService.completeProductionCommands(lot, process, machine);
         productionScheduleRequestService.requestMachine(machine.getMachineId());
 
         if (ProcessCodes.INITIAL_PARALLEL_PROCESSES.contains(process.getProcessCode())) {

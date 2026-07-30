@@ -120,6 +120,8 @@ public enum ErrorCode {
     WORKER_INACTIVE(HttpStatus.CONFLICT, "WK004", "비활성 작업자는 설비에 배치할 수 없습니다."),
     WORKER_ASSIGNED_TO_MACHINE(HttpStatus.CONFLICT, "WK005", "설비에 배치된 작업자입니다."),
     MACHINE_WORKER_ASSIGNMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "WK006", "설비 인원 배치 정보를 찾을 수 없습니다."),
+    RESPONSIBLE_ACCOUNT_REQUIRED(HttpStatus.CONFLICT, "WK007", "책임자는 활성 사용자 계정과 연결된 작업자만 배정할 수 있습니다."),
+    MACHINE_RESPONSIBLE_NOT_ASSIGNED(HttpStatus.CONFLICT, "WK008", "모든 설비에 책임자를 배정한 뒤 생산을 시작해야 합니다."),
 
     // Defect
     DEFECT_CODE_NOT_FOUND(HttpStatus.NOT_FOUND, "D001", "불량 코드를 찾을 수 없습니다."),

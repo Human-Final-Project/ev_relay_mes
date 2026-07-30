@@ -14,6 +14,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperation
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceAssignmentLookup;
 import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,7 +30,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.lenient;
 import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
@@ -49,6 +52,8 @@ class WorkCommandServiceTest {
     private LotResponsibilityOperations lotResponsibilityOperations;
     @Mock
     private InspectionStandardOperations inspectionStandardOperations;
+    @Mock
+    private WorkforceAssignmentLookup workforceAssignmentLookup;
 
     private WorkCommandService workCommandService;
 
@@ -73,7 +78,10 @@ class WorkCommandServiceTest {
                 masterDataLookup,
                 dispatcher,
                 acknowledgementProcessor,
-                resumeManager);
+                resumeManager,
+                workforceAssignmentLookup);
+        lenient().when(workforceAssignmentLookup.hasActiveResponsible(anyString()))
+                .thenReturn(true);
     }
 
     @Test
@@ -97,6 +105,21 @@ class WorkCommandServiceTest {
         assertThat(commands).extracting(command -> command.getProcessCode())
                 .containsExactly("OP20", "OP30");
         assertThat(commands).allMatch(command -> command.getStatus().equals("PENDING"));
+    }
+
+    @Test
+    void rejectsStartCommandWhenSelectedMachineHasNoResponsible() {
+        Process process = process("OP60", 4);
+        Machine machine = machine("EQ-SEAL-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-001").currentProcess(process).inputQty(10).build();
+        when(machineRegistry.getUsableMachinesForUpdate("OP60")).thenReturn(List.of(machine));
+        when(workforceAssignmentLookup.hasActiveResponsible("EQ-SEAL-01"))
+                .thenReturn(false);
+
+        assertThatThrownBy(() -> workCommandService.tryCreateStartCommand(lot, process, 10))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.MACHINE_RESPONSIBLE_NOT_ASSIGNED);
     }
 
 
@@ -388,6 +411,57 @@ class WorkCommandServiceTest {
 
         assertThat(claimed).hasSize(1);
         assertThat(resume.getStatus()).isEqualTo(WorkCommand.Status.DISPATCHED);
+    }
+
+    @Test
+    void keepsResumeCommandActiveWhenMachineStartsRunningAgain() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-001").build();
+        WorkCommand resume = command(201L, lot, machine, process);
+        resume.setCommandType(WorkCommand.CommandType.RESUME);
+        resume.setStatus(WorkCommand.Status.ACCEPTED);
+        when(workCommandRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+                        eq("LOT-001"), eq("OP20"), eq("EQ-WIND-01"),
+                        eq(WorkCommand.CommandType.RESUME), anyCollection()))
+                .thenReturn(List.of(resume));
+
+        boolean activated =
+                workCommandService.activateResumeCommand(lot, process, machine);
+
+        assertThat(activated).isTrue();
+        assertThat(resume.getStatus()).isEqualTo(WorkCommand.Status.ACCEPTED);
+        assertThat(resume.getCompletedAt()).isNull();
+    }
+
+    @Test
+    void completesStartAndResumeCommandsWhenProductionActuallyFinishes() {
+        Process process = process("OP20", 1);
+        Machine machine = machine("EQ-WIND-01", process);
+        Lot lot = Lot.builder().lotNo("LOT-001").build();
+        WorkCommand start = command(101L, lot, machine, process);
+        start.setStatus(WorkCommand.Status.ACCEPTED);
+        WorkCommand resume = command(201L, lot, machine, process);
+        resume.setCommandType(WorkCommand.CommandType.RESUME);
+        resume.setStatus(WorkCommand.Status.ACCEPTED);
+        when(workCommandRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+                        eq("LOT-001"), eq("OP20"), eq("EQ-WIND-01"),
+                        eq(WorkCommand.CommandType.START), anyCollection()))
+                .thenReturn(List.of(start));
+        when(workCommandRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
+                        eq("LOT-001"), eq("OP20"), eq("EQ-WIND-01"),
+                        eq(WorkCommand.CommandType.RESUME), anyCollection()))
+                .thenReturn(List.of(resume));
+
+        workCommandService.completeProductionCommands(lot, process, machine);
+
+        assertThat(start.getStatus()).isEqualTo(WorkCommand.Status.COMPLETED);
+        assertThat(start.getCompletedAt()).isNotNull();
+        assertThat(resume.getStatus()).isEqualTo(WorkCommand.Status.COMPLETED);
+        assertThat(resume.getCompletedAt()).isNotNull();
     }
 
     @Test

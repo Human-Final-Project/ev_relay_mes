@@ -30,13 +30,13 @@ public interface WorkCommandOperations {
 
     boolean hasHeldInterruptedWork(String machineId, String lotNo, String processCode);
 
-    boolean completeResumeCommand(Lot lot, Process process, Machine machine);
+    boolean activateResumeCommand(Lot lot, Process process, Machine machine);
 
     WorkCommandResponseDto releaseDispatchedCommand(Long commandId, String machineId);
 
     WorkCommandResponseDto acknowledge(WorkCommandAckRequestDto dto);
 
-    void completeStartCommand(Lot lot, Process process, Machine machine);
+    void completeProductionCommands(Lot lot, Process process, Machine machine);
 
     int cancelActiveCommandsForLot(String lotNo);
 

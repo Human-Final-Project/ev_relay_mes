@@ -90,6 +90,9 @@ public class MachineAlarmService implements MachineAlarmOperations {
         return machineAlarmHistoryRepository.findAll(Sort.by(Sort.Direction.DESC, "occurredAt")).stream()
                 .filter(item -> RequestValues.isBlank(condition.getMachineId())
                         || item.getMachine().getMachineId().equals(condition.getMachineId()))
+                .filter(item -> RequestValues.isBlank(condition.getLotNo())
+                        || (item.getLot() != null
+                        && item.getLot().getLotNo().equals(condition.getLotNo())))
                 .filter(item -> RequestValues.isBlank(condition.getProcessCode())
                         || (item.getProcess() != null
                         && item.getProcess().getProcessCode().equals(condition.getProcessCode())))

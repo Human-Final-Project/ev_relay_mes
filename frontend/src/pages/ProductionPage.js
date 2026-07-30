@@ -43,6 +43,12 @@ export default function ProductionPage() {
   const machineByProcess = useMemo(() => Object.fromEntries(
     sorted.map((machine) => [machine.processCode, machine])
   ), [sorted]);
+  const machineSummary = useMemo(() => ({
+    total: sorted.length,
+    running: sorted.filter((machine) => String(machine.status).toUpperCase() === "RUNNING").length,
+    idle: sorted.filter((machine) => String(machine.status).toUpperCase() === "IDLE").length,
+    error: sorted.filter((machine) => String(machine.status).toUpperCase() === "ERROR").length,
+  }), [sorted]);
   const selected = sorted.find((machine) => machine.machineId === selectedMachineId) || null;
   const loading = (machines.loading && machines.data === null)
     || (pipelineLots.loading && pipelineLots.data === null);
@@ -62,6 +68,14 @@ export default function ProductionPage() {
     />
 
     {loading ? <LoadingState/> : error ? <ErrorState error={error} onRetry={reload}/> : <>
+      <section className="production-summary" aria-label="생산 현황 요약">
+        <SummaryCard icon="precision_manufacturing" label="전체 설비" value={machineSummary.total} unit="대"/>
+        <SummaryCard icon="play_circle" label="가동 중" value={machineSummary.running} unit="대" tone="running"/>
+        <SummaryCard icon="pause_circle" label="대기 설비" value={machineSummary.idle} unit="대" tone="idle"/>
+        <SummaryCard icon="warning" label="이상 설비" value={machineSummary.error} unit="대" tone="error"/>
+        <SummaryCard icon="inventory_2" label="진행 LOT" value={(pipelineLots.data || []).length} unit="건" tone="lot"/>
+      </section>
+
       <section className="mes-card live-process-panel">
         <div className="live-process-heading">
           <div>
@@ -99,8 +113,8 @@ export default function ProductionPage() {
         </div>
       </section>
 
-      <div className="mes-grid two">
-        <section className="mes-card">
+      <div className="production-bottom-grid">
+        <section className="mes-card pipeline-panel">
           <div className="pipeline-heading"><div><h2>파이프라인 LOT 현황</h2><p>현재 생산 중이거나 설비 복구를 기다리는 LOT입니다.</p></div><strong>{(pipelineLots.data || []).length}개 진행</strong></div>
           {!(pipelineLots.data || []).length ? <EmptyState message="현재 파이프라인에 투입된 LOT이 없습니다."/> :
             <div className="mes-table-wrap"><table className="mes-table pipeline-table">
@@ -117,13 +131,21 @@ export default function ProductionPage() {
             </table></div>}
         </section>
 
-        <section className="mes-card">
-          <h2>선택 설비 배정 정보</h2>
+        <section className="mes-card machine-detail-panel">
+          <div className="machine-detail-heading">
+            <div>
+              <h2>선택 설비 정보</h2>
+              <p>공정 카드를 선택하면 현재 작업 정보를 확인할 수 있습니다.</p>
+            </div>
+          </div>
           {!selected ? <EmptyState message="공정 카드를 선택하세요."/> : detailError ? <ErrorState error={detailError}/> : assignments === null ? <LoadingState/> : <>
+            <div className="selected-machine-hero">
+              <span className={`status-dot status-${String(selected.status || "IDLE").toLowerCase()}`}/>
+              <div><strong>{selected.machineName}</strong><span>{selected.machineId}</span></div>
+              <StatusBadge value={selected.status}/>
+            </div>
             <dl className="detail-list">
-              <dt>설비</dt><dd>{selected.machineName} ({selected.machineId})</dd>
               <dt>공정</dt><dd>{selected.processName} ({selected.processCode})</dd>
-              <dt>현재 상태</dt><dd><StatusBadge value={selected.status}/></dd>
               <dt>현재 LOT</dt><dd>{selected.currentLotNo || "-"}</dd>
               <dt>담당자</dt><dd>{assignments.map((assignment) => `${assignment.workerName}(${assignment.assignmentRole})`).join(", ") || "미배정"}</dd>
             </dl>
@@ -145,17 +167,29 @@ export function MachineCard({ machine, onClick, selected, compact = false }) {
     disabled={!interactive}
     aria-pressed={selected}
   >
-    <span className={`live-machine-status-dot status-${status.toLowerCase()}`} aria-hidden="true"/>
-    <span className="live-machine-code">{machine.processCode}</span>
-    <strong>{machine.machineId || "설비 미등록"}</strong>
-    <small>{machine.processName || machine.machineName || "공정 정보 없음"}</small>
-    <span className="live-machine-lot">{machine.currentLotNo || "대기 중"}</span>
+    <span className="live-machine-topline">
+      <span className="live-machine-code">{machine.processCode}</span>
+      <span className={`live-machine-status-dot status-${status.toLowerCase()}`} aria-hidden="true"/>
+    </span>
+    <span className="live-machine-identity">
+      <strong>{machine.machineId || "설비 미등록"}</strong>
+      <small>{machine.processName || machine.machineName || "공정 정보 없음"}</small>
+    </span>
+    <span className="live-machine-lot"><span>LOT</span>{machine.currentLotNo || "대기 중"}</span>
     {hasProgress && <span className="live-machine-progress">
-      <span className="live-progress-caption"><span>{machine.processedQty || 0} / {machine.targetQty} ({machine.progressPercent || 0}%)</span></span>
+      <span className="live-progress-caption"><span>공정 진행률</span><strong>{machine.progressPercent || 0}%</strong></span>
       <span className="progress-track" role="progressbar" aria-label={`${machine.processName} 진행률`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={machine.progressPercent || 0}><span style={{ width: `${machine.progressPercent || 0}%` }}/></span>
+      <span className="live-progress-quantity">{machine.processedQty || 0} / {machine.targetQty} ({machine.progressPercent || 0}%)</span>
     </span>}
     <span className="live-machine-badge"><StatusBadge value={status}/></span>
   </button>;
+}
+
+function SummaryCard({ icon, label, value, unit, tone = "" }) {
+  return <article className={`production-summary-card ${tone ? `tone-${tone}` : ""}`}>
+    <span className="material-symbols-outlined" aria-hidden="true">{icon}</span>
+    <span><small>{label}</small><strong>{value}<em>{unit}</em></strong></span>
+  </article>;
 }
 
 function ProcessLegend() {

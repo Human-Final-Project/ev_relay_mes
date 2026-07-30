@@ -78,7 +78,7 @@ public class MachineService implements MachineMonitoring {
                 && lot != null
                 && process != null
                 && lot.getStatus() == Lot.Status.HOLD
-                && workCommandService.completeResumeCommand(lot, process, machine);
+                && workCommandService.activateResumeCommand(lot, process, machine);
         if (resumeCompleted) {
             lot.setStatus(Lot.Status.RUNNING);
         }

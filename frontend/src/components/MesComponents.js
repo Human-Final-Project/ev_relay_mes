@@ -9,6 +9,7 @@ const LABELS = {
   ACTIVE: "활성", LOCKED: "잠김", RETIRED: "퇴직", INACTIVE: "비활성",
   OK: "OK", NG: "NG", INITIAL: "최초", SUPPLEMENT: "보충",
   ADMIN: "관리자", MANAGER: "매니저", OPERATOR: "운영자", VIEWER: "운영자",
+  RESPONSIBLE: "책임자", WORKER: "일반 작업자", ACCOUNT: "계정 연동", FIELD: "현장 등록",
   RM: "원자재", SA: "반제품", FG: "완제품", INFO: "정보", WARN: "경고", WARNING: "경고", CRITICAL: "심각",
 };
 
@@ -27,20 +28,20 @@ export function StatusBadge({ value }) {
 }
 
 export function PageHeader({ title, description, actions }) {
-  return <div className="mes-page-header"><div><h1>{title}</h1>{description && <p>{description}</p>}</div><div className="mes-actions">{actions}</div></div>;
+  return <div className="mes-page-header"><div className="mes-page-title"><span className="mes-page-eyebrow">EV RELAY MES</span><h1>{title}</h1>{description && <p>{description}</p>}</div><div className="mes-actions">{actions}</div></div>;
 }
 
 export function LoadingState() {
-  return <div className="mes-state" role="status"><span className="mes-spinner" />데이터를 불러오는 중입니다.</div>;
+  return <div className="mes-state" role="status"><span className="mes-spinner" /><strong>데이터를 불러오는 중입니다.</strong><span>잠시만 기다려 주세요.</span></div>;
 }
 
 export function ErrorState({ error, onRetry }) {
   const message = error?.response?.data?.message || error?.message || "데이터를 불러오지 못했습니다.";
-  return <div className="mes-state mes-error"><strong>요청 실패</strong><span>{message}</span>{onRetry && <button className="btn secondary" onClick={onRetry}>다시 시도</button>}</div>;
+  return <div className="mes-state mes-error"><span className="material-symbols-outlined mes-state-icon">error</span><strong>요청 실패</strong><span>{message}</span>{onRetry && <button className="btn secondary" onClick={onRetry}>다시 시도</button>}</div>;
 }
 
 export function EmptyState({ message = "표시할 데이터가 없습니다." }) {
-  return <div className="mes-state">{message}</div>;
+  return <div className="mes-state mes-empty"><span className="material-symbols-outlined mes-state-icon">inbox</span><strong>{message}</strong><span>조건을 변경하거나 새 데이터를 등록해 보세요.</span></div>;
 }
 
 export function Modal({ title, children, onClose, footer }) {

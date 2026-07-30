@@ -1,5 +1,15 @@
 CC := gcc
 
+ENV_FILE ?= ../../.env
+ifneq (,$(wildcard $(ENV_FILE)))
+include $(ENV_FILE)
+export
+endif
+
+ifndef MES_COLLECTOR_API_KEY
+$(error MES_COLLECTOR_API_KEY is required. Copy ../../.env.example to ../../.env)
+endif
+
 SOURCES := main.c collector.c connection_registry.c thread_compat.c scheduler.c api_client.c protocol.c net.c
 OBJECTS := $(SOURCES:.c=.o)
 
@@ -31,7 +41,7 @@ define CLEAN_COMMAND
 endef
 endif
 
-CPPFLAGS := -I.
+CPPFLAGS := -I. -DMES_COLLECTOR_API_KEY=\"$(MES_COLLECTOR_API_KEY)\"
 CFLAGS := -std=c11 -Wall -Wextra -Wpedantic
 LDLIBS := $(THREAD_FLAGS) $(SOCKET_LIBS)
 

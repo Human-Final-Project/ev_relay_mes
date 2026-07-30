@@ -11,6 +11,7 @@ export default function WorkOrderPage({ currentUser }) {
   const [form, setForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [actionError, setActionError] = useState(null);
+  const [assignmentIssue, setAssignmentIssue] = useState(null);
   const result = useApiData(() => MesApi.getWorkOrders({ status }), [status]);
   const items = useApiData(MesApi.getItems, []);
   const orders = (result.data || []).filter((order) =>
@@ -26,12 +27,17 @@ export default function WorkOrderPage({ currentUser }) {
   const run = async (action) => {
     setSaving(true);
     setActionError(null);
+    setAssignmentIssue(null);
     try {
       await action();
       await result.reload();
       return true;
     } catch (error) {
-      setActionError(error);
+      if (error?.response?.data?.code === "WK008") {
+        setAssignmentIssue(error.response.data);
+      } else {
+        setActionError(error);
+      }
       return false;
     } finally {
       setSaving(false);
@@ -107,6 +113,18 @@ export default function WorkOrderPage({ currentUser }) {
       </div>
       {items.error && <ErrorState error={items.error}/>} 
       {actionError && <ErrorState error={actionError}/>} 
+    </Modal>}
+
+    {assignmentIssue && <Modal
+      title="설비 책임자 배정 필요"
+      onClose={() => setAssignmentIssue(null)}
+      footer={<>
+        <button className="btn secondary" onClick={() => setAssignmentIssue(null)}>닫기</button>
+        <a className="btn" href="/workers">작업자 배정으로 이동</a>
+      </>}
+    >
+      <p>생산을 시작하려면 모든 설비에 활성 책임자가 있어야 합니다.</p>
+      <p className="form-hint">{assignmentIssue.message}</p>
     </Modal>}
   </div>;
 }

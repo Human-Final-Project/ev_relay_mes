@@ -4,6 +4,8 @@ import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.workforce.api.WorkerRequestDto;
 import com.human.ev_relay_mes.feature.workforce.api.WorkerResponseDto;
 import com.human.ev_relay_mes.feature.workforce.api.Worker;
+import com.human.ev_relay_mes.feature.workforce.api.WorkforceMemberLinkOperations;
+import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.workforce.internal.repository.MachineWorkerAssignmentRepository;
@@ -17,7 +19,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class WorkerService {
+public class WorkerService implements WorkforceMemberLinkOperations {
 
     private final WorkerRepository workerRepository;
     private final MachineWorkerAssignmentRepository assignmentRepository;
@@ -94,6 +96,42 @@ public class WorkerService {
     public Worker findWorker(Long workerId) {
         return workerRepository.findById(workerId)
                 .orElseThrow(() -> new CustomException(ErrorCode.WORKER_NOT_FOUND));
+    }
+
+    @Override
+    @Transactional
+    public void createOrLinkOperator(Member member) {
+        Worker worker = workerRepository.findByMember_MemberId(member.getMemberId())
+                .orElseGet(() -> workerRepository.findByWorkerNo(member.getLoginId())
+                        .orElseGet(() -> Worker.builder()
+                                .workerNo(member.getLoginId())
+                                .status(Worker.Status.ACTIVE)
+                                .build()));
+        if (worker.getMember() != null
+                && !worker.getMember().getMemberId().equals(member.getMemberId())) {
+            throw new CustomException(
+                    ErrorCode.WORKER_NO_DUPLICATED,
+                    "동일한 사번의 작업자가 다른 사용자 계정과 연결되어 있습니다.");
+        }
+        worker.setMember(member);
+        synchronize(worker, member);
+        workerRepository.save(worker);
+    }
+
+    @Override
+    @Transactional
+    public void synchronizeLinkedWorker(Member member) {
+        workerRepository.findByMember_MemberId(member.getMemberId())
+                .ifPresent(worker -> synchronize(worker, member));
+    }
+
+    private void synchronize(Worker worker, Member member) {
+        worker.setWorkerName(member.getMemberName());
+        worker.setDepartment(normalize(member.getDepartment()));
+        worker.setPosition(normalize(member.getPosition()));
+        worker.setStatus(member.getStatus() == Member.Status.ACTIVE
+                ? Worker.Status.ACTIVE
+                : Worker.Status.INACTIVE);
     }
 
     private Worker.Status parseStatus(String status) {

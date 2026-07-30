@@ -12,7 +12,6 @@ import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
@@ -85,7 +84,7 @@ class WorkCommandResumeManager {
                 && interrupted.getLot().getStatus() == Lot.Status.HOLD;
     }
 
-    boolean complete(Lot lot, Process process, Machine machine) {
+    boolean activate(Lot lot, Process process, Machine machine) {
         List<WorkCommand> commands = workCommandRepository
                 .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
                         lot.getLotNo(),
@@ -93,15 +92,7 @@ class WorkCommandResumeManager {
                         machine.getMachineId(),
                         WorkCommand.CommandType.RESUME,
                         COMPLETABLE_STATUSES);
-        if (commands.isEmpty()) {
-            return false;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        commands.forEach(command -> {
-            command.setStatus(WorkCommand.Status.COMPLETED);
-            command.setCompletedAt(now);
-        });
-        return true;
+        return !commands.isEmpty();
     }
 
     private WorkCommand findInterrupted(

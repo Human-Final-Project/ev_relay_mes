@@ -8,4 +8,6 @@ import java.util.Optional;
 public interface WorkforceAssignmentLookup {
 
     Optional<MachineWorkerAssignment> findResponsible(String machineId);
+
+    boolean hasActiveResponsible(String machineId);
 }

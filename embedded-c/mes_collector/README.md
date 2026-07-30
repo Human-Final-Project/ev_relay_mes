@@ -16,9 +16,9 @@ L1 설비 시뮬레이터의 TCP 메시지를 수집하고 Spring Boot MES에 RE
 - `START`, `STOP`, `RESUME`를 기존 L1 TCP 연결로 전달
 - 모든 Backend Collector 요청에 `X-Collector-Key` 인증 헤더 전송
 
-기본 개발 키는 Backend의 `mes.collector.api-key`와 `config.h`의
-`MES_COLLECTOR_API_KEY`에 동일하게 설정되어 있다. 키를 바꿀 때는 Backend의
-`MES_COLLECTOR_API_KEY` 환경 변수와 C 컴파일 매크로를 함께 변경한다.
+Collector API 키는 저장소 루트 `.env`의 `MES_COLLECTOR_API_KEY`에서 읽어
+컴파일 매크로로 전달된다. Backend도 같은 `.env`를 사용하므로 키를 두 곳에
+중복 입력할 필요가 없다. 최초 실행 전 `.env.example`을 `.env`로 복사한다.
 
 ## 공정 이벤트
 

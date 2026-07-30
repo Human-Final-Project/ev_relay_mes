@@ -167,6 +167,14 @@ V1,PRODUCTION,EQ-WIND-01,OP20,EVR-LOT-20260708-001,100,97,3,COMPLETED
 ./simulator --mode random
 ```
 
+초기 로그인 계정:
+
+- 관리자: `admin`
+- 설비 책임자: `resp.wind`, `resp.weld`, `resp.assy`, `resp.seal`, `resp.test`, `resp.pack`
+- 초기 비밀번호: 모두 `admin1234!`
+
+책임자 6명은 각 설비의 `RESPONSIBLE`로 초기 배정됩니다. 초기 로그인 후 비밀번호를 변경해야 합니다.
+
 ### docs
 
 프로젝트 산출물을 관리합니다.
@@ -334,14 +342,21 @@ npm start
 
 ### Backend
 
+최초 실행 전에 저장소 루트의 예시 파일을 복사하고 로컬 값을 입력합니다.
+
+```bash
+cp .env.example .env
+```
+
+`.env`에는 DB 접속정보와 Collector API 키가 포함되며 Git에 커밋되지 않습니다.
+
 ```bash
 cd backend
 ./gradlew bootRun
 ```
 
-Collector를 함께 실행할 때는 Backend의 `MES_COLLECTOR_API_KEY`와 L2의
-`MES_COLLECTOR_API_KEY` 컴파일 매크로를 같은 값으로 설정합니다. 기본 개발 키와
-변경 방법은 [`embedded-c/mes_collector/README.md`](embedded-c/mes_collector/README.md)를 참고합니다.
+Collector는 루트 `.env`의 `MES_COLLECTOR_API_KEY`를 빌드 시 자동으로 사용합니다.
+세부 내용은 [`embedded-c/mes_collector/README.md`](embedded-c/mes_collector/README.md)를 참고합니다.
 
 ### L1 Simulator
 

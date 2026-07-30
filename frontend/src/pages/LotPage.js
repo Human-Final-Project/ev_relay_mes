@@ -1,23 +1,32 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import MesApi from "../api/MesApi";
 import useApiData from "../hooks/useApiData";
 import { EmptyState, ErrorState, Field, LoadingState, PageHeader, StatusBadge, formatDate } from "../components/MesComponents";
+import LotLabelModal from "../components/LotLabelModal";
 
 const processCodes=["OP20","OP30","OP40_OP50","OP60","OP70","OP80"];
 
 export default function LotPage({currentUser}){
-  const [status,setStatus]=useState(""); const [selected,setSelected]=useState(null); const [detail,setDetail]=useState(null); const [detailError,setDetailError]=useState(null); const [loadingDetail,setLoadingDetail]=useState(false); const [tab,setTab]=useState("progress");
+  const [searchParams,setSearchParams]=useSearchParams();
+  const [status,setStatus]=useState(""); const [selected,setSelected]=useState(null); const [detail,setDetail]=useState(null); const [detailError,setDetailError]=useState(null); const [loadingDetail,setLoadingDetail]=useState(false); const [tab,setTab]=useState("timeline"); const [labelOpen,setLabelOpen]=useState(false);
   const list=useApiData(()=>MesApi.getLots({status}),[status]);
-  useEffect(()=>{ if(!selected){setDetail(null);return;} let active=true; setLoadingDetail(true); setDetailError(null); Promise.all([MesApi.getLotByNo(selected.lotNo),MesApi.getLotCommands(selected.lotNo),MesApi.getLotResponsibles(selected.lotNo),MesApi.getLotMaterialUsages(selected.lotNo),MesApi.getProductionLogs({lotNo:selected.lotNo}),MesApi.getInspections({lotNo:selected.lotNo}),MesApi.getDefects({lotNo:selected.lotNo})]).then(([lot,commands,responsibles,materials,logs,inspections,defects])=>{if(active)setDetail({lot:lot.data,commands:commands.data,responsibles:responsibles.data,materials:materials.data,logs:logs.data,inspections:inspections.data,defects:defects.data})}).catch(e=>active&&setDetailError(e)).finally(()=>active&&setLoadingDetail(false)); return()=>{active=false};},[selected]);
+  const linkedLotNo=searchParams.get("lotNo");
+  useEffect(()=>{if(!linkedLotNo||selected?.lotNo===linkedLotNo)return;const match=(list.data||[]).find(l=>l.lotNo===linkedLotNo);setSelected(match||{lotNo:linkedLotNo});setTab("timeline");},[linkedLotNo,list.data,selected?.lotNo]);
+  useEffect(()=>{ if(!selected){setDetail(null);return;} let active=true; setLoadingDetail(true); setDetailError(null); Promise.all([MesApi.getLotByNo(selected.lotNo),MesApi.getLotCommands(selected.lotNo),MesApi.getLotResponsibles(selected.lotNo),MesApi.getLotMaterialUsages(selected.lotNo),MesApi.getProductionLogs({lotNo:selected.lotNo}),MesApi.getInspections({lotNo:selected.lotNo}),MesApi.getDefects({lotNo:selected.lotNo}),MesApi.getLotTimelineAlarms(selected.lotNo)]).then(([lot,commands,responsibles,materials,logs,inspections,defects,alarms])=>{if(active)setDetail({lot:lot.data,commands:commands.data,responsibles:responsibles.data,materials:materials.data,logs:logs.data,inspections:inspections.data,defects:defects.data,alarms:alarms.data})}).catch(e=>active&&setDetailError(e)).finally(()=>active&&setLoadingDetail(false)); return()=>{active=false};},[selected]);
   const progress=useMemo(()=>detail?buildProgress(detail.lot,detail.logs,detail.inspections):[],[detail]);
+  const timeline=useMemo(()=>detail?buildTimeline(detail):[],[detail]);
+  const selectLot=(lot)=>{setSelected(lot);setTab("timeline");setLabelOpen(false);setSearchParams({lotNo:lot.lotNo},{replace:true});};
   return <div className="mes-page"><PageHeader title="LOT 추적" description="최초·보충 LOT의 자동 투입 상태와 공정·작업명령·생산·검사 이력을 추적합니다." actions={<button className="btn secondary" onClick={list.reload}>새로고침</button>}/>
     <div className="mes-card mes-filter"><Field label="LOT 상태"><select value={status} onChange={e=>setStatus(e.target.value)}><option value="">전체</option>{["WAITING","RUNNING","COMPLETED","HOLD","SCRAPPED"].map(v=><option key={v}>{v}</option>)}</select></Field></div>
-    {list.loading?<LoadingState/>:list.error?<ErrorState error={list.error} onRetry={list.reload}/>:<div className="split-detail"><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>작업지시/품목</th><th>유형</th><th>현재 공정</th><th>수량</th><th>상태</th><th>자동 처리 상태</th></tr></thead><tbody>{(list.data||[]).map(l=><tr key={l.lotId} onClick={()=>setSelected(l)} style={{cursor:"pointer",background:selected?.lotId===l.lotId?"#eff6ff":""}}><td><strong>{l.lotNo}</strong><br/><span className="mono">#{l.lotId}</span></td><td>{l.orderNo}<br/>{l.itemName}</td><td><StatusBadge value={l.lotType}/> #{l.productionRound}</td><td>{l.currentProcessName}<br/><span className="mono">{l.currentProcessCode}</span></td><td>{l.inputQty} / OK {l.okQty} / NG {l.ngQty}</td><td><StatusBadge value={l.status}/></td><td>{lotAutomationLabel(l)}</td></tr>)}</tbody></table></div><aside className="mes-card">{!selected?<EmptyState message="LOT를 선택하면 상세 정보가 표시됩니다."/>:loadingDetail?<LoadingState/>:detailError?<ErrorState error={detailError}/>:detail&&<LotSummary detail={detail}/>}</aside></div>}
-    {detail&&<section className="mes-card"><div className="tabs">{[["progress","공정 진행"],["materials","투입 원자재"],["commands","작업명령"],["logs","생산 실적"],["quality","검사·불량"],["people","담당자"]].map(([key,label])=><button key={key} className={`tab ${tab===key?"active":""}`} onClick={()=>setTab(key)}>{label}</button>)}</div><div style={{paddingTop:16}}>{tab==="progress"&&<ProgressView rows={progress}/>} {tab==="materials"&&<Materials rows={detail.materials}/>} {tab==="commands"&&<Commands rows={detail.commands}/>} {tab==="logs"&&<Logs rows={detail.logs}/>} {tab==="quality"&&<Quality inspections={detail.inspections} defects={detail.defects}/>} {tab==="people"&&<People rows={detail.responsibles}/>}</div></section>}
+    {list.loading?<LoadingState/>:list.error?<ErrorState error={list.error} onRetry={list.reload}/>:<div className="split-detail"><div className="mes-table-wrap"><table className="mes-table"><thead><tr><th>LOT</th><th>작업지시/품목</th><th>유형</th><th>현재 공정</th><th>수량</th><th>상태</th><th>자동 처리 상태</th></tr></thead><tbody>{(list.data||[]).map(l=><tr key={l.lotId} onClick={()=>selectLot(l)} style={{cursor:"pointer",background:selected?.lotId===l.lotId?"#eff6ff":""}}><td><strong>{l.lotNo}</strong><br/><span className="mono">#{l.lotId}</span></td><td>{l.orderNo}<br/>{l.itemName}</td><td><StatusBadge value={l.lotType}/> #{l.productionRound}</td><td>{l.currentProcessName}<br/><span className="mono">{l.currentProcessCode}</span></td><td>{l.inputQty} / OK {l.okQty} / NG {l.ngQty}</td><td><StatusBadge value={l.status}/></td><td>{lotAutomationLabel(l)}</td></tr>)}</tbody></table></div><aside className="mes-card">{!selected?<EmptyState message="LOT를 선택하면 상세 정보가 표시됩니다."/>:loadingDetail?<LoadingState/>:detailError?<ErrorState error={detailError}/>:detail&&<LotSummary detail={detail} onOpenLabel={()=>setLabelOpen(true)}/>}</aside></div>}
+    {detail&&<section className="mes-card"><div className="tabs">{[["timeline","통합 타임라인"],["progress","공정 진행"],["materials","투입 원자재"],["commands","작업명령"],["logs","생산 실적"],["quality","검사·불량"],["people","담당자"]].map(([key,label])=><button key={key} className={`tab ${tab===key?"active":""}`} onClick={()=>setTab(key)}>{label}</button>)}</div><div style={{paddingTop:16}}>{tab==="timeline"&&<Timeline rows={timeline}/>} {tab==="progress"&&<ProgressView rows={progress}/>} {tab==="materials"&&<Materials rows={detail.materials}/>} {tab==="commands"&&<Commands rows={detail.commands}/>} {tab==="logs"&&<Logs rows={detail.logs}/>} {tab==="quality"&&<Quality inspections={detail.inspections} defects={detail.defects}/>} {tab==="people"&&<People rows={detail.responsibles}/>}</div></section>}
+    {detail&&labelOpen&&<LotLabelModal lot={detail.lot} onClose={()=>setLabelOpen(false)}/>}
   </div>;
 }
 
-function LotSummary({detail}){const lot=detail.lot;const responsibleNames=[...new Set((detail.responsibles||[]).map(r=>r.workerName).filter(Boolean))];return <><h2>{lot.lotNo}</h2><dl className="detail-list"><dt>상태</dt><dd><StatusBadge value={lot.status}/></dd><dt>작업지시</dt><dd>{lot.orderNo}</dd><dt>품목</dt><dd>{lot.itemName} ({lot.itemCode})</dd><dt>현재 공정</dt><dd>{lot.currentProcessName} ({lot.currentProcessCode})</dd><dt>투입 수량</dt><dd>{lot.inputQty}</dd><dt>최종 OK / NG</dt><dd>{lot.okQty} / {lot.ngQty}</dd><dt>사용 원자재 LOT</dt><dd>{(detail.materials||[]).map(r=>r.materialLotNo).join(", ")||"기록 없음"}</dd><dt>담당자</dt><dd>{responsibleNames.join(", ")||"미배정"}</dd><dt>시작</dt><dd>{formatDate(lot.startedAt)}</dd><dt>완료</dt><dd>{formatDate(lot.completedAt)}</dd></dl></>}
+function LotSummary({detail,onOpenLabel}){const lot=detail.lot;const responsibleNames=[...new Set((detail.responsibles||[]).map(r=>r.workerName).filter(Boolean))];return <><div className="lot-summary-heading"><h2>{lot.lotNo}</h2><button type="button" className="btn secondary small" onClick={onOpenLabel}>QR · 바코드 라벨</button></div><dl className="detail-list"><dt>상태</dt><dd><StatusBadge value={lot.status}/></dd><dt>작업지시</dt><dd>{lot.orderNo}</dd><dt>품목</dt><dd>{lot.itemName} ({lot.itemCode})</dd><dt>현재 공정</dt><dd>{lot.currentProcessName} ({lot.currentProcessCode})</dd><dt>투입 수량</dt><dd>{lot.inputQty}</dd><dt>최종 OK / NG</dt><dd>{lot.okQty} / {lot.ngQty}</dd><dt>사용 원자재 LOT</dt><dd>{(detail.materials||[]).map(r=>r.materialLotNo).join(", ")||"기록 없음"}</dd><dt>담당자</dt><dd>{responsibleNames.join(", ")||"미배정"}</dd><dt>시작</dt><dd>{formatDate(lot.startedAt)}</dd><dt>완료</dt><dd>{formatDate(lot.completedAt)}</dd></dl></>}
+function Timeline({rows=[]}){if(!rows.length)return <EmptyState message="시간 정보가 기록된 LOT 이력이 없습니다."/>;return <ol className="lot-timeline">{rows.map(event=><li key={event.id} className={`timeline-event type-${event.type.toLowerCase()}`}><div className="timeline-marker"/><div className="timeline-time">{formatDate(event.occurredAt)}</div><div className="timeline-content"><div className="timeline-title"><span className="timeline-type">{event.typeLabel}</span><strong>{event.title}</strong>{event.status&&<StatusBadge value={event.status}/>}</div>{event.description&&<p>{event.description}</p>}{(event.processCode||event.machineId)&&<small>{[event.processCode,event.machineId].filter(Boolean).join(" · ")}</small>}</div></li>)}</ol>}
 function ProgressView({rows}){return <div className="mes-grid">{rows.map(r=><div key={r.code}><div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}><strong>{r.code} · {r.name}</strong><span>{r.processed}/{r.target} · {r.percent}%</span></div><div className="progress-track"><span style={{width:`${r.percent}%`}}/></div><small style={{color:"#64748b"}}>OK {r.ok} · NG {r.ng} · {r.note}</small></div>)}</div>}
 function Materials({rows=[]}){return <Table heads={["원자재 LOT","품목","사용 수량","투입 시각"]} rows={rows.map(r=>[<span className="mono">{r.materialLotNo}</span>,`${r.itemName} (${r.itemCode})`,r.usedQty,formatDate(r.usedAt)])}/>}
 function Commands({rows=[]}){return <Table heads={["명령","설비/공정","수량","상태","ACK","시각"]} rows={rows.map(r=>[r.commandType,`${r.machineId} / ${r.processCode}`,r.inputQty,<StatusBadge value={r.status}/>,r.ackMessage||"-",formatDate(r.createdAt)])}/>}
@@ -36,3 +45,71 @@ function lotAutomationLabel(lot){
 }
 
 function buildProgress(lot,logs,inspections){const sums={}; for(const code of processCodes)sums[code]={input:0,ok:0,ng:0}; (logs||[]).forEach(l=>{const s=sums[l.processCode];if(s){s.input+=l.inputQty||0;s.ok+=l.okQty||0;s.ng+=l.ngQty||0}}); const targets={OP20:lot.inputQty,OP30:lot.inputQty}; targets.OP40_OP50=Math.min(sums.OP20.ok,sums.OP30.ok); targets.OP60=sums.OP40_OP50.ok; targets.OP70=sums.OP60.ok; targets.OP80=sums.OP70.ok; const names={OP20:"코일 권선",OP30:"접점 용접",OP40_OP50:"자동 조립",OP60:"실링/가스충전",OP70:"최종 검사",OP80:"마킹/포장"}; return processCodes.map(code=>{const target=targets[code]||0;const inspected=code==="OP70"?new Set((inspections||[]).map(i=>i.unitSeq)).size:0;const processed=Math.max(sums[code].input,inspected);return{code,name:names[code],target,processed,ok:sums[code].ok,ng:sums[code].ng,percent:target?Math.min(100,Math.round(processed/target*100)):0,note:processed===0&&lot.currentProcessCode===code?"아직 수집된 진행 실적이 없습니다.":"Backend 누적 실적 기준"}})}
+
+export function buildTimeline(detail){
+  const events=[];
+  const add=(type,typeLabel,title,occurredAt,extra={})=>{
+    if(!occurredAt||Number.isNaN(new Date(occurredAt).getTime()))return;
+    events.push({id:`${type}-${events.length}-${occurredAt}`,type,typeLabel,title,occurredAt,...extra});
+  };
+  const lot=detail.lot||{};
+  add("LOT","LOT","LOT 생성",lot.createdAt,{description:`${lot.lotType||"LOT"} · 투입 ${lot.inputQty||0}개`,status:"CREATED"});
+  add("LOT","LOT","파이프라인 투입 요청",lot.startRequestedAt,{description:"자재 확인 및 자동 생산 투입 요청",status:lot.status});
+  add("LOT","LOT","LOT 생산 시작",lot.startedAt,{description:`작업지시 ${lot.orderNo||"-"}`,status:"RUNNING"});
+
+  (detail.materials||[]).forEach(item=>add("MATERIAL","자재","원자재 투입",item.usedAt,{
+    description:`${item.itemName||item.itemCode} · ${item.materialLotNo} · ${item.usedQty}개 사용`,
+  }));
+  (detail.responsibles||[]).forEach(item=>add("PEOPLE","담당자","공정 담당자 확정",item.capturedAt,{
+    description:`${item.workerName||item.workerNo}${item.assignmentRole?` · ${item.assignmentRole}`:""}`,
+    processCode:item.processCode,machineId:item.machineId,
+  }));
+  (detail.commands||[]).forEach(command=>{
+    const commandName=`${command.commandType} 작업명령`;
+    const meta={description:`투입 ${command.inputQty||0}개`,processCode:command.processCode,machineId:command.machineId};
+    add("COMMAND","명령",`${commandName} 생성`,command.createdAt,{...meta,status:"PENDING"});
+    add("COMMAND","명령",`${commandName} 설비 전송`,command.dispatchedAt,{...meta,status:"DISPATCHED"});
+    add("COMMAND","명령",`${commandName} ACK`,command.acknowledgedAt,{...meta,description:command.ackMessage||meta.description,status:"ACCEPTED"});
+    add("COMMAND","명령",`${commandName} 종료`,command.completedAt,{...meta,status:command.status});
+  });
+  (detail.logs||[]).forEach(log=>{
+    add("PRODUCTION","생산",`${log.processName||log.processCode} 공정 시작`,log.startedAt,{
+      processCode:log.processCode,machineId:log.machineId,status:"RUNNING",
+    });
+    add("PRODUCTION","생산",`${log.processName||log.processCode} 생산 실적`,log.endedAt||log.createdAt,{
+      description:`투입 ${log.inputQty||0} · OK ${log.okQty||0} · NG ${log.ngQty||0}`,
+      processCode:log.processCode,machineId:log.machineId,status:log.status,
+    });
+  });
+
+  const inspectionGroups=new Map();
+  (detail.inspections||[]).forEach(item=>{
+    const key=item.processCode||"INSPECTION";
+    const group=inspectionGroups.get(key)||{count:0,ok:0,ng:0,latest:null,processName:item.processName,machineId:item.machineId};
+    group.count+=1;
+    if(item.result==="OK")group.ok+=1;
+    if(item.result==="NG")group.ng+=1;
+    if(!group.latest||new Date(item.inspectedAt)>new Date(group.latest))group.latest=item.inspectedAt;
+    inspectionGroups.set(key,group);
+  });
+  inspectionGroups.forEach((group,processCode)=>add("QUALITY","검사",`${group.processName||processCode} 검사 집계`,group.latest,{
+    description:`측정 ${group.count}건 · OK ${group.ok} · NG ${group.ng}`,
+    processCode,machineId:group.machineId,status:group.ng>0?"NG":"OK",
+  }));
+  (detail.defects||[]).forEach(item=>add("DEFECT","불량",item.defectName||item.defectCode,item.occurredAt,{
+    description:`${item.defectQty||0}개${item.message?` · ${item.message}`:""}`,
+    processCode:item.processCode,machineId:item.machineId,status:"NG",
+  }));
+  (detail.alarms||[]).forEach(item=>{
+    add("ALARM","알람",`${item.alarmName||item.alarmCode} 발생`,item.occurredAt,{
+      description:item.message||item.alarmCode,processCode:item.processCode,machineId:item.machineId,status:item.alarmLevel,
+    });
+    add("ALARM","알람",`${item.alarmName||item.alarmCode} 해제`,item.clearedAt,{
+      description:item.clearedByName?`${item.clearedByName} 해제`:"알람 해제",processCode:item.processCode,machineId:item.machineId,status:"COMPLETED",
+    });
+  });
+  add("LOT","LOT",lot.status==="SCRAPPED"?"LOT 폐기":"완제품 LOT 완료",lot.completedAt,{
+    description:`최종 OK ${lot.okQty||0} · NG ${lot.ngQty||0}`,status:lot.status,
+  });
+  return events.sort((left,right)=>new Date(left.occurredAt)-new Date(right.occurredAt)||left.id.localeCompare(right.id));
+}

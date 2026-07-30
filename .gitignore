@@ -3,6 +3,11 @@
 .idea
 node_modules/
 
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
 # Embedded C build outputs
 embedded-c/**/*.o
 embedded-c/**/*.exe
