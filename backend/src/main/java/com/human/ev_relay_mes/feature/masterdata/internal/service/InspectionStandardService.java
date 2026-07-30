@@ -8,6 +8,7 @@ import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperation
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.ProcessCodes;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.production.api.LotInspectionStandardSnapshot;
 import com.human.ev_relay_mes.feature.masterdata.internal.repository.InspectionStandardRepository;
@@ -88,24 +89,25 @@ public class InspectionStandardService implements InspectionStandardOperations {
 
     @Override
     public boolean supportsMeasurements(String processCode) {
-        return List.of("OP20", "OP30", "OP60", "OP70").contains(processCode);
+        return ProcessCodes.MEASUREMENT_PROCESSES.contains(processCode);
     }
 
     @Transactional
     public void ensureDefaultStandards(Process process) {
         if (standardRepository.countByProcess_ProcessCode(process.getProcessCode()) > 0) return;
         switch (process.getProcessCode()) {
-            case "OP20" -> standardRepository.save(defaultStandard(process, "COIL_RESISTANCE", "코일 저항", "OHM", "80.000", "120.000"));
-            case "OP30" -> {
+            case ProcessCodes.WINDING -> standardRepository.save(defaultStandard(
+                    process, "COIL_RESISTANCE", "코일 저항", "OHM", "80.000", "120.000"));
+            case ProcessCodes.CONTACT_WELDING -> {
                 standardRepository.save(defaultStandard(process, "WELD_STRENGTH", "용접 강도", "N", "40.000", "80.000"));
                 standardRepository.save(defaultStandard(process, "CONTACT_RESISTANCE", "접촉 저항", "mOHM", "0.000", "50.000"));
                 standardRepository.save(defaultStandard(process, "CONTACT_POSITION", "접점 위치 편차", "MM", "0.000", "0.200"));
             }
-            case "OP60" -> {
+            case ProcessCodes.SEALING -> {
                 standardRepository.save(defaultStandard(process, "GAS_PRESSURE", "가스 압력", "BAR", "2.500", "3.500"));
                 standardRepository.save(defaultStandard(process, "LEAK_RATE", "누설률", "SCCM", "0.000", "0.500"));
             }
-            case "OP70" -> {
+            case ProcessCodes.FINAL_INSPECTION -> {
                 standardRepository.save(defaultStandard(process, "INSULATION_RESISTANCE", "절연 저항", "MOHM", "100.000", "1000.000"));
                 standardRepository.save(defaultStandard(process, "WITHSTAND_VOLTAGE", "내전압", "V", "1500.000", "2000.000"));
                 standardRepository.save(defaultStandard(process, "OPERATION_VOLTAGE", "동작 전압", "V", "10.000", "14.000"));
@@ -116,7 +118,7 @@ public class InspectionStandardService implements InspectionStandardOperations {
     }
 
     private void ensureDefaultsForKnownProcesses() {
-        List.of("OP20", "OP30", "OP60", "OP70").forEach(code ->
+        ProcessCodes.MEASUREMENT_PROCESSES.forEach(code ->
                 processRepository.findById(code).ifPresent(this::ensureDefaultStandards));
     }
 

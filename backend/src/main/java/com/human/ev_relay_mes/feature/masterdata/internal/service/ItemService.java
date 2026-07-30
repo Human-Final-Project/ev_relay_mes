@@ -2,6 +2,7 @@ package com.human.ev_relay_mes.feature.masterdata.internal.service;
 
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
+import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
 import com.human.ev_relay_mes.feature.masterdata.api.ItemRequestDto;
 import com.human.ev_relay_mes.feature.masterdata.api.ItemResponseDto;
@@ -69,10 +70,9 @@ public class ItemService {
     }
 
     private Item.ItemType parseItemType(String itemType) {
-        try {
-            return Item.ItemType.valueOf(itemType.toUpperCase());
-        } catch (RuntimeException exception) {
-            throw new CustomException(ErrorCode.INVALID_ITEM_TYPE);
-        }
+        return RequestValues.parseEnum(
+                Item.ItemType.class,
+                itemType,
+                ErrorCode.INVALID_ITEM_TYPE);
     }
 }

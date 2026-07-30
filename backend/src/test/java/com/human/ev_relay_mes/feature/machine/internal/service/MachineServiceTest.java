@@ -18,8 +18,8 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineAlarmHi
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -44,7 +44,26 @@ class MachineServiceTest {
     @Mock QualityMetrics qualityMetrics;
     @Mock ProductionSchedulingRequests productionSchedulingRequests;
 
-    @InjectMocks MachineService machineService;
+    MachineService machineService;
+
+    @BeforeEach
+    void setUp() {
+        MachineCommunicationRecovery communicationRecovery =
+                new MachineCommunicationRecovery(
+                        machineAlarmHistoryRepository, workCommandService);
+        MachineResponseAssembler responseAssembler =
+                new MachineResponseAssembler(
+                        workCommandService, qualityMetrics, productionData);
+        machineService = new MachineService(
+                machineRepository,
+                machineStatusHistoryRepository,
+                masterDataLookup,
+                productionData,
+                workCommandService,
+                productionSchedulingRequests,
+                communicationRecovery,
+                responseAssembler);
+    }
 
     @Test
     void returnsRunningMachineProgressFromIncrementalProductionLogs() {

@@ -17,8 +17,8 @@ import com.human.ev_relay_mes.feature.machine.internal.repository.MachineReposit
 import com.human.ev_relay_mes.feature.machine.internal.repository.MachineStatusHistoryRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -45,7 +45,25 @@ class MachineAlarmServiceTest {
     @Mock WorkCommandOperations workCommandService;
     @Mock ProductionSchedulingRequests productionSchedulingRequests;
 
-    @InjectMocks MachineAlarmService machineAlarmService;
+    MachineAlarmService machineAlarmService;
+
+    @BeforeEach
+    void setUp() {
+        MachineAlarmRecoveryCoordinator recoveryCoordinator =
+                new MachineAlarmRecoveryCoordinator(
+                        machineAlarmHistoryRepository,
+                        machineStatusHistoryRepository,
+                        workCommandService,
+                        productionSchedulingRequests);
+        machineAlarmService = new MachineAlarmService(
+                machineAlarmHistoryRepository,
+                machineRepository,
+                masterDataLookup,
+                memberLookup,
+                workCommandService,
+                recoveryCoordinator,
+                new MachineAlarmResponseAssembler());
+    }
 
     @Test
     void returnsExistingAlarmForDuplicateEventIdWithoutPausingAgain() {

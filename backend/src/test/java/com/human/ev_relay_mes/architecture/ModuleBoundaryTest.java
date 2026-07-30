@@ -31,6 +31,19 @@ class ModuleBoundaryTest {
             "production",
             "collector",
             "dashboard");
+    private static final Set<String> INTERNAL_SUPPORT_SUFFIXES = Set.of(
+            "Factory",
+            "Policy",
+            "Assembler",
+            "Calculator",
+            "Allocator",
+            "Resolver",
+            "Coordinator",
+            "Dispatcher",
+            "Processor",
+            "Recovery",
+            "Rules",
+            "Manager");
     private static final Pattern FEATURE_IMPORT = Pattern.compile(
             "^import\\s+(?:static\\s+)?com\\.human\\.ev_relay_mes\\.feature"
                     + "\\.([a-z0-9_]+)\\.([a-z0-9_.]+);\\s*$",
@@ -156,7 +169,37 @@ class ModuleBoundaryTest {
                 .isEmpty();
     }
 
+    @Test
+    void focusedInternalSupportTypesStayPackagePrivate() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path source : javaSourcesUnder(FEATURE_ROOT)) {
+            Path moduleRelativePath = FEATURE_ROOT.relativize(source);
+            if (moduleRelativePath.getNameCount() < 4
+                    || !moduleRelativePath.getName(1).toString().equals("internal")
+                    || !moduleRelativePath.getName(2).toString().equals("service")) {
+                continue;
+            }
+            String fileName = source.getFileName().toString();
+            String typeName = fileName.substring(0, fileName.length() - ".java".length());
+            boolean focusedSupportType = INTERNAL_SUPPORT_SUFFIXES.stream()
+                    .anyMatch(typeName::endsWith);
+            if (focusedSupportType && Files.readString(source)
+                    .matches("(?s).*\\bpublic\\s+(?:final\\s+)?"
+                            + "(?:class|record|interface|enum)\\s+"
+                            + Pattern.quote(typeName) + "\\b.*")) {
+                violations.add(relative(source));
+            }
+        }
+
+        assertThat(violations)
+                .as("Focused internal support types should not leak as public APIs")
+                .isEmpty();
+    }
+
     private List<Path> javaSourcesUnder(Path root) throws IOException {
+        if (Files.notExists(root)) {
+            return List.of();
+        }
         try (Stream<Path> paths = Files.walk(root)) {
             return paths
                     .filter(Files::isRegularFile)

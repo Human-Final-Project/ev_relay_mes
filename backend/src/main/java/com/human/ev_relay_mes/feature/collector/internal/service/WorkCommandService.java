@@ -5,38 +5,28 @@ import com.human.ev_relay_mes.feature.collector.api.WorkCommandResponseDto;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.ProcessCodes;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommand;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.feature.quality.api.QualityMetrics;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
-import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations;
-import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class WorkCommandService implements WorkCommandOperations {
-
-    private static final String PARALLEL_PROCESS_1 = "OP20";
-    private static final String PARALLEL_PROCESS_2 = "OP30";
-    private static final long DISPATCH_ACK_TIMEOUT_SECONDS = 10L;
 
     private static final EnumSet<WorkCommand.Status> ACTIVE_STATUSES = EnumSet.of(
             WorkCommand.Status.PENDING,
@@ -48,9 +38,6 @@ public class WorkCommandService implements WorkCommandOperations {
             WorkCommand.Status.ACCEPTED,
             WorkCommand.Status.COMPLETED,
             WorkCommand.Status.CANCELED);
-    private static final EnumSet<WorkCommand.Status> MACHINE_RESERVED_STATUSES = EnumSet.of(
-            WorkCommand.Status.DISPATCHED,
-            WorkCommand.Status.ACCEPTED);
     private static final EnumSet<WorkCommand.Status> INTERRUPTIBLE_STATUSES = EnumSet.of(
             WorkCommand.Status.DISPATCHED,
             WorkCommand.Status.ACCEPTED);
@@ -58,10 +45,9 @@ public class WorkCommandService implements WorkCommandOperations {
     private final WorkCommandRepository workCommandRepository;
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
-    private final ProductionData productionData;
-    private final QualityMetrics qualityMetrics;
-    private final LotResponsibilityOperations lotResponsibilityOperations;
-    private final InspectionStandardOperations inspectionStandardOperations;
+    private final WorkCommandDispatcher dispatcher;
+    private final WorkCommandAcknowledgementProcessor acknowledgementProcessor;
+    private final WorkCommandResumeManager resumeManager;
 
     /**
      * 기존 호출부와 테스트를 위한 엄격한 생성 API다.
@@ -81,23 +67,23 @@ public class WorkCommandService implements WorkCommandOperations {
      */
     @Transactional
     public Optional<List<WorkCommandResponseDto>> tryCreateInitialStartCommands(Lot lot) {
-        Process op20 = activeProcess(PARALLEL_PROCESS_1);
-        Process op30 = activeProcess(PARALLEL_PROCESS_2);
+        Process op20 = findActiveProcess(ProcessCodes.WINDING);
+        Process op30 = findActiveProcess(ProcessCodes.CONTACT_WELDING);
         if (op20 == null || op30 == null) {
             throw new CustomException(ErrorCode.PROCESS_NOT_FOUND);
         }
         if (lot.getCurrentProcess() == null
-                || !PARALLEL_PROCESS_1.equals(lot.getCurrentProcess().getProcessCode())) {
+                || !ProcessCodes.WINDING.equals(lot.getCurrentProcess().getProcessCode())) {
             return Optional.empty();
         }
-        if (hasActiveExecution(lot.getLotNo(), PARALLEL_PROCESS_1)
-                || hasActiveExecution(lot.getLotNo(), PARALLEL_PROCESS_2)) {
+        if (hasActiveExecution(lot.getLotNo(), ProcessCodes.WINDING)
+                || hasActiveExecution(lot.getLotNo(), ProcessCodes.CONTACT_WELDING)) {
             return Optional.empty();
         }
 
         // 공정 코드 순서가 항상 같아 동시 스케줄링 시 설비 잠금 순서도 고정된다.
-        Machine wind = findAvailableMachineForUpdate(PARALLEL_PROCESS_1).orElse(null);
-        Machine weld = findAvailableMachineForUpdate(PARALLEL_PROCESS_2).orElse(null);
+        Machine wind = findAvailableMachineForUpdate(ProcessCodes.WINDING).orElse(null);
+        Machine weld = findAvailableMachineForUpdate(ProcessCodes.CONTACT_WELDING).orElse(null);
         if (wind == null || weld == null) {
             return Optional.empty();
         }
@@ -138,42 +124,7 @@ public class WorkCommandService implements WorkCommandOperations {
 
     @Transactional
     public List<WorkCommandResponseDto> claimPendingCommands(String machineId) {
-        String normalizedMachineId = machineId == null ? null : machineId.trim();
-        LocalDateTime now = LocalDateTime.now();
-        requeueStaleDispatched(normalizedMachineId, now.minusSeconds(DISPATCH_ACK_TIMEOUT_SECONDS));
-        List<WorkCommand> pending = normalizedMachineId == null || normalizedMachineId.isBlank()
-                ? workCommandRepository.findByStatusForUpdate(WorkCommand.Status.PENDING)
-                : workCommandRepository.findByMachineAndStatusForDispatch(
-                        normalizedMachineId, WorkCommand.Status.PENDING);
-
-        List<WorkCommandResponseDto> claimed = new ArrayList<>();
-        Set<String> reservedDuringClaim = new HashSet<>();
-        for (WorkCommand command : pending) {
-            String commandMachineId = command.getMachine().getMachineId();
-            if (!canDispatch(command)
-                    || reservedDuringClaim.contains(commandMachineId)
-                    || workCommandRepository.existsByMachine_MachineIdAndStatusIn(
-                            commandMachineId, MACHINE_RESERVED_STATUSES)) {
-                continue;
-            }
-            command.setStatus(WorkCommand.Status.DISPATCHED);
-            command.setDispatchedAt(now);
-            reservedDuringClaim.add(commandMachineId);
-            claimed.add(WorkCommandResponseDto.fromEntity(command));
-        }
-        return claimed;
-    }
-
-    private void requeueStaleDispatched(String machineId, LocalDateTime cutoff) {
-        List<WorkCommand> stale = machineId == null || machineId.isBlank()
-                ? workCommandRepository.findStaleDispatchedForUpdate(
-                        WorkCommand.Status.DISPATCHED, cutoff)
-                : workCommandRepository.findStaleDispatchedByMachineForUpdate(
-                        machineId, WorkCommand.Status.DISPATCHED, cutoff);
-        stale.forEach(command -> {
-            command.setStatus(WorkCommand.Status.PENDING);
-            command.setDispatchedAt(null);
-        });
+        return dispatcher.claimPending(machineId);
     }
 
     @Transactional
@@ -203,167 +154,27 @@ public class WorkCommandService implements WorkCommandOperations {
     @Transactional
     public Optional<WorkCommandResponseDto> createResumeCommand(
             String machineId, String lotNo, String processCode) {
-        Machine lockedMachine = machineRegistry.getRequiredMachineForUpdate(machineId);
-
-        WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
-        if (interrupted == null || interrupted.getLot().getStatus() != Lot.Status.HOLD) {
-            return Optional.empty();
-        }
-
-        Lot lot = interrupted.getLot();
-        Process process = interrupted.getProcess();
-        Machine machine = interrupted.getMachine();
-        Optional<WorkCommand> existingResume = workCommandRepository
-                .findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndCommandTypeAndStatusInOrderByCreatedAtDescCommandIdDesc(
-                        machineId, lot.getLotNo(), process.getProcessCode(),
-                        WorkCommand.CommandType.RESUME, ACTIVE_STATUSES);
-        if (existingResume.isPresent()) {
-            return Optional.of(WorkCommandResponseDto.fromEntity(existingResume.get()));
-        }
-        if (workCommandRepository.existsByMachine_MachineIdAndStatusIn(
-                machineId, ACTIVE_STATUSES)) {
-            return Optional.empty();
-        }
-
-        int targetQty = originalTargetQty(interrupted);
-        int evaluatedQty = Math.toIntExact(
-                qualityMetrics.countCompletedUnits(
-                        lot.getLotNo(), process.getProcessCode()));
-        int productionQty = productionData.sumInputQuantity(
-                lot.getLotNo(), process.getProcessCode());
-        int processedQty = Math.max(evaluatedQty, productionQty);
-        int remainingQty = targetQty - processedQty;
-        if (remainingQty <= 0) {
-            return Optional.empty();
-        }
-
-        // L1은 ERROR_PAUSED/STOPPED 상태에서만 RESUME을 받는다. Backend 상태가
-        // 지연된 IDLE/RUNNING 스냅샷으로 덮였더라도 HOLD LOT이 있으면 ERROR로 정렬한다.
-        if (lockedMachine.getStatus() != Machine.Status.ERROR
-                && lockedMachine.getStatus() != Machine.Status.STOPPED) {
-            lockedMachine.setStatus(Machine.Status.ERROR);
-        }
-
-        WorkCommand resume = WorkCommand.builder()
-                .commandType(WorkCommand.CommandType.RESUME)
-                .machine(machine)
-                .process(process)
-                .lot(lot)
-                .inputQty(remainingQty)
-                .build();
-        return Optional.of(WorkCommandResponseDto.fromEntity(workCommandRepository.save(resume)));
+        return resumeManager.create(machineId, lotNo, processCode);
     }
 
     public boolean hasHeldInterruptedWork(String machineId, String lotNo, String processCode) {
-        WorkCommand interrupted = findInterruptedCommand(machineId, lotNo, processCode);
-        return interrupted != null && interrupted.getLot().getStatus() == Lot.Status.HOLD;
-    }
-
-    private WorkCommand findInterruptedCommand(
-            String machineId, String lotNo, String processCode) {
-        if (lotNo != null && !lotNo.isBlank()
-                && processCode != null && !processCode.isBlank()) {
-            return workCommandRepository
-                    .findFirstByMachine_MachineIdAndLot_LotNoAndProcess_ProcessCodeAndStatusOrderByCreatedAtDescCommandIdDesc(
-                            machineId, lotNo, processCode, WorkCommand.Status.CANCELED)
-                    .orElse(null);
-        }
-        return workCommandRepository
-                .findFirstByMachine_MachineIdAndStatusOrderByCreatedAtDescCommandIdDesc(
-                        machineId, WorkCommand.Status.CANCELED)
-                .orElse(null);
+        return resumeManager.hasHeldInterruptedWork(
+                machineId, lotNo, processCode);
     }
 
     @Transactional
     public boolean completeResumeCommand(Lot lot, Process process, Machine machine) {
-        List<WorkCommand> commands = workCommandRepository
-                .findByLot_LotNoAndProcess_ProcessCodeAndMachine_MachineIdAndCommandTypeAndStatusIn(
-                        lot.getLotNo(), process.getProcessCode(), machine.getMachineId(),
-                        WorkCommand.CommandType.RESUME,
-                        EnumSet.of(WorkCommand.Status.DISPATCHED, WorkCommand.Status.ACCEPTED));
-        if (commands.isEmpty()) {
-            return false;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        commands.forEach(command -> {
-            command.setStatus(WorkCommand.Status.COMPLETED);
-            command.setCompletedAt(now);
-        });
-        return true;
+        return resumeManager.complete(lot, process, machine);
     }
 
     @Transactional
     public WorkCommandResponseDto releaseDispatchedCommand(Long commandId, String machineId) {
-        WorkCommand command = workCommandRepository.findByIdForUpdate(commandId)
-                .orElseThrow(() -> new CustomException(ErrorCode.WORK_COMMAND_NOT_FOUND));
-        if (machineId == null || machineId.isBlank()
-                || !command.getMachine().getMachineId().equals(machineId.trim())) {
-            throw new CustomException(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
-        }
-        if (command.getStatus() == WorkCommand.Status.PENDING) {
-            return WorkCommandResponseDto.fromEntity(command);
-        }
-        if (command.getStatus() != WorkCommand.Status.DISPATCHED) {
-            throw new CustomException(ErrorCode.INVALID_WORK_COMMAND_STATUS,
-                    "L1 전송 전에 DISPATCHED 상태인 명령만 반환할 수 있습니다.");
-        }
-        command.setStatus(WorkCommand.Status.PENDING);
-        command.setDispatchedAt(null);
-        return WorkCommandResponseDto.fromEntity(command);
+        return dispatcher.release(commandId, machineId);
     }
 
     @Transactional
     public WorkCommandResponseDto acknowledge(WorkCommandAckRequestDto dto) {
-        WorkCommand command = workCommandRepository.findByIdForUpdate(dto.getCommandId())
-                .orElseThrow(() -> new CustomException(ErrorCode.WORK_COMMAND_NOT_FOUND));
-        if (!command.getMachine().getMachineId().equals(dto.getMachineId())) {
-            throw new CustomException(ErrorCode.WORK_COMMAND_MACHINE_MISMATCH);
-        }
-        WorkCommand.Status acknowledgedStatus =
-                WorkCommand.Status.valueOf(dto.getAckStatus().toUpperCase());
-        boolean acceptedAlreadyProcessed =
-                acknowledgedStatus == WorkCommand.Status.ACCEPTED
-                        && EnumSet.of(
-                                WorkCommand.Status.ACCEPTED,
-                                WorkCommand.Status.COMPLETED,
-                                WorkCommand.Status.CANCELED)
-                        .contains(command.getStatus());
-        if (command.getStatus() == acknowledgedStatus || acceptedAlreadyProcessed) {
-            if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
-                captureStartContext(command);
-            }
-            if (command.getAcknowledgedAt() == null) {
-                command.setAcknowledgedAt(LocalDateTime.now());
-            }
-            if (command.getAckMessage() == null || command.getAckMessage().isBlank()) {
-                command.setAckMessage(dto.getMessage());
-            }
-            return WorkCommandResponseDto.fromEntity(command);
-        }
-        if (command.getStatus() != WorkCommand.Status.DISPATCHED) {
-            throw new CustomException(ErrorCode.INVALID_WORK_COMMAND_STATUS);
-        }
-
-        command.setStatus(acknowledgedStatus);
-        if (acknowledgedStatus == WorkCommand.Status.ACCEPTED) {
-            captureStartContext(command);
-        }
-        command.setAckMessage(dto.getMessage());
-        command.setAcknowledgedAt(LocalDateTime.now());
-        return WorkCommandResponseDto.fromEntity(command);
-    }
-
-    private void captureStartContext(WorkCommand command) {
-        if (command.getCommandType() == WorkCommand.CommandType.STOP) {
-            return;
-        }
-        lotResponsibilityOperations.captureIfAbsent(
-                command.getLot(), command.getProcess(), command.getMachine());
-        if (inspectionStandardOperations.supportsMeasurements(
-                command.getProcess().getProcessCode())) {
-            inspectionStandardOperations.captureStandardsIfAbsent(
-                    command.getLot(), command.getProcess());
-        }
+        return acknowledgementProcessor.acknowledge(dto);
     }
 
     @Transactional
@@ -446,28 +257,7 @@ public class WorkCommandService implements WorkCommandOperations {
                 machineId, ACTIVE_STATUSES);
     }
 
-    private boolean canDispatch(WorkCommand command) {
-        Machine.Status machineStatus = command.getMachine().getStatus();
-        if (command.getCommandType() == WorkCommand.CommandType.RESUME) {
-            return machineStatus == Machine.Status.ERROR || machineStatus == Machine.Status.STOPPED;
-        }
-        return machineStatus == Machine.Status.IDLE;
-    }
-
-    private int originalTargetQty(WorkCommand interrupted) {
-        return workCommandRepository.findByLot_LotNoOrderByCreatedAtAsc(interrupted.getLot().getLotNo())
-                .stream()
-                .filter(command -> command.getCommandType() == WorkCommand.CommandType.START)
-                .filter(command -> command.getProcess().getProcessCode()
-                        .equals(interrupted.getProcess().getProcessCode()))
-                .filter(command -> command.getMachine().getMachineId()
-                        .equals(interrupted.getMachine().getMachineId()))
-                .map(WorkCommand::getInputQty)
-                .findFirst()
-                .orElse(interrupted.getInputQty());
-    }
-
-    private Process activeProcess(String processCode) {
+    private Process findActiveProcess(String processCode) {
         return masterDataLookup.findProcess(processCode).orElse(null);
     }
 

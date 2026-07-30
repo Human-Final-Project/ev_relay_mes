@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
+import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.production.api.LotCreateRequestDto;
 import com.human.ev_relay_mes.feature.production.api.LotStatusRequestDto;
 import com.human.ev_relay_mes.feature.production.api.LotResponseDto;
@@ -7,12 +8,10 @@ import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.production.api.MaterialWaitingLotRetry;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
-import com.human.ev_relay_mes.feature.masterdata.api.Process;
 import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
-import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.feature.material.api.MaterialStockChangedEvent;
 import com.human.ev_relay_mes.feature.production.internal.repository.WorkOrderRepository;
@@ -24,12 +23,9 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -47,10 +43,11 @@ public class LotService implements MaterialWaitingLotRetry {
     private final LotRepository lotRepository;
     private final WorkOrderRepository workOrderRepository;
     private final MemberLookup memberLookup;
-    private final MasterDataLookup masterDataLookup;
     private final MaterialInventory materialInventory;
     private final ProductionScheduleRequestService productionScheduleRequestService;
     private final LotProcessResponsibleService lotProcessResponsibleService;
+    private final LotFactory lotFactory;
+    private final LotStatePolicy lotStatePolicy;
 
     /**
      * 관리자 복구용 수동 API. 일반 흐름에서는 WorkOrder 확정 시 자동 호출된다.
@@ -77,7 +74,7 @@ public class LotService implements MaterialWaitingLotRetry {
             throw new CustomException(ErrorCode.INITIAL_LOT_ALREADY_EXISTS);
         }
 
-        Lot saved = lotRepository.save(buildLot(
+        Lot saved = lotRepository.save(lotFactory.create(
                 workOrder,
                 workOrder.getTargetQty(),
                 Lot.LotType.INITIAL,
@@ -150,7 +147,7 @@ public class LotService implements MaterialWaitingLotRetry {
             throw new CustomException(ErrorCode.SUPPLEMENT_LIMIT_REACHED,
                     "자동 보충 LOT는 최대 " + maxSupplementCount + "회까지 생성할 수 있습니다.");
         }
-        Lot saved = lotRepository.save(buildLot(
+        Lot saved = lotRepository.save(lotFactory.create(
                 workOrder,
                 remainingQty,
                 Lot.LotType.SUPPLEMENT,
@@ -165,12 +162,12 @@ public class LotService implements MaterialWaitingLotRetry {
         if (workOrderId != null) {
             findWorkOrder(workOrderId);
             lots = lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(workOrderId);
-            if (!isBlank(status)) {
+            if (!RequestValues.isBlank(status)) {
                 Lot.Status parsedStatus = parseStatus(status);
                 lots = lots.stream().filter(lot -> lot.getStatus() == parsedStatus).toList();
             }
         } else {
-            lots = isBlank(status)
+            lots = RequestValues.isBlank(status)
                     ? lotRepository.findAllByOrderByCreatedAtDesc()
                     : lotRepository.findByStatusOrderByCreatedAtDesc(parseStatus(status));
         }
@@ -195,9 +192,9 @@ public class LotService implements MaterialWaitingLotRetry {
             }
             return toResponse(lot);
         }
-        validateTransition(lot, targetStatus);
+        lotStatePolicy.validateTransition(lot, targetStatus);
         if (targetStatus == Lot.Status.RUNNING) {
-            validateStartEligibility(lot.getWorkOrder());
+            lotStatePolicy.validateStartEligibility(lot.getWorkOrder());
             if (lot.getStatus() == Lot.Status.HOLD) {
                 lot.setStatus(Lot.Status.RUNNING);
                 productionScheduleRequestService.requestLot(lot.getLotNo());
@@ -223,37 +220,6 @@ public class LotService implements MaterialWaitingLotRetry {
                     "대기 상태의 LOT만 삭제할 수 있습니다.");
         }
         lotRepository.delete(lot);
-    }
-
-    private void validateTransition(Lot lot, Lot.Status targetStatus) {
-        boolean allowed = switch (lot.getStatus()) {
-            case WAITING -> targetStatus == Lot.Status.RUNNING
-                    || targetStatus == Lot.Status.HOLD
-                    || targetStatus == Lot.Status.SCRAPPED;
-            case RUNNING -> targetStatus == Lot.Status.HOLD
-                    || targetStatus == Lot.Status.COMPLETED
-                    || targetStatus == Lot.Status.SCRAPPED;
-            case HOLD -> targetStatus == Lot.Status.WAITING
-                    || targetStatus == Lot.Status.RUNNING
-                    || targetStatus == Lot.Status.SCRAPPED;
-            case COMPLETED, SCRAPPED -> false;
-        };
-        if (!allowed) {
-            throw new CustomException(ErrorCode.INVALID_LOT_STATUS_TRANSITION);
-        }
-        if (targetStatus == Lot.Status.COMPLETED
-                && lot.getOkQty() + lot.getNgQty() != lot.getInputQty()) {
-            throw new CustomException(ErrorCode.INVALID_LOT_QUANTITY,
-                    "투입 수량과 양품·불량 수량이 일치해야 LOT를 완료할 수 있습니다.");
-        }
-    }
-
-    private void validateStartEligibility(WorkOrder workOrder) {
-        if (workOrder.getStatus() != WorkOrder.Status.RELEASED
-                && workOrder.getStatus() != WorkOrder.Status.RUNNING) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
-                    "확정 또는 생산 중인 작업지시의 LOT만 시작할 수 있습니다.");
-        }
     }
 
     /**
@@ -293,28 +259,9 @@ public class LotService implements MaterialWaitingLotRetry {
             if (lot.getStatus() != Lot.Status.WAITING || lot.getStartRequestedAt() == null) {
                 continue;
             }
-            validateStartEligibility(lot.getWorkOrder());
+            lotStatePolicy.validateStartEligibility(lot.getWorkOrder());
             requestPipelineStart(lot);
         }
-    }
-
-    private Lot buildLot(
-            WorkOrder workOrder,
-            int inputQty,
-            Lot.LotType lotType,
-            int productionRound,
-            Member creator) {
-        Process firstProcess = masterDataLookup.getFirstProcess();
-        return Lot.builder()
-                .lotNo(generateLotNo())
-                .workOrder(workOrder)
-                .item(workOrder.getItem())
-                .currentProcess(firstProcess)
-                .lotType(lotType)
-                .productionRound(productionRound)
-                .inputQty(inputQty)
-                .createdBy(creator)
-                .build();
     }
 
     private Member findMember(Long memberId) {
@@ -347,25 +294,8 @@ public class LotService implements MaterialWaitingLotRetry {
     }
 
     private Lot.Status parseStatus(String status) {
-        try {
-            return Lot.Status.valueOf(status.toUpperCase());
-        } catch (RuntimeException exception) {
-            throw new CustomException(ErrorCode.INVALID_LOT_STATUS);
-        }
-    }
-
-    private String generateLotNo() {
-        String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String lotNo;
-        do {
-            lotNo = "LOT-" + date + "-" + UUID.randomUUID().toString()
-                    .substring(0, 8).toUpperCase();
-        } while (lotRepository.existsByLotNo(lotNo));
-        return lotNo;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        return RequestValues.parseEnum(
+                Lot.Status.class, status, ErrorCode.INVALID_LOT_STATUS);
     }
 
     private LotResponseDto toResponse(Lot lot) {

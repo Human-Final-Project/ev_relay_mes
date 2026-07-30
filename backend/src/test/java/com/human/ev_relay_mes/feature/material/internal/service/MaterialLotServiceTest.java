@@ -9,12 +9,13 @@ import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.material.internal.repository.MaterialLotRepository;
 import com.human.ev_relay_mes.feature.material.internal.repository.LotMaterialUsageRepository;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -35,9 +36,22 @@ class MaterialLotServiceTest {
     private MemberLookup memberLookup;
     @Mock
     private LotMaterialUsageRepository lotMaterialUsageRepository;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
-    @InjectMocks
     private MaterialLotService materialLotService;
+
+    @BeforeEach
+    void setUp() {
+        materialLotService = new MaterialLotService(
+                materialLotRepository,
+                masterDataLookup,
+                memberLookup,
+                eventPublisher,
+                new BomRequirementCalculator(masterDataLookup),
+                new MaterialStockAllocator(
+                        materialLotRepository, lotMaterialUsageRepository));
+    }
 
     @Test
     void consumesAvailableMaterialLotsInFifoOrder() {

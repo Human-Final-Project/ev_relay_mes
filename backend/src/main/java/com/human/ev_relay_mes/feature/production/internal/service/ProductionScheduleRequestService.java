@@ -16,23 +16,14 @@ public class ProductionScheduleRequestService implements ProductionSchedulingReq
     private final ApplicationEventPublisher eventPublisher;
 
     public void requestLot(String lotNo) {
-        eventPublisher.publishEvent(new ScheduleRequested(ScheduleTarget.LOT, lotNo));
+        eventPublisher.publishEvent(ProductionScheduleRequested.forLot(lotNo));
     }
 
     public void requestMachine(String machineId) {
-        eventPublisher.publishEvent(new ScheduleRequested(ScheduleTarget.MACHINE, machineId));
+        eventPublisher.publishEvent(ProductionScheduleRequested.forMachine(machineId));
     }
 
     public void requestAllIdleMachines() {
-        eventPublisher.publishEvent(new ScheduleRequested(ScheduleTarget.ALL_IDLE_MACHINES, null));
-    }
-
-    public enum ScheduleTarget {
-        LOT,
-        MACHINE,
-        ALL_IDLE_MACHINES
-    }
-
-    public record ScheduleRequested(ScheduleTarget target, String key) {
+        eventPublisher.publishEvent(ProductionScheduleRequested.forAllIdleMachines());
     }
 }

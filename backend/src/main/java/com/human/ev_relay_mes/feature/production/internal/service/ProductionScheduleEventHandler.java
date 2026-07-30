@@ -21,7 +21,7 @@ public class ProductionScheduleEventHandler {
             phase = TransactionPhase.AFTER_COMMIT,
             fallbackExecution = true)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void handle(ProductionScheduleRequestService.ScheduleRequested event) {
+    public void handle(ProductionScheduleRequested event) {
         try {
             switch (event.target()) {
                 case LOT -> productionSchedulerService.tryScheduleLot(event.key());

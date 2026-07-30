@@ -14,8 +14,8 @@ import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.internal.repository.ProductionLogRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -50,8 +50,30 @@ class ProductionServiceTest {
     @Mock
     private WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
-    @InjectMocks
     private ProductionService productionService;
+
+    @BeforeEach
+    void setUp() {
+        ProductionInputQuantityResolver inputQuantityResolver =
+                new ProductionInputQuantityResolver(
+                        masterDataLookup, productionLogRepository);
+        ProductionProcessCompletionCoordinator completionCoordinator =
+                new ProductionProcessCompletionCoordinator(
+                        productionLogRepository,
+                        masterDataLookup,
+                        workCommandService,
+                        productionScheduleRequestService,
+                        workOrderContinuationRequestService);
+        productionService = new ProductionService(
+                productionLogRepository,
+                machineRegistry,
+                masterDataLookup,
+                lotRepository,
+                inputQuantityResolver,
+                new ProductionResultValidator(),
+                completionCoordinator,
+                new ProductionLogResponseAssembler());
+    }
 
     @Test
     void returnsExistingProductionResultForDuplicateEventId() {

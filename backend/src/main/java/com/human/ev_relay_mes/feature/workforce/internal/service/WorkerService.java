@@ -1,5 +1,6 @@
 package com.human.ev_relay_mes.feature.workforce.internal.service;
 
+import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.workforce.api.WorkerRequestDto;
 import com.human.ev_relay_mes.feature.workforce.api.WorkerResponseDto;
 import com.human.ev_relay_mes.feature.workforce.api.Worker;
@@ -38,7 +39,7 @@ public class WorkerService {
     }
 
     public List<WorkerResponseDto> getWorkers(String status) {
-        List<Worker> workers = isBlank(status)
+        List<Worker> workers = RequestValues.isBlank(status)
                 ? workerRepository.findAllByOrderByWorkerNoAsc()
                 : workerRepository.findByStatusOrderByWorkerNoAsc(parseStatus(status));
         return workers.stream().map(WorkerResponseDto::fromEntity).toList();
@@ -96,21 +97,16 @@ public class WorkerService {
     }
 
     private Worker.Status parseStatus(String status) {
-        if (isBlank(status)) {
+        if (RequestValues.isBlank(status)) {
             return Worker.Status.ACTIVE;
         }
-        try {
-            return Worker.Status.valueOf(status.trim().toUpperCase());
-        } catch (IllegalArgumentException exception) {
-            throw new CustomException(ErrorCode.INVALID_WORKER_STATUS);
-        }
+        return RequestValues.parseEnum(
+                Worker.Status.class,
+                status,
+                ErrorCode.INVALID_WORKER_STATUS);
     }
 
     private String normalize(String value) {
-        return isBlank(value) ? null : value.trim();
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
+        return RequestValues.trimToNull(value);
     }
 }

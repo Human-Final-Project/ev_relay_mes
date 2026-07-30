@@ -12,9 +12,9 @@ import com.human.ev_relay_mes.feature.production.internal.repository.LotReposito
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.internal.repository.ProductionLogRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -37,8 +37,18 @@ class ProductionSchedulerServiceTest {
     @Mock private WorkCommandOperations workCommandService;
     @Mock private WorkOrderContinuationRequestService workOrderContinuationRequestService;
 
-    @InjectMocks
     private ProductionSchedulerService schedulerService;
+
+    @BeforeEach
+    void setUp() {
+        schedulerService = new ProductionSchedulerService(
+                lotRepository,
+                machineRegistry,
+                workCommandService,
+                workOrderContinuationRequestService,
+                new ProductionInputQuantityResolver(
+                        masterDataLookup, productionLogRepository));
+    }
 
     @Test
     void schedulesInitialParallelPairTogether() {

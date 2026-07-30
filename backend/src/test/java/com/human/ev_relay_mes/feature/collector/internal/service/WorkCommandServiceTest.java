@@ -16,8 +16,8 @@ import com.human.ev_relay_mes.feature.production.api.LotResponsibilityOperations
 import com.human.ev_relay_mes.feature.production.api.ProductionData;
 import com.human.ev_relay_mes.feature.collector.internal.repository.WorkCommandRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -50,8 +50,31 @@ class WorkCommandServiceTest {
     @Mock
     private InspectionStandardOperations inspectionStandardOperations;
 
-    @InjectMocks
     private WorkCommandService workCommandService;
+
+    @BeforeEach
+    void setUp() {
+        WorkCommandDispatcher dispatcher =
+                new WorkCommandDispatcher(workCommandRepository);
+        WorkCommandAcknowledgementProcessor acknowledgementProcessor =
+                new WorkCommandAcknowledgementProcessor(
+                        workCommandRepository,
+                        lotResponsibilityOperations,
+                        inspectionStandardOperations);
+        WorkCommandResumeManager resumeManager =
+                new WorkCommandResumeManager(
+                        workCommandRepository,
+                        machineRegistry,
+                        productionData,
+                        qualityMetrics);
+        workCommandService = new WorkCommandService(
+                workCommandRepository,
+                machineRegistry,
+                masterDataLookup,
+                dispatcher,
+                acknowledgementProcessor,
+                resumeManager);
+    }
 
     @Test
     void createsStartCommandsForBothParallelProcesses() {

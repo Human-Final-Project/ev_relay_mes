@@ -12,9 +12,9 @@ import com.human.ev_relay_mes.feature.production.internal.repository.LotReposito
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import com.human.ev_relay_mes.feature.production.internal.repository.WorkOrderRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -40,8 +40,20 @@ class LotServiceTest {
     @Mock private ProductionScheduleRequestService productionScheduleRequestService;
     @Mock private LotProcessResponsibleService lotProcessResponsibleService;
 
-    @InjectMocks
     private LotService lotService;
+
+    @BeforeEach
+    void setUp() {
+        lotService = new LotService(
+                lotRepository,
+                workOrderRepository,
+                memberLookup,
+                materialInventory,
+                productionScheduleRequestService,
+                lotProcessResponsibleService,
+                new LotFactory(lotRepository, masterDataLookup),
+                new LotStatePolicy());
+    }
 
     @Test
     void createsInitialLotAndStartsPipelineAutomatically() {

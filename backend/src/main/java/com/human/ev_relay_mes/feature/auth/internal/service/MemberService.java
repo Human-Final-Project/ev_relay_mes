@@ -2,6 +2,7 @@ package com.human.ev_relay_mes.feature.auth.internal.service;
 
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
+import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberCreateRequestDto;
 import com.human.ev_relay_mes.feature.auth.api.MemberResponseDto;
@@ -120,11 +121,10 @@ public class MemberService {
 
     // 화면에서 받은 계정 상태 문자열을 Member.Status Enum으로 안전하게 변환할 때 사용한다.
     private Member.Status parseStatus(String status) {
-        try {
-            return Member.Status.valueOf(status.toUpperCase());
-        } catch (RuntimeException exception) {
-            throw new CustomException(ErrorCode.INVALID_MEMBER_STATUS);
-        }
+        return RequestValues.parseEnum(
+                Member.Status.class,
+                status,
+                ErrorCode.INVALID_MEMBER_STATUS);
     }
 
     // 비밀번호를 제외한 회원 정보를 회원 관리 API의 응답 DTO로 변환할 때 사용한다.

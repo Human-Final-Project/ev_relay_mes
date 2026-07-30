@@ -1,10 +1,10 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
+import com.human.ev_relay_mes.common.util.RequestValues;
 import com.human.ev_relay_mes.feature.production.api.WorkOrderRequestDto;
 import com.human.ev_relay_mes.feature.production.api.WorkOrderStatusRequestDto;
 import com.human.ev_relay_mes.feature.production.api.WorkOrderResponseDto;
 import com.human.ev_relay_mes.feature.masterdata.api.Item;
-import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.auth.api.Member;
 import com.human.ev_relay_mes.feature.auth.api.MemberLookup;
 import com.human.ev_relay_mes.feature.production.api.WorkOrder;
@@ -16,28 +16,15 @@ import com.human.ev_relay_mes.feature.material.api.MaterialInventory;
 import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
 import com.human.ev_relay_mes.feature.production.internal.repository.WorkOrderRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class WorkOrderService implements WorkOrderOperations {
-
-    private static final EnumSet<Lot.Status> NON_TERMINAL_LOT_STATUSES =
-            EnumSet.of(Lot.Status.WAITING, Lot.Status.RUNNING, Lot.Status.HOLD);
-    private static final EnumSet<Lot.Status> TERMINAL_LOT_STATUSES =
-            EnumSet.of(Lot.Status.COMPLETED, Lot.Status.SCRAPPED);
-
-    @Value("${mes.auto-lot.max-supplement-count:3}")
-    private int maxSupplementCount = 3;
 
     private final WorkOrderRepository workOrderRepository;
     private final MasterDataLookup masterDataLookup;
@@ -45,6 +32,9 @@ public class WorkOrderService implements WorkOrderOperations {
     private final LotRepository lotRepository;
     private final MaterialInventory materialInventory;
     private final LotService lotService;
+    private final WorkOrderFactory workOrderFactory;
+    private final WorkOrderStatePolicy workOrderStatePolicy;
+    private final WorkOrderResponseAssembler responseAssembler;
 
     @Transactional
     public WorkOrderResponseDto createWorkOrder(WorkOrderRequestDto dto, Long memberId) {
@@ -60,20 +50,18 @@ public class WorkOrderService implements WorkOrderOperations {
         materialInventory.validateMaterialAvailability(item.getItemCode(), dto.getTargetQty());
 
         Member creator = memberLookup.getRequiredById(memberId);
-        WorkOrder workOrder = WorkOrder.builder()
-                .orderNo(generateOrderNo())
-                .item(item)
-                .targetQty(dto.getTargetQty())
-                .plannedStartAt(dto.getPlannedStartAt())
-                .plannedEndAt(dto.getPlannedEndAt())
-                .createdBy(creator)
-                .build();
+        WorkOrder workOrder = workOrderFactory.create(
+                item,
+                dto.getTargetQty(),
+                dto.getPlannedStartAt(),
+                dto.getPlannedEndAt(),
+                creator);
         WorkOrder saved = workOrderRepository.save(workOrder);
         return toResponse(saved);
     }
 
     public List<WorkOrderResponseDto> getWorkOrders(String status) {
-        List<WorkOrder> workOrders = isBlank(status)
+        List<WorkOrder> workOrders = RequestValues.isBlank(status)
                 ? workOrderRepository.findAllByOrderByCreatedAtDesc()
                 : workOrderRepository.findByStatusOrderByCreatedAtDesc(parseStatus(status));
         return workOrders.stream().map(this::toResponse).toList();
@@ -122,7 +110,7 @@ public class WorkOrderService implements WorkOrderOperations {
         if (workOrder.getStatus() == WorkOrder.Status.RUNNING) {
             return toResponse(workOrder);
         }
-        validateTransition(workOrder, WorkOrder.Status.RELEASED);
+        workOrderStatePolicy.validateTransition(workOrder, WorkOrder.Status.RELEASED);
         workOrder.setStatus(WorkOrder.Status.RELEASED);
         lotService.createInitialLotAndRequestStart(
                 workOrder, resolveLotCreatorId(workOrder, memberId));
@@ -142,13 +130,13 @@ public class WorkOrderService implements WorkOrderOperations {
             return toResponse(workOrder);
         }
         if (targetStatus == WorkOrder.Status.RELEASED) {
-            validateTransition(workOrder, targetStatus);
+            workOrderStatePolicy.validateTransition(workOrder, targetStatus);
             workOrder.setStatus(targetStatus);
             lotService.createInitialLotAndRequestStart(
                     workOrder, resolveLotCreatorId(workOrder, null));
             return toResponse(workOrder);
         }
-        validateTransition(workOrder, targetStatus);
+        workOrderStatePolicy.validateTransition(workOrder, targetStatus);
         workOrder.setStatus(targetStatus);
         return toResponse(workOrder);
     }
@@ -156,142 +144,12 @@ public class WorkOrderService implements WorkOrderOperations {
     @Transactional
     public void deleteWorkOrder(Long id) {
         WorkOrder workOrder = findWorkOrderForUpdate(id);
-        if (workOrder.getStatus() != WorkOrder.Status.CREATED) {
-            throw new CustomException(ErrorCode.WORK_ORDER_ALREADY_STARTED);
-        }
-        if (lotRepository.existsByWorkOrder_WorkOrderId(id)) {
-            throw new CustomException(ErrorCode.RESOURCE_CONFLICT,
-                    "연결된 생산 LOT가 있어 삭제할 수 없습니다.");
-        }
+        workOrderStatePolicy.validateDeletion(workOrder);
         workOrderRepository.delete(workOrder);
     }
 
-    private void validateTransition(WorkOrder workOrder, WorkOrder.Status targetStatus) {
-        WorkOrder.Status currentStatus = workOrder.getStatus();
-        if (currentStatus == WorkOrder.Status.CANCELED) {
-            throw new CustomException(ErrorCode.WORK_ORDER_CANCELED);
-        }
-        if (currentStatus == WorkOrder.Status.COMPLETED) {
-            throw new CustomException(ErrorCode.WORK_ORDER_ALREADY_COMPLETED);
-        }
-
-        boolean allowed = switch (currentStatus) {
-            case CREATED -> targetStatus == WorkOrder.Status.RELEASED
-                    || targetStatus == WorkOrder.Status.CANCELED;
-            case RELEASED -> targetStatus == WorkOrder.Status.CANCELED;
-            case RUNNING -> targetStatus == WorkOrder.Status.COMPLETED;
-            case COMPLETED, CANCELED -> false;
-        };
-        if (!allowed) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS);
-        }
-        if (targetStatus == WorkOrder.Status.CANCELED
-                && lotRepository.existsByWorkOrder_WorkOrderId(workOrder.getWorkOrderId())) {
-            throw new CustomException(ErrorCode.RESOURCE_CONFLICT,
-                    "생산 LOT가 생성된 작업지시는 취소할 수 없습니다.");
-        }
-        if (targetStatus == WorkOrder.Status.COMPLETED) {
-            validateCompletion(workOrder);
-        }
-    }
-
-    private void validateCompletion(WorkOrder workOrder) {
-        Long id = workOrder.getWorkOrderId();
-        if (!lotRepository.existsByWorkOrder_WorkOrderId(id)) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS,
-                    "생산 LOT가 없는 작업지시는 완료할 수 없습니다.");
-        }
-        boolean hasActiveLot = lotRepository.existsByWorkOrder_WorkOrderIdAndStatusIn(
-                id, NON_TERMINAL_LOT_STATUSES);
-        long completedOkQty = lotRepository.sumOkQtyByWorkOrderIdAndStatus(
-                id, Lot.Status.COMPLETED);
-        if (hasActiveLot || completedOkQty < workOrder.getTargetQty()) {
-            throw new CustomException(ErrorCode.WORK_ORDER_TARGET_NOT_MET,
-                    "완료 LOT의 누적 양품 수량이 작업지시 목표 수량에 도달해야 완료할 수 있습니다.");
-        }
-    }
-
     private WorkOrderResponseDto toResponse(WorkOrder workOrder) {
-        List<Lot> lots = workOrder.getWorkOrderId() == null
-                ? List.of()
-                : lotRepository.findByWorkOrder_WorkOrderIdOrderByCreatedAtDesc(
-                        workOrder.getWorkOrderId());
-        if (lots == null) {
-            lots = List.of();
-        }
-        int completedOkQty = lots.stream()
-                .filter(lot -> lot.getStatus() == Lot.Status.COMPLETED)
-                .mapToInt(Lot::getOkQty)
-                .sum();
-        int remainingQty = Math.max(workOrder.getTargetQty() - completedOkQty, 0);
-        boolean hasTerminalLot = lots.stream()
-                .anyMatch(lot -> TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
-        boolean hasNonTerminalLot = lots.stream()
-                .anyMatch(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
-        int maxProductionRound = lots.stream()
-                .map(Lot::getProductionRound)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .max()
-                .orElse(0);
-        boolean supplementLimitReached = maxProductionRound >= 1 + maxSupplementCount;
-        boolean supplementRequired = workOrder.getStatus() == WorkOrder.Status.RUNNING
-                && hasTerminalLot
-                && !hasNonTerminalLot
-                && remainingQty > 0
-                && !supplementLimitReached;
-
-        return WorkOrderResponseDto.fromEntity(
-                workOrder,
-                completedOkQty,
-                remainingQty,
-                supplementRequired,
-                resolveAutomationStatus(workOrder, lots, remainingQty));
-    }
-
-    private String resolveAutomationStatus(
-            WorkOrder workOrder, List<Lot> lots, int remainingQty) {
-        if (workOrder.getStatus() == WorkOrder.Status.CREATED) {
-            return "DRAFT";
-        }
-        if (workOrder.getStatus() == WorkOrder.Status.CANCELED) {
-            return "CANCELED";
-        }
-        if (workOrder.getStatus() == WorkOrder.Status.COMPLETED) {
-            return "COMPLETED";
-        }
-        int maxProductionRound = lots.stream()
-                .map(Lot::getProductionRound)
-                .filter(java.util.Objects::nonNull)
-                .mapToInt(Integer::intValue)
-                .max()
-                .orElse(0);
-        boolean hasTerminalLot = lots.stream()
-                .anyMatch(lot -> TERMINAL_LOT_STATUSES.contains(lot.getStatus()));
-        if (workOrder.getStatus() == WorkOrder.Status.RUNNING
-                && hasTerminalLot
-                && remainingQty > 0
-                && maxProductionRound >= 1 + maxSupplementCount) {
-            return "SUPPLEMENT_LIMIT_REACHED";
-        }
-
-        Lot active = lots.stream()
-                .filter(lot -> NON_TERMINAL_LOT_STATUSES.contains(lot.getStatus()))
-                .findFirst()
-                .orElse(null);
-        if (active == null) {
-            return workOrder.getStatus() == WorkOrder.Status.RELEASED
-                    ? "INITIAL_LOT_PENDING"
-                    : "AUTO_SUPPLEMENT_PENDING";
-        }
-        if (active.getStatus() == Lot.Status.HOLD) {
-            return "LOT_HOLD";
-        }
-        boolean supplement = active.getLotType() == Lot.LotType.SUPPLEMENT;
-        if (active.getStatus() == Lot.Status.WAITING) {
-            return supplement ? "AUTO_SUPPLEMENT_PENDING" : "INITIAL_LOT_PENDING";
-        }
-        return supplement ? "AUTO_SUPPLEMENT_ACTIVE" : "PIPELINE_ACTIVE";
+        return responseAssembler.toResponse(workOrder);
     }
 
     private Long resolveLotCreatorId(WorkOrder workOrder, Long requestedMemberId) {
@@ -324,11 +182,10 @@ public class WorkOrderService implements WorkOrderOperations {
     }
 
     private WorkOrder.Status parseStatus(String status) {
-        try {
-            return WorkOrder.Status.valueOf(status.toUpperCase());
-        } catch (RuntimeException exception) {
-            throw new CustomException(ErrorCode.INVALID_WORK_ORDER_STATUS);
-        }
+        return RequestValues.parseEnum(
+                WorkOrder.Status.class,
+                status,
+                ErrorCode.INVALID_WORK_ORDER_STATUS);
     }
 
     private void validatePlan(WorkOrderRequestDto dto) {
@@ -339,17 +196,4 @@ public class WorkOrderService implements WorkOrderOperations {
         }
     }
 
-    private String generateOrderNo() {
-        String date = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String orderNo;
-        do {
-            orderNo = "WO-" + date + "-" + UUID.randomUUID().toString()
-                    .substring(0, 8).toUpperCase();
-        } while (workOrderRepository.existsByOrderNo(orderNo));
-        return orderNo;
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
 }

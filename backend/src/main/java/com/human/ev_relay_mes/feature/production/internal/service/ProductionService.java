@@ -1,20 +1,20 @@
 package com.human.ev_relay_mes.feature.production.internal.service;
 
-import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
-import com.human.ev_relay_mes.feature.production.api.ProductionLogSearchRequestDto;
-import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
-import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
-import com.human.ev_relay_mes.feature.production.api.Lot;
-import com.human.ev_relay_mes.feature.machine.api.Machine;
-import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.feature.production.api.ProductionLog;
-import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
-import com.human.ev_relay_mes.feature.production.api.WorkOrder;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
-import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
+import com.human.ev_relay_mes.common.util.RequestValues;
+import com.human.ev_relay_mes.feature.machine.api.Machine;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
+import com.human.ev_relay_mes.feature.masterdata.api.Process;
+import com.human.ev_relay_mes.feature.masterdata.api.ProcessCodes;
+import com.human.ev_relay_mes.feature.production.api.Lot;
+import com.human.ev_relay_mes.feature.production.api.ProductionLog;
+import com.human.ev_relay_mes.feature.production.api.ProductionLogResponseDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionLogSearchRequestDto;
+import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
+import com.human.ev_relay_mes.feature.production.api.ProductionResultReceiveRequestDto;
+import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
 import com.human.ev_relay_mes.feature.production.internal.repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Sort;
@@ -30,52 +30,51 @@ import java.util.Optional;
 @Transactional(readOnly = true)
 public class ProductionService implements ProductionOperations {
 
-    private static final String PARALLEL_PROCESS_1 = "OP20";
-    private static final String PARALLEL_PROCESS_2 = "OP30";
-    private static final String ASSEMBLY_PROCESS = "OP40_OP50";
-    private static final String INSPECTION_PROCESS = "OP70";
-
     private final ProductionLogRepository productionLogRepository;
     private final MachineRegistry machineRegistry;
     private final MasterDataLookup masterDataLookup;
     private final LotRepository lotRepository;
-    private final WorkCommandOperations workCommandService;
-    private final ProductionScheduleRequestService productionScheduleRequestService;
-    private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
+    private final ProductionInputQuantityResolver inputQuantityResolver;
+    private final ProductionResultValidator resultValidator;
+    private final ProductionProcessCompletionCoordinator completionCoordinator;
+    private final ProductionLogResponseAssembler responseAssembler;
 
     @Transactional
-    public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto dto) {
-        String eventId = normalizeEventId(dto.getEventId());
-        validateRequest(dto);
-        if (INSPECTION_PROCESS.equals(dto.getProcessCode())) {
+    public ProductionLogResponseDto saveResult(ProductionResultReceiveRequestDto request) {
+        String eventId = RequestValues.trimToNull(request.getEventId());
+        resultValidator.validateRequest(request);
+        if (ProcessCodes.FINAL_INSPECTION.equals(request.getProcessCode())) {
             throw new CustomException(ErrorCode.INVALID_PRODUCTION_STATUS,
                     "OP70 실적은 검사 측정값을 집계해 Backend가 생성합니다.");
         }
-        Lot lot = lotRepository.findByLotNoForUpdate(dto.getLotNo())
+
+        Lot lot = lotRepository.findByLotNoForUpdate(request.getLotNo())
                 .orElseThrow(() -> new CustomException(ErrorCode.LOT_NOT_FOUND));
         if (eventId != null) {
             Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
             if (existing.isPresent()) {
-                return toResponse(existing.get());
+                return responseAssembler.toResponse(existing.get());
             }
         }
 
         List<ProductionLog> processLogs = productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        dto.getLotNo(), dto.getProcessCode());
+                        request.getLotNo(), request.getProcessCode());
         ProductionLog currentLog = processLogs.stream().findFirst().orElse(null);
-        if (currentLog != null && dto.getInputQty() <= currentLog.getInputQty()) {
-            return toResponse(currentLog);
+        if (currentLog != null && request.getInputQty() <= currentLog.getInputQty()) {
+            return responseAssembler.toResponse(currentLog);
         }
 
-        validateLot(lot, dto.getProcessCode());
-        Machine machine = machineRegistry.getRequiredMachine(dto.getMachineId());
-        Process process = masterDataLookup.getRequiredProcess(dto.getProcessCode());
-        validateMachineAndProcess(machine, process);
+        resultValidator.validateLot(lot, request.getProcessCode());
+        Machine machine = machineRegistry.getRequiredMachine(request.getMachineId());
+        Process process = masterDataLookup.getRequiredProcess(request.getProcessCode());
+        resultValidator.validateMachineProcess(machine, process);
 
-        int expectedInputQty = expectedInputQty(lot, process);
-        validateCumulativeQuantity(expectedInputQty, dto.getStatus(), dto.getInputQty());
-        String logStatus = dto.getInputQty() == expectedInputQty ? "COMPLETED" : "RUNNING";
+        int expectedInputQty = inputQuantityResolver.resolveForResult(lot, process);
+        resultValidator.validateCumulativeQuantity(
+                expectedInputQty, request.getStatus(), request.getInputQty());
+        String logStatus = request.getInputQty() == expectedInputQty
+                ? "COMPLETED" : "RUNNING";
 
         if (currentLog == null) {
             currentLog = ProductionLog.builder()
@@ -83,28 +82,18 @@ public class ProductionService implements ProductionOperations {
                     .lot(lot)
                     .machine(machine)
                     .process(process)
-                    .startedAt(dto.getStartedAt())
+                    .startedAt(request.getStartedAt())
                     .build();
         }
-        currentLog.setInputQty(dto.getInputQty());
-        currentLog.setOkQty(dto.getOkQty());
-        currentLog.setNgQty(dto.getNgQty());
-        currentLog.setStatus(logStatus);
-        if (currentLog.getStartedAt() == null) {
-            currentLog.setStartedAt(dto.getStartedAt());
-        }
-        LocalDateTime completedAt = "COMPLETED".equals(logStatus)
-                ? (dto.getEndedAt() == null ? LocalDateTime.now() : dto.getEndedAt())
-                : null;
-        currentLog.setEndedAt(completedAt);
+        updateLog(currentLog, request, logStatus);
         ProductionLog savedLog = productionLogRepository.save(currentLog);
 
-        if (dto.getInputQty() == expectedInputQty) {
-            completeCurrentProcess(lot, machine, process, dto.getOkQty(), completedAt);
+        if (request.getInputQty() == expectedInputQty) {
+            completionCoordinator.complete(
+                    lot, machine, process, request.getOkQty(), currentLog.getEndedAt());
         }
-        return toResponse(savedLog);
+        return responseAssembler.toResponse(savedLog);
     }
-
 
     @Transactional
     public ProductionLogResponseDto completeEvaluatedProcess(
@@ -116,7 +105,7 @@ public class ProductionService implements ProductionOperations {
         String eventId = "QUALITY-AGG-" + lot.getLotNo() + "-" + process.getProcessCode();
         Optional<ProductionLog> existing = productionLogRepository.findByEventId(eventId);
         if (existing.isPresent()) {
-            return toResponse(existing.get());
+            return responseAssembler.toResponse(existing.get());
         }
         if (!productionLogRepository
                 .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
@@ -138,228 +127,53 @@ public class ProductionService implements ProductionOperations {
                 .endedAt(LocalDateTime.now())
                 .build();
         ProductionLog saved = productionLogRepository.save(log);
-        completeCurrentProcess(lot, machine, process, okQty, saved.getEndedAt());
-        return toResponse(saved);
+        completionCoordinator.complete(lot, machine, process, okQty, saved.getEndedAt());
+        return responseAssembler.toResponse(saved);
     }
 
     public int expectedInputQtyFor(Lot lot, Process process) {
-        return expectedInputQty(lot, process);
+        return inputQuantityResolver.resolveForResult(lot, process);
     }
 
     public List<ProductionLogResponseDto> search(ProductionLogSearchRequestDto condition) {
-        validateSearchPeriod(condition);
+        RequestValues.validateSearchPeriod(condition.getStartAt(), condition.getEndAt());
         return productionLogRepository.findAll(Sort.by(Sort.Direction.DESC, "createdAt")).stream()
                 .filter(log -> condition.getWorkOrderId() == null
-                        || log.getLot().getWorkOrder().getWorkOrderId().equals(condition.getWorkOrderId()))
-                .filter(log -> isBlank(condition.getLotNo())
+                        || log.getLot().getWorkOrder().getWorkOrderId()
+                        .equals(condition.getWorkOrderId()))
+                .filter(log -> RequestValues.isBlank(condition.getLotNo())
                         || log.getLot().getLotNo().equals(condition.getLotNo()))
-                .filter(log -> isBlank(condition.getMachineId())
+                .filter(log -> RequestValues.isBlank(condition.getMachineId())
                         || log.getMachine().getMachineId().equals(condition.getMachineId()))
-                .filter(log -> isBlank(condition.getProcessCode())
+                .filter(log -> RequestValues.isBlank(condition.getProcessCode())
                         || log.getProcess().getProcessCode().equals(condition.getProcessCode()))
-                .filter(log -> isBlank(condition.getStatus())
+                .filter(log -> RequestValues.isBlank(condition.getStatus())
                         || log.getStatus().equalsIgnoreCase(condition.getStatus()))
-                .filter(log -> isWithin(log.getCreatedAt(), condition.getStartAt(), condition.getEndAt()))
-                .map(this::toResponse)
+                .filter(log -> RequestValues.isWithinInclusive(
+                        log.getCreatedAt(), condition.getStartAt(), condition.getEndAt()))
+                .map(responseAssembler::toResponse)
                 .toList();
     }
 
     public ProductionLogResponseDto getProductionLog(Long id) {
         return productionLogRepository.findById(id)
-                .map(this::toResponse)
+                .map(responseAssembler::toResponse)
                 .orElseThrow(() -> new CustomException(ErrorCode.PRODUCTION_LOG_NOT_FOUND));
     }
 
-    private void validateRequest(ProductionResultReceiveRequestDto dto) {
-        if (dto.getInputQty() != dto.getOkQty() + dto.getNgQty()) {
-            throw new CustomException(ErrorCode.PRODUCTION_QUANTITY_MISMATCH);
+    private void updateLog(
+            ProductionLog log,
+            ProductionResultReceiveRequestDto request,
+            String status) {
+        log.setInputQty(request.getInputQty());
+        log.setOkQty(request.getOkQty());
+        log.setNgQty(request.getNgQty());
+        log.setStatus(status);
+        if (log.getStartedAt() == null) {
+            log.setStartedAt(request.getStartedAt());
         }
-        if (dto.getStartedAt() != null && dto.getEndedAt() != null
-                && dto.getStartedAt().isAfter(dto.getEndedAt())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "생산 종료 시각은 시작 시각보다 빠를 수 없습니다.");
-        }
-    }
-
-    private void validateLot(Lot lot, String processCode) {
-        if (lot.getStatus() != Lot.Status.RUNNING && lot.getStatus() != Lot.Status.HOLD) {
-            throw new CustomException(ErrorCode.INVALID_LOT_STATUS,
-                    "생산 중이거나 설비 오류로 보류된 LOT에만 실적을 등록할 수 있습니다.");
-        }
-        if (lot.getCurrentProcess() == null || !isProcessReady(lot, processCode)) {
-            throw new CustomException(ErrorCode.INVALID_PROCESS_ORDER,
-                    "LOT의 현재 공정과 생산실적 공정이 일치하지 않습니다.");
-        }
-    }
-
-    private boolean isProcessReady(Lot lot, String processCode) {
-        String currentProcessCode = lot.getCurrentProcess().getProcessCode();
-        if (currentProcessCode.equals(processCode)) {
-            return true;
-        }
-        return PARALLEL_PROCESS_1.equals(currentProcessCode)
-                && PARALLEL_PROCESS_2.equals(processCode);
-    }
-
-    private void validateMachineAndProcess(Machine machine, Process process) {
-        if (!machine.getProcess().getProcessCode().equals(process.getProcessCode())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "설비에 지정된 공정과 생산실적 공정이 일치하지 않습니다.");
-        }
-    }
-
-    private void validateCumulativeQuantity(int expectedInputQty, String status, int totalInputQty) {
-        if (totalInputQty > expectedInputQty) {
-            throw new CustomException(ErrorCode.INVALID_PRODUCTION_QUANTITY,
-                    "공정 생산수량이 LOT 투입수량을 초과합니다.");
-        }
-        if ("COMPLETED".equalsIgnoreCase(status) && totalInputQty < expectedInputQty) {
-            throw new CustomException(ErrorCode.INVALID_PRODUCTION_STATUS,
-                    "LOT 투입수량을 모두 처리하기 전에는 공정을 완료할 수 없습니다.");
-        }
-    }
-
-    private void completeCurrentProcess(
-            Lot lot, Machine machine, Process process,
-            int totalOkQty, LocalDateTime endedAt) {
-        workCommandService.completeStartCommand(lot, process, machine);
-        // MACHINE_STATUS IDLE가 실적보다 먼저 도착했더라도, 명령 완료 직후
-        // 방금 비워진 설비에 FIFO 대기 LOT을 다시 배정한다.
-        productionScheduleRequestService.requestMachine(machine.getMachineId());
-
-        if (isParallelProcess(process.getProcessCode())) {
-            advanceAfterParallelProcesses(lot, endedAt);
-            return;
-        }
-
-        Optional<Process> nextProcess = masterDataLookup.findNextProcess(
-                process.getProcessOrder());
-        if (nextProcess.isPresent()) {
-            if (totalOkQty > 0) {
-                lot.setCurrentProcess(nextProcess.get());
-                productionScheduleRequestService.requestLot(lot.getLotNo());
-            } else {
-                finishScrappedLot(lot, endedAt);
-            }
-            return;
-        }
-
-        lot.setOkQty(totalOkQty);
-        lot.setNgQty(lot.getInputQty() - totalOkQty);
-        lot.setStatus(Lot.Status.COMPLETED);
-        lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
-        lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
-        workOrderContinuationRequestService.requestEvaluation(
-                lot.getWorkOrder().getWorkOrderId());
-    }
-
-    private void advanceAfterParallelProcesses(Lot lot, LocalDateTime endedAt) {
-        if (!isProcessCompleted(lot, PARALLEL_PROCESS_1)
-                || !isProcessCompleted(lot, PARALLEL_PROCESS_2)) {
-            return;
-        }
-
-        Process assembly = masterDataLookup.findProcess(ASSEMBLY_PROCESS)
-                                .orElseThrow(() -> new CustomException(ErrorCode.PROCESS_NOT_FOUND,
-                        "병렬 공정 합류 공정이 등록되어 있지 않습니다."));
-        int assemblyInputQty = Math.min(
-                processOkQty(lot, PARALLEL_PROCESS_1),
-                processOkQty(lot, PARALLEL_PROCESS_2));
-        if (assemblyInputQty > 0) {
-            lot.setCurrentProcess(assembly);
-            productionScheduleRequestService.requestLot(lot.getLotNo());
-        } else {
-            finishScrappedLot(lot, endedAt);
-        }
-    }
-
-    private void finishScrappedLot(Lot lot, LocalDateTime endedAt) {
-        // 현재 공정 완료 처리 외에 병렬/지연 ACK로 남은 명령도 함께 정리한다.
-        workCommandService.cancelActiveCommandsForLot(lot.getLotNo());
-        lot.setOkQty(0);
-        lot.setNgQty(lot.getInputQty());
-        lot.setStatus(Lot.Status.SCRAPPED);
-        lot.setCompletedAt(endedAt == null ? LocalDateTime.now() : endedAt);
-        lot.getWorkOrder().setStatus(WorkOrder.Status.RUNNING);
-        workOrderContinuationRequestService.requestEvaluation(
-                lot.getWorkOrder().getWorkOrderId());
-        productionScheduleRequestService.requestAllIdleMachines();
-    }
-
-    private int expectedInputQty(Lot lot, Process process) {
-        if (isParallelProcess(process.getProcessCode())) {
-            return lot.getInputQty();
-        }
-        if (ASSEMBLY_PROCESS.equals(process.getProcessCode())) {
-            return Math.min(
-                    processOkQty(lot, PARALLEL_PROCESS_1),
-                    processOkQty(lot, PARALLEL_PROCESS_2));
-        }
-        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
-                .map(previous -> processOkQty(lot, previous.getProcessCode()))
-                .orElse(lot.getInputQty());
-    }
-
-    private boolean isProcessCompleted(Lot lot, String processCode) {
-        List<ProductionLog> logs = productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), processCode);
-        return sumInput(logs) == lot.getInputQty();
-    }
-
-    private int processOkQty(Lot lot, String processCode) {
-        return sumOk(productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), processCode));
-    }
-
-    private boolean isParallelProcess(String processCode) {
-        return PARALLEL_PROCESS_1.equals(processCode) || PARALLEL_PROCESS_2.equals(processCode);
-    }
-
-    private int sumInput(List<ProductionLog> logs) {
-        return logs.stream().mapToInt(ProductionLog::getInputQty).sum();
-    }
-
-    private int sumOk(List<ProductionLog> logs) {
-        return logs.stream().mapToInt(ProductionLog::getOkQty).sum();
-    }
-
-    private void validateSearchPeriod(ProductionLogSearchRequestDto condition) {
-        if (condition.getStartAt() != null && condition.getEndAt() != null
-                && condition.getStartAt().isAfter(condition.getEndAt())) {
-            throw new CustomException(ErrorCode.INVALID_INPUT_VALUE,
-                    "조회 종료 시각은 시작 시각보다 빠를 수 없습니다.");
-        }
-    }
-
-    private boolean isBlank(String value) {
-        return value == null || value.isBlank();
-    }
-
-    private String normalizeEventId(String eventId) {
-        return isBlank(eventId) ? null : eventId.trim();
-    }
-
-    private boolean isWithin(LocalDateTime value, LocalDateTime start, LocalDateTime end) {
-        return (start == null || !value.isBefore(start)) && (end == null || !value.isAfter(end));
-    }
-
-    private ProductionLogResponseDto toResponse(ProductionLog log) {
-        return ProductionLogResponseDto.builder()
-                .productionLogId(log.getProductionLogId())
-                .lotNo(log.getLot().getLotNo())
-                .machineId(log.getMachine().getMachineId())
-                .machineName(log.getMachine().getMachineName())
-                .processCode(log.getProcess().getProcessCode())
-                .processName(log.getProcess().getProcessName())
-                .inputQty(log.getInputQty())
-                .okQty(log.getOkQty())
-                .ngQty(log.getNgQty())
-                .status(log.getStatus())
-                .startedAt(log.getStartedAt())
-                .endedAt(log.getEndedAt())
-                .createdAt(log.getCreatedAt())
-                .build();
+        log.setEndedAt("COMPLETED".equals(status)
+                ? (request.getEndedAt() == null ? LocalDateTime.now() : request.getEndedAt())
+                : null);
     }
 }

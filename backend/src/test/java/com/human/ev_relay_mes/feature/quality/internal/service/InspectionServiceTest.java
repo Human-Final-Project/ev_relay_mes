@@ -1,5 +1,7 @@
 package com.human.ev_relay_mes.feature.quality.internal.service;
 
+import com.human.ev_relay_mes.Exception.CustomException;
+import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.production.api.ProductionOperations;
 import com.human.ev_relay_mes.feature.quality.api.InspectionResultReceiveRequestDto;
 import com.human.ev_relay_mes.feature.quality.api.UnitJudgmentReceiveRequestDto;
@@ -16,8 +18,8 @@ import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
 import com.human.ev_relay_mes.feature.masterdata.api.InspectionStandardOperations;
 import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -43,7 +46,28 @@ class InspectionServiceTest {
     @Mock ProductionOperations productionOperations;
     @Mock DefectService defectService;
 
-    @InjectMocks InspectionService inspectionService;
+    InspectionService inspectionService;
+
+    @BeforeEach
+    void setUp() {
+        InspectionUnitEvaluator unitEvaluator = new InspectionUnitEvaluator(
+                inspectionRepository,
+                inspectionUnitResultRepository,
+                inspectionStandardOperations,
+                productionOperations);
+        inspectionService = new InspectionService(
+                inspectionRepository,
+                inspectionUnitResultRepository,
+                machineRegistry,
+                masterDataLookup,
+                productionData,
+                inspectionStandardOperations,
+                productionOperations,
+                new InspectionRules(),
+                new InspectionDefectRecorder(defectService),
+                unitEvaluator,
+                new InspectionResponseAssembler());
+    }
 
     @Test
     void returnsExistingInspectionForDuplicateEventId() {
@@ -208,6 +232,110 @@ class InspectionServiceTest {
         verify(defectService).createDefect(any());
     }
 
+    @Test
+    void rejectsDifferentValueForExistingUnitMeasurement() {
+        Process process = process("OP70");
+        Machine machine = machine("EQ-TEST-01", process);
+        Lot lot = runningLot("LOT-DUPLICATE", process);
+        LotInspectionStandardSnapshot snapshot = snapshot(lot, process, "mOHM");
+        InspectionResultReceiveRequestDto dto = inspectionDto(
+                "event-new", lot, machine, process, 1, "40.000", "mOHM");
+        Inspection existing = Inspection.builder()
+                .lot(lot)
+                .machine(machine)
+                .process(process)
+                .standardSnapshot(snapshot)
+                .unitSeq(1)
+                .inspectionItem("CONTACT_RESISTANCE")
+                .measuredValue(new BigDecimal("35.000"))
+                .unit("mOHM")
+                .result(Inspection.Result.OK)
+                .build();
+        when(inspectionRepository.findByEventId("event-new")).thenReturn(Optional.empty());
+        when(productionData.getRequiredLotForUpdate(lot.getLotNo())).thenReturn(lot);
+        when(machineRegistry.getRequiredMachine(machine.getMachineId())).thenReturn(machine);
+        when(masterDataLookup.getRequiredProcess(process.getProcessCode())).thenReturn(process);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(1);
+        when(inspectionStandardOperations.resolveSnapshot(
+                lot, process, "CONTACT_RESISTANCE")).thenReturn(snapshot);
+        when(inspectionRepository
+                .findByLot_LotNoAndProcess_ProcessCodeAndUnitSeqAndInspectionItem(
+                        lot.getLotNo(), process.getProcessCode(), 1, "CONTACT_RESISTANCE"))
+                .thenReturn(Optional.of(existing));
+
+        assertThatThrownBy(() -> inspectionService.saveResult(dto))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.DUPLICATE_INSPECTION_MEASUREMENT);
+    }
+
+    @Test
+    void rejectsMeasurementUnitThatDiffersFromSnapshot() {
+        Process process = process("OP70");
+        Machine machine = machine("EQ-TEST-01", process);
+        Lot lot = runningLot("LOT-UNIT", process);
+        LotInspectionStandardSnapshot snapshot = snapshot(lot, process, "mOHM");
+        InspectionResultReceiveRequestDto dto = inspectionDto(
+                "event-unit", lot, machine, process, 1, "40.000", "OHM");
+        when(inspectionRepository.findByEventId("event-unit")).thenReturn(Optional.empty());
+        when(productionData.getRequiredLotForUpdate(lot.getLotNo())).thenReturn(lot);
+        when(machineRegistry.getRequiredMachine(machine.getMachineId())).thenReturn(machine);
+        when(masterDataLookup.getRequiredProcess(process.getProcessCode())).thenReturn(process);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(1);
+        when(inspectionStandardOperations.resolveSnapshot(
+                lot, process, "CONTACT_RESISTANCE")).thenReturn(snapshot);
+
+        assertThatThrownBy(() -> inspectionService.saveResult(dto))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INSPECTION_VALUE);
+    }
+
+    @Test
+    void rejectsInspectionUnitSequenceAboveExpectedInputQuantity() {
+        Process process = process("OP70");
+        Machine machine = machine("EQ-TEST-01", process);
+        Lot lot = runningLot("LOT-SEQUENCE", process);
+        InspectionResultReceiveRequestDto dto = inspectionDto(
+                "event-sequence", lot, machine, process, 2, "40.000", "mOHM");
+        when(inspectionRepository.findByEventId("event-sequence")).thenReturn(Optional.empty());
+        when(productionData.getRequiredLotForUpdate(lot.getLotNo())).thenReturn(lot);
+        when(machineRegistry.getRequiredMachine(machine.getMachineId())).thenReturn(machine);
+        when(masterDataLookup.getRequiredProcess(process.getProcessCode())).thenReturn(process);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(1);
+
+        assertThatThrownBy(() -> inspectionService.saveResult(dto))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INSPECTION_UNIT_SEQ);
+
+        verifyNoInteractions(inspectionStandardOperations);
+    }
+
+    @Test
+    void rejectsL1NgJudgmentWithoutDefectCode() {
+        Process process = process("OP40_OP50");
+        Machine machine = machine("EQ-ASSY-01", process);
+        Lot lot = runningLot("LOT-NG-NO-CODE", process);
+        UnitJudgmentReceiveRequestDto dto = new UnitJudgmentReceiveRequestDto();
+        dto.setLotNo(lot.getLotNo());
+        dto.setMachineId(machine.getMachineId());
+        dto.setProcessCode(process.getProcessCode());
+        dto.setUnitSeq(1);
+        dto.setResult("NG");
+        when(productionData.getRequiredLotForUpdate(lot.getLotNo())).thenReturn(lot);
+        when(machineRegistry.getRequiredMachine(machine.getMachineId())).thenReturn(machine);
+        when(masterDataLookup.getRequiredProcess(process.getProcessCode())).thenReturn(process);
+        when(productionOperations.expectedInputQtyFor(lot, process)).thenReturn(1);
+
+        assertThatThrownBy(() -> inspectionService.saveJudgment(dto))
+                .isInstanceOf(CustomException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.INVALID_INPUT_VALUE);
+
+        verifyNoInteractions(defectService);
+    }
+
     private Inspection measurement(
             Lot lot, Machine machine, Process process,
             LotInspectionStandardSnapshot snapshot, String item, Inspection.Result result) {
@@ -216,5 +344,60 @@ class InspectionServiceTest {
                 .unitSeq(1).inspectionItem(item).measuredValue(BigDecimal.ONE)
                 .unit(snapshot.getUnit()).result(result)
                 .build();
+    }
+
+    private Process process(String processCode) {
+        return Process.builder()
+                .processCode(processCode)
+                .processName("test process")
+                .processOrder(70)
+                .build();
+    }
+
+    private Machine machine(String machineId, Process process) {
+        return Machine.builder()
+                .machineId(machineId)
+                .machineName("test machine")
+                .machineType("TESTER")
+                .process(process)
+                .build();
+    }
+
+    private Lot runningLot(String lotNo, Process process) {
+        return Lot.builder()
+                .lotNo(lotNo)
+                .inputQty(1)
+                .status(Lot.Status.RUNNING)
+                .currentProcess(process)
+                .build();
+    }
+
+    private LotInspectionStandardSnapshot snapshot(
+            Lot lot, Process process, String unit) {
+        return LotInspectionStandardSnapshot.builder()
+                .lot(lot)
+                .process(process)
+                .inspectionItem("CONTACT_RESISTANCE")
+                .itemName("접촉 저항")
+                .unit(unit)
+                .lowerLimit(BigDecimal.ZERO)
+                .upperLimit(new BigDecimal("50.000"))
+                .standardVersion(1)
+                .build();
+    }
+
+    private InspectionResultReceiveRequestDto inspectionDto(
+            String eventId, Lot lot, Machine machine, Process process,
+            int unitSeq, String measuredValue, String unit) {
+        InspectionResultReceiveRequestDto dto = new InspectionResultReceiveRequestDto();
+        dto.setEventId(eventId);
+        dto.setLotNo(lot.getLotNo());
+        dto.setMachineId(machine.getMachineId());
+        dto.setProcessCode(process.getProcessCode());
+        dto.setUnitSeq(unitSeq);
+        dto.setInspectionItem("CONTACT_RESISTANCE");
+        dto.setMeasuredValue(new BigDecimal(measuredValue));
+        dto.setUnit(unit);
+        return dto;
     }
 }

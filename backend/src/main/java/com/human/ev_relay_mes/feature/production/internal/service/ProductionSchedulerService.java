@@ -3,14 +3,11 @@ package com.human.ev_relay_mes.feature.production.internal.service;
 import com.human.ev_relay_mes.feature.collector.api.WorkCommandOperations;
 import com.human.ev_relay_mes.feature.production.api.Lot;
 import com.human.ev_relay_mes.feature.machine.api.Machine;
-import com.human.ev_relay_mes.feature.masterdata.api.Process;
-import com.human.ev_relay_mes.feature.production.api.ProductionLog;
+import com.human.ev_relay_mes.feature.masterdata.api.ProcessCodes;
 import com.human.ev_relay_mes.Exception.CustomException;
 import com.human.ev_relay_mes.Exception.ErrorCode;
 import com.human.ev_relay_mes.feature.production.internal.repository.LotRepository;
 import com.human.ev_relay_mes.feature.machine.api.MachineRegistry;
-import com.human.ev_relay_mes.feature.masterdata.api.MasterDataLookup;
-import com.human.ev_relay_mes.feature.production.internal.repository.ProductionLogRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,16 +25,11 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class ProductionSchedulerService {
 
-    private static final String OP20 = "OP20";
-    private static final String OP30 = "OP30";
-    private static final String ASSEMBLY = "OP40_OP50";
-
     private final LotRepository lotRepository;
     private final MachineRegistry machineRegistry;
-    private final MasterDataLookup masterDataLookup;
-    private final ProductionLogRepository productionLogRepository;
     private final WorkCommandOperations workCommandService;
     private final WorkOrderContinuationRequestService workOrderContinuationRequestService;
+    private final ProductionInputQuantityResolver inputQuantityResolver;
 
     /** 현재 LOT이 대기 중인 공정을 즉시 예약할 수 있으면 START를 생성한다. */
     @Transactional
@@ -98,7 +90,7 @@ public class ProductionSchedulerService {
         }
 
         String processCode = lot.getCurrentProcess().getProcessCode();
-        if (OP20.equals(processCode)) {
+        if (ProcessCodes.WINDING.equals(processCode)) {
             if (!isInitialPairUnstarted(lot)) {
                 return false;
             }
@@ -110,11 +102,12 @@ public class ProductionSchedulerService {
             return false;
         }
 
-        int inputQty = expectedInputQty(lot, lot.getCurrentProcess());
+        int inputQty = inputQuantityResolver.resolve(lot, lot.getCurrentProcess());
         if (inputQty <= 0) {
             // 직전 공정 실적 트랜잭션이 아직 커밋되지 않은 순간을 0개 생산으로
             // 오판하지 않는다. 직전 공정의 COMPLETED 실적이 확인된 경우에만 폐기한다.
-            if (isPreviousInputCompleted(lot, lot.getCurrentProcess())) {
+            if (inputQuantityResolver.isPreviousInputCompleted(
+                    lot, lot.getCurrentProcess())) {
                 finishScrappedLot(lot);
             }
             return false;
@@ -134,30 +127,13 @@ public class ProductionSchedulerService {
                 lot.getWorkOrder().getWorkOrderId());
     }
 
-    private boolean isPreviousInputCompleted(Lot lot, Process process) {
-        if (ASSEMBLY.equals(process.getProcessCode())) {
-            return hasCompletedLog(lot, OP20) && hasCompletedLog(lot, OP30);
-        }
-        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
-                .map(previous -> hasCompletedLog(lot, previous.getProcessCode()))
-                .orElse(false);
-    }
-
-    private boolean hasCompletedLog(Lot lot, String processCode) {
-        return productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), processCode)
-                .stream()
-                .anyMatch(log -> "COMPLETED".equalsIgnoreCase(log.getStatus()));
-    }
-
     private boolean isWaitingForProcess(Lot lot, String machineProcessCode) {
         if (lot.getCurrentProcess() == null) {
             return false;
         }
         String lotProcessCode = lot.getCurrentProcess().getProcessCode();
-        if (OP20.equals(machineProcessCode) || OP30.equals(machineProcessCode)) {
-            return OP20.equals(lotProcessCode) && isInitialPairUnstarted(lot);
+        if (ProcessCodes.INITIAL_PARALLEL_PROCESSES.contains(machineProcessCode)) {
+            return ProcessCodes.WINDING.equals(lotProcessCode) && isInitialPairUnstarted(lot);
         }
         return machineProcessCode.equals(lotProcessCode)
                 && !workCommandService.hasActiveExecution(lot.getLotNo(), lotProcessCode)
@@ -165,28 +141,12 @@ public class ProductionSchedulerService {
     }
 
     private boolean isInitialPairUnstarted(Lot lot) {
-        return !workCommandService.hasStartedProcess(lot.getLotNo(), OP20)
-                && !workCommandService.hasStartedProcess(lot.getLotNo(), OP30)
-                && !workCommandService.hasActiveExecution(lot.getLotNo(), OP20)
-                && !workCommandService.hasActiveExecution(lot.getLotNo(), OP30);
+        return !workCommandService.hasStartedProcess(lot.getLotNo(), ProcessCodes.WINDING)
+                && !workCommandService.hasStartedProcess(
+                        lot.getLotNo(), ProcessCodes.CONTACT_WELDING)
+                && !workCommandService.hasActiveExecution(lot.getLotNo(), ProcessCodes.WINDING)
+                && !workCommandService.hasActiveExecution(
+                        lot.getLotNo(), ProcessCodes.CONTACT_WELDING);
     }
 
-    private int expectedInputQty(Lot lot, Process process) {
-        String processCode = process.getProcessCode();
-        if (ASSEMBLY.equals(processCode)) {
-            return Math.min(processOkQty(lot, OP20), processOkQty(lot, OP30));
-        }
-        return masterDataLookup.findPreviousProcess(process.getProcessOrder())
-                .map(previous -> processOkQty(lot, previous.getProcessCode()))
-                .orElse(0);
-    }
-
-    private int processOkQty(Lot lot, String processCode) {
-        return productionLogRepository
-                .findByLot_LotNoAndProcess_ProcessCodeOrderByCreatedAtAsc(
-                        lot.getLotNo(), processCode)
-                .stream()
-                .mapToInt(ProductionLog::getOkQty)
-                .sum();
-    }
 }
